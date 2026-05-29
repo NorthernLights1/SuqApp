@@ -1,0 +1,112 @@
+import 'package:decimal/decimal.dart';
+import 'package:equatable/equatable.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../features/auth/presentation/providers/auth_provider.dart';
+import '../../../../features/auth/presentation/providers/shop_provider.dart';
+
+class Customer extends Equatable {
+  const Customer({
+    required this.id,
+    required this.shopId,
+    required this.name,
+    this.phone,
+    required this.creditBalance,
+    required this.createdAt,
+  });
+
+  final String id;
+  final String shopId;
+  final String name;
+  final String? phone;
+  final Decimal creditBalance;
+  final DateTime createdAt;
+
+  bool get hasDebt => creditBalance > Decimal.zero;
+
+  factory Customer.fromJson(Map<String, dynamic> json) => Customer(
+        id: json['id'] as String,
+        shopId: json['shop_id'] as String,
+        name: json['name'] as String,
+        phone: json['phone'] as String?,
+        creditBalance: Decimal.parse(json['credit_balance'].toString()),
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
+
+  @override
+  List<Object?> get props => [id, name, creditBalance];
+}
+
+// ─── Providers ─────────────────────────────────────────────────────────────
+
+final customersProvider = FutureProvider<List<Customer>>((ref) async {
+  final shop = await ref.watch(currentShopProvider.future);
+  if (shop == null) return [];
+  final client = ref.read(supabaseClientProvider);
+  final data = await client
+      .from('customers')
+      .select('id, shop_id, name, phone, credit_balance, created_at')
+      .eq('shop_id', shop.id)
+      .order('name');
+  return (data as List).map((e) => Customer.fromJson(e)).toList();
+});
+
+final customerSalesProvider =
+    FutureProvider.family<List<Map<String, dynamic>>, String>((ref, customerId) async {
+  final client = ref.read(supabaseClientProvider);
+  final data = await client
+      .from('sales')
+      .select('id, total, status, created_at, is_credit')
+      .eq('customer_id', customerId)
+      .order('created_at', ascending: false)
+      .limit(20);
+  return (data as List).cast<Map<String, dynamic>>();
+});
+
+class CustomerFormNotifier extends AsyncNotifier<void> {
+  @override
+  Future<void> build() async {}
+
+  Future<bool> save({
+    String? customerId,
+    required String name,
+    String? phone,
+  }) async {
+    final shop = await ref.read(currentShopProvider.future);
+    if (shop == null) return false;
+    final client = ref.read(supabaseClientProvider);
+
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      if (customerId == null) {
+        await client.from('customers').insert({
+          'shop_id': shop.id,
+          'name': name.trim(),
+          'phone': phone?.trim().isEmpty == true ? null : phone?.trim(),
+          'credit_balance': '0',
+        });
+      } else {
+        await client.from('customers').update({
+          'name': name.trim(),
+          'phone': phone?.trim().isEmpty == true ? null : phone?.trim(),
+        }).eq('id', customerId);
+      }
+      ref.invalidate(customersProvider);
+    });
+    return !state.hasError;
+  }
+
+  Future<bool> settleDebt(String customerId) async {
+    final client = ref.read(supabaseClientProvider);
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await client
+          .from('customers')
+          .update({'credit_balance': '0'}).eq('id', customerId);
+      ref.invalidate(customersProvider);
+    });
+    return !state.hasError;
+  }
+}
+
+final customerFormProvider =
+    AsyncNotifierProvider<CustomerFormNotifier, void>(CustomerFormNotifier.new);

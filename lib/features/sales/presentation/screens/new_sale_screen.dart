@@ -1,0 +1,488 @@
+import 'package:decimal/decimal.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import '../../../../domain/models/sale.dart';
+import '../../../../shared/theme/app_colors.dart';
+import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/widgets/app_button.dart';
+import '../providers/sales_provider.dart';
+
+class NewSaleScreen extends ConsumerStatefulWidget {
+  const NewSaleScreen({super.key});
+
+  @override
+  ConsumerState<NewSaleScreen> createState() => _NewSaleScreenState();
+}
+
+class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
+  final _searchCtrl = TextEditingController();
+  final _notesCtrl = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _notesCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cart = ref.watch(cartProvider);
+    final subtotal = ref.watch(cartSubtotalProvider);
+    final createState = ref.watch(createSaleProvider);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('New Sale'),
+        actions: [
+          if (cart.isNotEmpty)
+            TextButton(
+              onPressed: () => _confirmClear(context),
+              child: const Text('Clear', style: TextStyle(color: AppColors.error)),
+            ),
+        ],
+      ),
+      body: Column(
+        children: [
+          // Product search
+          _ProductSearch(searchCtrl: _searchCtrl),
+          const Divider(height: 1),
+          // Cart items
+          Expanded(
+            child: cart.isEmpty
+                ? _EmptyCart()
+                : _CartList(cart: cart),
+          ),
+          // Footer
+          if (cart.isNotEmpty)
+            _SaleFooter(
+              subtotal: subtotal,
+              notesCtrl: _notesCtrl,
+              loading: createState.isLoading,
+              onSubmit: _submit,
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _confirmClear(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clear cart?'),
+        content: const Text('All items will be removed.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              ref.read(cartProvider.notifier).clear();
+              Navigator.pop(ctx);
+            },
+            child: const Text('Clear', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submit() async {
+    final cart = ref.read(cartProvider);
+    final paymentMethod = ref.read(selectedPaymentMethodProvider);
+
+    if (cart.isEmpty) {
+      _showSnack('Add at least one item');
+      return;
+    }
+    if (paymentMethod == null) {
+      _showSnack('Select a payment method');
+      return;
+    }
+
+    final sale = await ref.read(createSaleProvider.notifier).submit(
+          paymentMethodId: paymentMethod.id,
+          items: cart,
+          notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+        );
+
+    if (!mounted) return;
+
+    final error = ref.read(createSaleProvider).error;
+    if (error != null) {
+      _showSnack(error.toString(), isError: true);
+      return;
+    }
+
+    if (sale != null) {
+      _showSaleSuccess(context, sale);
+    }
+  }
+
+  void _showSnack(String msg, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(msg),
+      backgroundColor: isError ? AppColors.error : AppColors.success,
+    ));
+  }
+
+  void _showSaleSuccess(BuildContext context, Sale sale) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.check_circle, color: AppColors.success, size: 48),
+        title: const Text('Sale Complete'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Total: ETB ${sale.total}',
+                style: AppTextStyles.amount),
+            const SizedBox(height: 4),
+            Text('${sale.items.length} item(s)',
+                style: AppTextStyles.bodySmall),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.pop(); // back to sales list
+            },
+            child: const Text('Done'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              // stay on new sale screen, cart already cleared
+            },
+            child: const Text('New Sale'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Product Search ──────────────────────────────────────────────────────────
+
+class _ProductSearch extends ConsumerWidget {
+  const _ProductSearch({required this.searchCtrl});
+  final TextEditingController searchCtrl;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final results = ref.watch(productSearchProvider);
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: TextField(
+            controller: searchCtrl,
+            decoration: const InputDecoration(
+              hintText: 'Search products…',
+              prefixIcon: Icon(Icons.search),
+              isDense: true,
+            ),
+            onChanged: (v) =>
+                ref.read(productSearchQueryProvider.notifier).state = v,
+          ),
+        ),
+        results.when(
+          data: (list) => list.isEmpty
+              ? const SizedBox.shrink()
+              : Container(
+                  constraints: const BoxConstraints(maxHeight: 200),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border(top: BorderSide(color: AppColors.divider)),
+                  ),
+                  child: ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: list.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(height: 1),
+                    itemBuilder: (ctx, i) => ListTile(
+                      dense: true,
+                      title: Text(list[i].name, style: AppTextStyles.body),
+                      subtitle: Text(list[i].measurementUnitAbbr,
+                          style: AppTextStyles.bodySmall),
+                      trailing: const Icon(Icons.add_circle_outline,
+                          color: AppColors.primary),
+                      onTap: () => _addToCart(ctx, ref, list[i]),
+                    ),
+                  ),
+                ),
+          loading: () => const LinearProgressIndicator(),
+          error: (e, _) => const SizedBox.shrink(),
+        ),
+      ],
+    );
+  }
+
+  void _addToCart(BuildContext context, WidgetRef ref, product) {
+    // Clear search
+    searchCtrl.clear();
+    ref.read(productSearchQueryProvider.notifier).state = '';
+
+    final item = CartItem(
+      productId: product.id,
+      productName: product.name,
+      measurementUnitId: product.measurementUnitId,
+      measurementUnitAbbr: product.measurementUnitAbbr,
+      quantity: Decimal.one,
+      unitPrice: product.sellingPrice ?? Decimal.zero,
+      discountAmount: Decimal.zero,
+    );
+    ref.read(cartProvider.notifier).addItem(item);
+  }
+}
+
+// ─── Cart List ────────────────────────────────────────────────────────────────
+
+class _CartList extends ConsumerWidget {
+  const _CartList({required this.cart});
+  final List<CartItem> cart;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ListView.separated(
+      padding: const EdgeInsets.only(bottom: 8),
+      itemCount: cart.length,
+      separatorBuilder: (context, index) => const Divider(height: 1),
+      itemBuilder: (ctx, i) => _CartItemTile(
+        item: cart[i],
+        index: i,
+        onUpdate: (updated) =>
+            ref.read(cartProvider.notifier).updateItem(i, updated),
+        onRemove: () => ref.read(cartProvider.notifier).removeItem(i),
+      ),
+    );
+  }
+}
+
+class _CartItemTile extends StatefulWidget {
+  const _CartItemTile({
+    required this.item,
+    required this.index,
+    required this.onUpdate,
+    required this.onRemove,
+  });
+  final CartItem item;
+  final int index;
+  final ValueChanged<CartItem> onUpdate;
+  final VoidCallback onRemove;
+
+  @override
+  State<_CartItemTile> createState() => _CartItemTileState();
+}
+
+class _CartItemTileState extends State<_CartItemTile> {
+  late final _priceCtrl =
+      TextEditingController(text: widget.item.unitPrice > Decimal.zero ? widget.item.unitPrice.toString() : '');
+  late final _qtyCtrl =
+      TextEditingController(text: widget.item.quantity.toString());
+
+  @override
+  void dispose() {
+    _priceCtrl.dispose();
+    _qtyCtrl.dispose();
+    super.dispose();
+  }
+
+  void _commit() {
+    final qty = Decimal.tryParse(_qtyCtrl.text) ?? Decimal.one;
+    final price = Decimal.tryParse(_priceCtrl.text) ?? Decimal.zero;
+    widget.onUpdate(widget.item.copyWith(quantity: qty, unitPrice: price));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        children: [
+          // Remove button
+          IconButton(
+            icon: const Icon(Icons.remove_circle_outline, color: AppColors.error),
+            onPressed: widget.onRemove,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(),
+          ),
+          const SizedBox(width: 8),
+          // Product name
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.item.productName,
+                    style: AppTextStyles.body,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis),
+                if (widget.item.measurementUnitAbbr != null)
+                  Text(widget.item.measurementUnitAbbr!,
+                      style: AppTextStyles.label),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Quantity
+          SizedBox(
+            width: 52,
+            child: TextField(
+              controller: _qtyCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textAlign: TextAlign.center,
+              decoration: const InputDecoration(
+                  labelText: 'Qty', isDense: true, contentPadding: EdgeInsets.all(8)),
+              onChanged: (_) => _commit(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Unit price
+          SizedBox(
+            width: 80,
+            child: TextField(
+              controller: _priceCtrl,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textAlign: TextAlign.end,
+              decoration: const InputDecoration(
+                  labelText: 'Price', isDense: true, contentPadding: EdgeInsets.all(8)),
+              onChanged: (_) => _commit(),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Line total
+          SizedBox(
+            width: 72,
+            child: Text(
+              widget.item.lineTotal.toStringAsFixed(2),
+              style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
+              textAlign: TextAlign.end,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Empty Cart ───────────────────────────────────────────────────────────────
+
+class _EmptyCart extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.shopping_cart_outlined,
+              size: 64, color: AppColors.textDisabled),
+          const SizedBox(height: 12),
+          Text('Search for products to add', style: AppTextStyles.bodySmall),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Sale Footer ──────────────────────────────────────────────────────────────
+
+class _SaleFooter extends ConsumerWidget {
+  const _SaleFooter({
+    required this.subtotal,
+    required this.notesCtrl,
+    required this.loading,
+    required this.onSubmit,
+  });
+  final Decimal subtotal;
+  final TextEditingController notesCtrl;
+  final bool loading;
+  final VoidCallback onSubmit;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final paymentMethods = ref.watch(paymentMethodsProvider);
+    ref.watch(selectedPaymentMethodProvider); // kept for reactivity
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border(top: BorderSide(color: AppColors.divider)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 8,
+            offset: const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Payment method picker
+          paymentMethods.when(
+            data: (methods) => methods.isEmpty
+                ? const Text('No payment methods configured')
+                : DropdownButtonFormField<PaymentMethod>(
+                    hint: const Text('Payment method'),
+                    decoration: const InputDecoration(isDense: true),
+                    items: methods
+                        .map((m) => DropdownMenuItem(
+                              value: m,
+                              child: Text(m.name),
+                            ))
+                        .toList(),
+                    onChanged: (m) => ref
+                        .read(selectedPaymentMethodProvider.notifier)
+                        .state = m,
+                  ),
+            loading: () => const LinearProgressIndicator(),
+            error: (e, _) => const Text('Could not load payment methods'),
+          ),
+          const SizedBox(height: 12),
+          // Notes
+          TextField(
+            controller: notesCtrl,
+            decoration: const InputDecoration(
+              hintText: 'Notes (optional)',
+              isDense: true,
+            ),
+            maxLines: 1,
+          ),
+          const SizedBox(height: 12),
+          // Total + submit
+          Row(
+            children: [
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Total', style: AppTextStyles.label),
+                  Text(
+                    'ETB ${subtotal.toStringAsFixed(2)}',
+                    style: AppTextStyles.amount,
+                  ),
+                ],
+              ),
+              const Spacer(),
+              SizedBox(
+                width: 160,
+                child: AppButton(
+                  label: 'Charge',
+                  icon: Icons.point_of_sale,
+                  loading: loading,
+                  fullWidth: false,
+                  onPressed: onSubmit,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
