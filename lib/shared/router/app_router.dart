@@ -11,6 +11,9 @@ import '../../features/sales/presentation/screens/new_sale_screen.dart';
 import '../../features/inventory/presentation/screens/inventory_screen.dart';
 import '../../features/customers/presentation/screens/customers_screen.dart';
 import '../../features/expenses/presentation/screens/expenses_screen.dart';
+import '../../features/reports/presentation/screens/reports_screen.dart';
+import '../../features/settings/presentation/screens/settings_screen.dart';
+import '../../features/staff/presentation/screens/staff_screen.dart';
 import 'app_routes.dart';
 
 /// Notifies GoRouter whenever Supabase auth state changes.
@@ -79,24 +82,10 @@ GoRouter createRouter() {
       GoRoute(path: AppRoutes.inventory, builder: (context, state) => const InventoryScreen()),
       GoRoute(path: AppRoutes.customers, builder: (context, state) => const CustomersScreen()),
       GoRoute(path: AppRoutes.expenses,  builder: (context, state) => const ExpensesScreen()),
-      GoRoute(path: AppRoutes.reports,   builder: (context, state) => const _ShellPage(title: 'Reports')),
-      GoRoute(path: AppRoutes.settings,  builder: (context, state) => const _ShellPage(title: 'Settings')),
-      GoRoute(path: AppRoutes.staff,     builder: (context, state) => const _ShellPage(title: 'Staff')),
+      GoRoute(path: AppRoutes.reports,   builder: (context, state) => const ReportsScreen()),
+      GoRoute(path: AppRoutes.settings,  builder: (context, state) => const SettingsScreen()),
+      GoRoute(path: AppRoutes.staff,     builder: (context, state) => const StaffScreen()),
     ],
   );
 }
 
-class _ShellPage extends StatelessWidget {
-  const _ShellPage({required this.title});
-  final String title;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title)),
-      body: Center(
-        child: Text('$title — coming soon', style: const TextStyle(color: Colors.grey)),
-      ),
-    );
-  }
-}
