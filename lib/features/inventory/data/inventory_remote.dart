@@ -11,7 +11,7 @@ class InventoryRemote {
   Future<List<Product>> getProducts(String shopId) async {
     final data = await _client
         .from('products')
-        .select('id, shop_id, name, description, category_id, measurement_unit_id, low_stock_threshold, selling_price, is_active, measurement_units(abbreviation)')
+        .select('id, shop_id, name, description, category_id, measurement_unit_id, low_stock_threshold, selling_price, cost_price, is_active, measurement_units(abbreviation)')
         .eq('shop_id', shopId)
         .eq('is_active', true)
         .order('name');
@@ -24,6 +24,7 @@ class InventoryRemote {
     required String measurementUnitId,
     required Decimal lowStockThreshold,
     Decimal? sellingPrice,
+    Decimal? costPrice,
     String? categoryId,
     String? description,
   }) async {
@@ -34,9 +35,10 @@ class InventoryRemote {
       'measurement_unit_id': measurementUnitId,
       'low_stock_threshold': lowStockThreshold.toString(),
       'selling_price': sellingPrice?.toString(),
+      'cost_price': costPrice?.toString(),
       'category_id': categoryId,
       'is_active': true,
-    }).select('id, shop_id, name, description, category_id, measurement_unit_id, low_stock_threshold, selling_price, is_active, measurement_units(abbreviation)').single();
+    }).select('id, shop_id, name, description, category_id, measurement_unit_id, low_stock_threshold, selling_price, cost_price, is_active, measurement_units(abbreviation)').single();
     return Product.fromJson(data);
   }
 
@@ -46,6 +48,7 @@ class InventoryRemote {
     required String measurementUnitId,
     required Decimal lowStockThreshold,
     Decimal? sellingPrice,
+    Decimal? costPrice,
     String? categoryId,
     String? description,
   }) async {
@@ -55,9 +58,10 @@ class InventoryRemote {
       'measurement_unit_id': measurementUnitId,
       'low_stock_threshold': lowStockThreshold.toString(),
       'selling_price': sellingPrice?.toString(),
+      'cost_price': costPrice?.toString(),
       'category_id': categoryId,
     }).eq('id', productId)
-        .select('id, shop_id, name, description, category_id, measurement_unit_id, low_stock_threshold, selling_price, is_active, measurement_units(abbreviation)')
+        .select('id, shop_id, name, description, category_id, measurement_unit_id, low_stock_threshold, selling_price, cost_price, is_active, measurement_units(abbreviation)')
         .single();
     return Product.fromJson(data);
   }

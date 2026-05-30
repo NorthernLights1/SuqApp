@@ -131,6 +131,7 @@ class CartItem extends Equatable {
     required this.quantity,
     required this.unitPrice,
     required this.discountAmount,
+    this.costPrice,
   });
 
   final String? productId;
@@ -140,6 +141,7 @@ class CartItem extends Equatable {
   final Decimal quantity;
   final Decimal unitPrice;
   final Decimal discountAmount;
+  final Decimal? costPrice;
 
   Decimal get lineTotal => (unitPrice * quantity) - discountAmount;
 
@@ -156,6 +158,7 @@ class CartItem extends Equatable {
         quantity: quantity ?? this.quantity,
         unitPrice: unitPrice ?? this.unitPrice,
         discountAmount: discountAmount ?? this.discountAmount,
+        costPrice: costPrice,
       );
 
   @override

@@ -63,6 +63,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
     required String measurementUnitId,
     required Decimal lowStockThreshold,
     Decimal? sellingPrice,
+    Decimal? costPrice,
     String? categoryId,
     String? description,
     Decimal? initialQuantity,
@@ -81,6 +82,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
           measurementUnitId: measurementUnitId,
           lowStockThreshold: lowStockThreshold,
           sellingPrice: sellingPrice,
+          costPrice: costPrice,
           categoryId: categoryId,
           description: description,
         );
@@ -106,6 +108,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
           measurementUnitId: measurementUnitId,
           lowStockThreshold: lowStockThreshold,
           sellingPrice: sellingPrice,
+          costPrice: costPrice,
           categoryId: categoryId,
           description: description,
         );

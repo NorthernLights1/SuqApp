@@ -468,6 +468,8 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   late final _descriptionCtrl = TextEditingController(text: widget.product?.description ?? '');
   late final _priceCtrl = TextEditingController(
       text: widget.product?.sellingPrice?.toString() ?? '');
+  late final _costPriceCtrl = TextEditingController(
+      text: widget.product?.costPrice?.toString() ?? '');
   late final _thresholdCtrl = TextEditingController(
       text: widget.product?.lowStockThreshold.toString() ?? '0');
   late final _openingQtyCtrl = TextEditingController();
@@ -498,6 +500,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _nameCtrl.dispose();
     _descriptionCtrl.dispose();
     _priceCtrl.dispose();
+    _costPriceCtrl.dispose();
     _thresholdCtrl.dispose();
     _openingQtyCtrl.dispose();
     super.dispose();
@@ -549,6 +552,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           sellingPrice: _priceCtrl.text.trim().isEmpty
               ? null
               : Decimal.tryParse(_priceCtrl.text),
+          costPrice: _costPriceCtrl.text.trim().isEmpty
+              ? null
+              : Decimal.tryParse(_costPriceCtrl.text),
           categoryId: _selectedCategoryId,
           description: _descriptionCtrl.text.trim().isEmpty ? null : _descriptionCtrl.text.trim(),
           initialQuantity: initialQty,
@@ -806,6 +812,16 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               AppTextField(
                 controller: _priceCtrl,
                 label: 'Selling Price — optional',
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.next,
+                prefixText: 'ETB ',
+              ),
+              const SizedBox(height: 16),
+
+              AppTextField(
+                controller: _costPriceCtrl,
+                label: 'Cost / Purchase Price — optional',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 textInputAction: TextInputAction.next,

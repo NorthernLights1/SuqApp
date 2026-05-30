@@ -255,6 +255,7 @@ class _ProductSearchState extends ConsumerState<_ProductSearch> {
       quantity: Decimal.one,
       unitPrice: product.sellingPrice ?? Decimal.zero,
       discountAmount: Decimal.zero,
+      costPrice: product.costPrice,
     ));
   }
 }

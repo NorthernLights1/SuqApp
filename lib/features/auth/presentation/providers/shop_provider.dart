@@ -10,14 +10,27 @@ final currentShopProvider = FutureProvider<Shop?>((ref) async {
 
   final client = ref.read(supabaseClientProvider);
 
-  final data = await client
+  // Try owned shop first
+  final ownedData = await client
       .from('shops')
       .select('id, name, config, created_at')
       .eq('owner_id', userId)
       .maybeSingle();
 
-  if (data == null) return null;
-  return Shop.fromJson(data);
+  if (ownedData != null) return Shop.fromJson(ownedData);
+
+  // Fall back to staff membership — join to shops via FK
+  final memberData = await client
+      .from('shop_users')
+      .select('shops(id, name, config, created_at)')
+      .eq('user_id', userId)
+      .neq('status', 'suspended')
+      .maybeSingle();
+
+  if (memberData == null) return null;
+  final shopJson = memberData['shops'] as Map<String, dynamic>?;
+  if (shopJson == null) return null;
+  return Shop.fromJson(shopJson);
 });
 
 /// Fetches the branches for the current shop.

@@ -12,6 +12,7 @@ class Product extends Equatable {
     required this.measurementUnitAbbr,
     required this.lowStockThreshold,
     this.sellingPrice,
+    this.costPrice,
     required this.isActive,
   });
 
@@ -24,6 +25,7 @@ class Product extends Equatable {
   final String measurementUnitAbbr;
   final Decimal lowStockThreshold;
   final Decimal? sellingPrice;
+  final Decimal? costPrice;
   final bool isActive;
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
@@ -42,6 +44,9 @@ class Product extends Equatable {
         sellingPrice: json['selling_price'] != null
             ? Decimal.parse(json['selling_price'].toString())
             : null,
+        costPrice: json['cost_price'] != null
+            ? Decimal.parse(json['cost_price'].toString())
+            : null,
         isActive: json['is_active'] as bool,
       );
 
@@ -56,6 +61,7 @@ class Product extends Equatable {
         'measurement_unit_id': measurementUnitId,
         'low_stock_threshold': lowStockThreshold.toString(),
         'selling_price': sellingPrice?.toString(),
+        'cost_price': costPrice?.toString(),
         'is_active': isActive,
       };
 

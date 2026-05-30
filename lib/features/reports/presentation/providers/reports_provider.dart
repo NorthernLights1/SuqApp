@@ -14,6 +14,8 @@ class ReportSummary extends Equatable {
     required this.creditCount,
     required this.expenseTotal,
     required this.expenseByCategory,
+    required this.grossProfit,
+    required this.profitItemCount,
   });
 
   final Decimal salesTotal;
@@ -22,11 +24,15 @@ class ReportSummary extends Equatable {
   final int creditCount;
   final Decimal expenseTotal;
   final Map<String, Decimal> expenseByCategory;
+  // Gross profit based only on sale_items that have cost_price_snapshot set
+  final Decimal grossProfit;
+  // How many line items had cost data (so we can warn if partial)
+  final int profitItemCount;
 
   Decimal get net => salesTotal - expenseTotal;
 
   @override
-  List<Object?> get props => [salesTotal, salesCount, expenseTotal];
+  List<Object?> get props => [salesTotal, salesCount, expenseTotal, grossProfit];
 }
 
 final reportPeriodProvider = StateProvider<ReportPeriod>((ref) => ReportPeriod.today);
@@ -61,24 +67,28 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
       creditCount: 0,
       expenseTotal: Decimal.zero,
       expenseByCategory: const {},
+      grossProfit: Decimal.zero,
+      profitItemCount: 0,
     );
   }
 
   final range = _rangeFor(period);
   final client = ref.read(supabaseClientProvider);
 
-  // Sales
+  // Sales — embed sale_items to compute gross profit
   final salesData = await client
       .from('sales')
-      .select('total, status, is_credit')
+      .select('total, status, is_credit, sale_items(quantity, unit_price, cost_price_snapshot)')
       .eq('branch_id', branch.id)
       .gte('created_at', range.start.toIso8601String())
       .lt('created_at', range.end.toIso8601String());
 
   Decimal salesTotal = Decimal.zero;
   Decimal creditTotal = Decimal.zero;
+  Decimal grossProfit = Decimal.zero;
   int salesCount = 0;
   int creditCount = 0;
+  int profitItemCount = 0;
   for (final row in salesData as List) {
     if (row['status'] != 'completed') continue;
     final amount = Decimal.parse(row['total'].toString());
@@ -87,6 +97,14 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
     if (row['is_credit'] == true) {
       creditTotal += amount;
       creditCount++;
+    }
+    for (final item in (row['sale_items'] as List? ?? [])) {
+      if (item['cost_price_snapshot'] == null) continue;
+      final qty = Decimal.parse(item['quantity'].toString());
+      final unitPrice = Decimal.parse(item['unit_price'].toString());
+      final costPrice = Decimal.parse(item['cost_price_snapshot'].toString());
+      grossProfit += (unitPrice - costPrice) * qty;
+      profitItemCount++;
     }
   }
 
@@ -120,5 +138,7 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
     creditCount: creditCount,
     expenseTotal: expenseTotal,
     expenseByCategory: sortedCategories,
+    grossProfit: grossProfit,
+    profitItemCount: profitItemCount,
   );
 });

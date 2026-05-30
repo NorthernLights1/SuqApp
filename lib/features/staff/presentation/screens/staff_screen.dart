@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/widgets/app_text_field.dart';
 import '../providers/staff_provider.dart';
 
 class StaffScreen extends ConsumerWidget {
@@ -13,6 +14,13 @@ class StaffScreen extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Staff')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showInviteSheet(context, ref),
+        icon: const Icon(Icons.person_add_outlined),
+        label: const Text('Invite Staff'),
+        backgroundColor: AppColors.primary,
+        foregroundColor: Colors.white,
+      ),
       body: staff.when(
         data: (list) => list.isEmpty
             ? Center(
@@ -38,6 +46,154 @@ class StaffScreen extends ConsumerWidget {
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, st) =>
             Center(child: Text('Error: $e', style: AppTextStyles.bodySmall)),
+      ),
+    );
+  }
+
+  void _showInviteSheet(BuildContext context, WidgetRef ref) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => const _InviteSheet(),
+    );
+  }
+}
+
+class _InviteSheet extends ConsumerStatefulWidget {
+  const _InviteSheet();
+
+  @override
+  ConsumerState<_InviteSheet> createState() => _InviteSheetState();
+}
+
+class _InviteSheetState extends ConsumerState<_InviteSheet> {
+  final _emailCtrl = TextEditingController();
+  String _selectedRoleId = cashierRoleId;
+
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _send() async {
+    final email = _emailCtrl.text.trim();
+    if (email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid email address')),
+      );
+      return;
+    }
+    try {
+      await ref
+          .read(inviteStaffProvider.notifier)
+          .invite(email: email, roleId: _selectedRoleId);
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Invite sent to $email'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString().replaceFirst('Exception: ', '')),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loading = ref.watch(inviteStaffProvider).isLoading;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+          20, 16, 20, MediaQuery.of(context).viewInsets.bottom + 20),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.cardBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text('Invite Staff Member', style: AppTextStyles.headline3),
+          const SizedBox(height: 4),
+          Text(
+            'They will receive an email to set up their account.',
+            style: AppTextStyles.bodySmall,
+          ),
+          const SizedBox(height: 20),
+          AppTextField(
+            controller: _emailCtrl,
+            label: 'Email address',
+            keyboardType: TextInputType.emailAddress,
+            prefixIcon: const Icon(Icons.email_outlined),
+            textInputAction: TextInputAction.done,
+            autofocus: true,
+          ),
+          const SizedBox(height: 16),
+          InputDecorator(
+            decoration: InputDecoration(
+              labelText: 'Role',
+              border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10)),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _selectedRoleId,
+                isExpanded: true,
+                items: staffRoles.entries
+                    .map((e) => DropdownMenuItem(
+                          value: e.value,
+                          child: Text(e.key),
+                        ))
+                    .toList(),
+                onChanged: (id) {
+                  if (id == null) return;
+                  setState(() => _selectedRoleId = id);
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: loading ? null : _send,
+              icon: loading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.send_outlined),
+              label: Text(loading ? 'Sending…' : 'Send Invite'),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

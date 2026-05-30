@@ -45,14 +45,34 @@ GoRouter createRouter() {
         // Logged in, not on an auth screen → no redirect needed
         if (!isAuthRoute) return null;
 
-        // Logged in, on auth screen → check if shop exists
+        // Logged in, on auth screen → check if shop exists (owner) or staff membership
         final shopData = await client
             .from('shops')
             .select('id')
             .eq('owner_id', session.user.id)
             .maybeSingle();
 
-        return shopData == null ? AppRoutes.onboarding : AppRoutes.dashboard;
+        if (shopData != null) return AppRoutes.dashboard;
+
+        // Not an owner — check staff membership
+        final memberData = await client
+            .from('shop_users')
+            .select('id, status')
+            .eq('user_id', session.user.id)
+            .neq('status', 'suspended')
+            .maybeSingle();
+
+        if (memberData != null) {
+          // Activate invited staff on first login
+          if (memberData['status'] == 'invited') {
+            await client
+                .from('shop_users')
+                .update({'status': 'active'}).eq('id', memberData['id'] as String);
+          }
+          return AppRoutes.dashboard;
+        }
+
+        return AppRoutes.onboarding;
       } catch (_) {
         // If the shop query fails for any reason, fall back to login
         final isLoggedIn =

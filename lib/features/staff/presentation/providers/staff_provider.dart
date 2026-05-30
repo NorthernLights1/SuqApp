@@ -33,14 +33,13 @@ class StaffMember extends Equatable {
   List<Object?> get props => [id, userId, status];
 }
 
-// ─── Provider ──────────────────────────────────────────────────────────────
+// ─── Staff list ────────────────────────────────────────────────────────────
 
 final staffListProvider = FutureProvider<List<StaffMember>>((ref) async {
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
   final client = ref.read(supabaseClientProvider);
 
-  // Fetch shop_users with role name
   final staffData = await client
       .from('shop_users')
       .select('id, user_id, role_id, status, created_at, roles(name)')
@@ -51,15 +50,13 @@ final staffListProvider = FutureProvider<List<StaffMember>>((ref) async {
 
   final userIds = staffData.map((e) => e['user_id'] as String).toList();
 
-  // Fetch profiles separately (no direct FK from shop_users to profiles)
   final profileData = await client
       .from('profiles')
       .select('id, full_name, phone')
       .inFilter('id', userIds);
 
   final profileMap = {
-    for (final p in profileData as List)
-      p['id'] as String: p,
+    for (final p in profileData as List) p['id'] as String: p,
   };
 
   return staffData.map((e) {
@@ -99,3 +96,43 @@ class StaffStatusNotifier extends AsyncNotifier<void> {
 
 final staffStatusProvider =
     AsyncNotifierProvider<StaffStatusNotifier, void>(StaffStatusNotifier.new);
+
+// ─── Role constants ─────────────────────────────────────────────────────────
+
+// Fixed UUIDs — seeded in migration 001
+const managerRoleId = '00000000-0000-0000-0000-000000000002';
+const cashierRoleId = '00000000-0000-0000-0000-000000000003';
+
+const staffRoles = <String, String>{
+  'Manager': managerRoleId,
+  'Cashier': cashierRoleId,
+};
+
+// ─── Invite ─────────────────────────────────────────────────────────────────
+
+class InviteStaffNotifier extends AsyncNotifier<void> {
+  @override
+  Future<void> build() async {}
+
+  Future<void> invite({required String email, required String roleId}) async {
+    final shop = await ref.read(currentShopProvider.future);
+    if (shop == null) throw Exception('No shop found');
+
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final client = ref.read(supabaseClientProvider);
+      final response = await client.functions.invoke(
+        'invite-staff',
+        body: {'email': email, 'shopId': shop.id, 'roleId': roleId},
+      );
+      if (response.status != 200) {
+        final data = response.data as Map<String, dynamic>?;
+        throw Exception(data?['error'] ?? 'Invite failed (${response.status})');
+      }
+      ref.invalidate(staffListProvider);
+    });
+  }
+}
+
+final inviteStaffProvider =
+    AsyncNotifierProvider<InviteStaffNotifier, void>(InviteStaffNotifier.new);

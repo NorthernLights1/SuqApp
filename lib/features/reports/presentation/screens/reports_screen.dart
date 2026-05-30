@@ -136,6 +136,17 @@ class _SummaryBody extends StatelessWidget {
             color: AppColors.warning,
           ),
         ],
+        if (summary.profitItemCount > 0) ...[
+          const SizedBox(height: 6),
+          _StatRow(
+            label: 'Gross Profit (costed items)',
+            value: 'ETB ${summary.grossProfit.toStringAsFixed(2)}',
+            icon: Icons.show_chart,
+            color: summary.grossProfit >= Decimal.zero
+                ? AppColors.success
+                : AppColors.error,
+          ),
+        ],
         const SizedBox(height: 20),
         Text('Expenses', style: AppTextStyles.headline3),
         const SizedBox(height: 8),

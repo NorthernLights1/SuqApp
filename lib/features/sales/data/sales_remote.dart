@@ -13,7 +13,7 @@ class SalesRemote {
   Future<List<Product>> searchProducts(String shopId, String query) async {
     final data = await _client
         .from('products')
-        .select('id, shop_id, name, category_id, measurement_unit_id, low_stock_threshold, selling_price, is_active, measurement_units(abbreviation)')
+        .select('id, shop_id, name, category_id, measurement_unit_id, low_stock_threshold, selling_price, cost_price, is_active, measurement_units(abbreviation)')
         .eq('shop_id', shopId)
         .eq('is_active', true)
         .ilike('name', '%$query%')
@@ -157,6 +157,7 @@ class SalesRemote {
         'discount_amount': item.discountAmount.toString(),
         'total': item.lineTotal.toString(),
         'inventory_status': invStatus.name,
+        'cost_price_snapshot': item.costPrice?.toString(),
       }).select('id').single();
 
       // Record discount if any
