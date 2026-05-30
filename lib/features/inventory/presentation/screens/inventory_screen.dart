@@ -6,6 +6,7 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_text_field.dart';
+import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../data/inventory_remote.dart';
 import '../providers/inventory_provider.dart';
 
@@ -464,20 +465,41 @@ class ProductFormScreen extends ConsumerStatefulWidget {
 class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   final _formKey = GlobalKey<FormState>();
   late final _nameCtrl = TextEditingController(text: widget.product?.name ?? '');
+  late final _descriptionCtrl = TextEditingController(text: widget.product?.description ?? '');
   late final _priceCtrl = TextEditingController(
       text: widget.product?.sellingPrice?.toString() ?? '');
   late final _thresholdCtrl = TextEditingController(
       text: widget.product?.lowStockThreshold.toString() ?? '0');
+  late final _openingQtyCtrl = TextEditingController();
   MeasurementUnit? _selectedUnit;
+  String? _selectedCategoryId;
+  DateTime? _expiryDate;
   bool _unitsLoaded = false;
 
   bool get _isEdit => widget.product != null;
+  bool get _hasOpeningQty {
+    final v = Decimal.tryParse(_openingQtyCtrl.text.trim());
+    return v != null && v > Decimal.zero;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedCategoryId = widget.product?.categoryId;
+    _openingQtyCtrl.addListener(_rebuildForQty);
+  }
+
+  void _rebuildForQty() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
     _nameCtrl.dispose();
+    _descriptionCtrl.dispose();
     _priceCtrl.dispose();
     _thresholdCtrl.dispose();
+    _openingQtyCtrl.dispose();
     super.dispose();
   }
 
@@ -490,6 +512,34 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       return;
     }
 
+    final rawQty = _openingQtyCtrl.text.trim();
+    Decimal? initialQty;
+    if (!_isEdit) {
+      initialQty = Decimal.tryParse(rawQty);
+      if (initialQty == null || initialQty <= Decimal.zero) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Enter a quantity greater than 0'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
+    }
+
+    if (!_isEdit && _expiryDate != null) {
+      final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+      if (!_expiryDate!.isAfter(today)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Expiry date must be at least tomorrow'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
+    }
+
     final ok = await ref.read(productFormProvider.notifier).save(
           productId: widget.product?.id,
           name: _nameCtrl.text,
@@ -499,6 +549,10 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
           sellingPrice: _priceCtrl.text.trim().isEmpty
               ? null
               : Decimal.tryParse(_priceCtrl.text),
+          categoryId: _selectedCategoryId,
+          description: _descriptionCtrl.text.trim().isEmpty ? null : _descriptionCtrl.text.trim(),
+          initialQuantity: initialQty,
+          expiryDate: !_isEdit ? _expiryDate : null,
         );
 
     if (!mounted) return;
@@ -541,9 +595,68 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     if (mounted && ok) Navigator.pop(context);
   }
 
+  Future<void> _createCategory() async {
+    final shop = await ref.read(currentShopProvider.future);
+    if (shop == null || !mounted) return;
+
+    final nameCtrl = TextEditingController();
+    final name = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New Category'),
+        content: TextField(
+          controller: nameCtrl,
+          autofocus: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (v) => Navigator.pop(ctx, v.trim()),
+          decoration: const InputDecoration(
+            labelText: 'Category name',
+            isDense: true,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, nameCtrl.text.trim()),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    nameCtrl.dispose();
+
+    if (name == null || name.isEmpty || !mounted) return;
+    try {
+      final cat = await ref
+          .read(inventoryRemoteProvider)
+          .createProductCategory(shopId: shop.id, name: name);
+      ref.invalidate(productCategoriesProvider);
+      if (mounted) setState(() => _selectedCategoryId = cat.id);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to create category'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  String _formatDate(DateTime d) {
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[d.month - 1]} ${d.day}, ${d.year}';
+  }
+
   @override
   Widget build(BuildContext context) {
     final units = ref.watch(measurementUnitsProvider);
+    final categories = ref.watch(productCategoriesProvider);
     final loading = ref.watch(productFormProvider).isLoading;
 
     // Pre-select unit when editing — do this once when units finish loading
@@ -590,7 +703,15 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               ),
               const SizedBox(height: 16),
 
-              // Unit of measurement — use value: for reactive display
+              AppTextField(
+                controller: _descriptionCtrl,
+                label: 'Description (optional)',
+                textInputAction: TextInputAction.next,
+                maxLines: 3,
+              ),
+              const SizedBox(height: 16),
+
+              // Unit of measurement
               units.when(
                 data: (list) => InputDecorator(
                   decoration: InputDecoration(
@@ -623,13 +744,72 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               ),
               const SizedBox(height: 16),
 
+              // Category
+              categories.when(
+                data: (list) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Category (optional)',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 4),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String?>(
+                          value: list.any((c) => c.id == _selectedCategoryId)
+                              ? _selectedCategoryId
+                              : null,
+                          hint: const Text('No category'),
+                          isExpanded: true,
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('No category'),
+                            ),
+                            ...list.map(
+                              (c) => DropdownMenuItem<String?>(
+                                value: c.id,
+                                child: Text(c.name),
+                              ),
+                            ),
+                          ],
+                          onChanged: (id) =>
+                              setState(() => _selectedCategoryId = id),
+                        ),
+                      ),
+                    ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _createCategory,
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('New category'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                loading: () => const LinearProgressIndicator(),
+                error: (e, st) => Text(
+                  'Could not load categories',
+                  style: AppTextStyles.label.copyWith(color: AppColors.error),
+                ),
+              ),
+              const SizedBox(height: 16),
+
               AppTextField(
                 controller: _priceCtrl,
-                label: 'Selling Price (ETB) — optional',
+                label: 'Selling Price — optional',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
                 textInputAction: TextInputAction.next,
-                prefixIcon: const Icon(Icons.attach_money),
+                prefixText: 'ETB ',
               ),
               const SizedBox(height: 16),
 
@@ -641,8 +821,96 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 textInputAction: TextInputAction.done,
                 prefixIcon: const Icon(Icons.warning_amber_outlined),
               ),
-              const SizedBox(height: 32),
 
+              // Opening stock — new products only
+              if (!_isEdit) ...[
+                const SizedBox(height: 24),
+                Row(
+                  children: [
+                    const Expanded(child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      child: Text(
+                        'Opening Stock',
+                        style: AppTextStyles.label
+                            .copyWith(color: AppColors.textSecondary),
+                      ),
+                    ),
+                    const Expanded(child: Divider()),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                AppTextField(
+                  controller: _openingQtyCtrl,
+                  label: 'Quantity',
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.done,
+                  prefixIcon: const Icon(Icons.inventory_outlined),
+                ),
+                if (_hasOpeningQty) ...[
+                  const SizedBox(height: 16),
+                  GestureDetector(
+                    onTap: () async {
+                      final tomorrow = DateTime(DateTime.now().year,
+                          DateTime.now().month, DateTime.now().day + 1);
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: _expiryDate ??
+                            DateTime.now().add(const Duration(days: 30)),
+                        firstDate: tomorrow,
+                        lastDate:
+                            DateTime.now().add(const Duration(days: 3650)),
+                      );
+                      if (picked != null && mounted) {
+                        setState(() => _expiryDate = picked);
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Expiry Date (optional)',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 12),
+                        suffixIcon: _expiryDate != null
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.clear, size: 16),
+                                    onPressed: () =>
+                                        setState(() => _expiryDate = null),
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  const Icon(
+                                    Icons.calendar_today_outlined,
+                                    size: 18,
+                                  ),
+                                ],
+                              )
+                            : const Icon(
+                                Icons.calendar_today_outlined,
+                                size: 18,
+                              ),
+                      ),
+                      child: Text(
+                        _expiryDate != null
+                            ? _formatDate(_expiryDate!)
+                            : 'Not set',
+                        style: AppTextStyles.body.copyWith(
+                          color: _expiryDate == null
+                              ? AppColors.textDisabled
+                              : null,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+
+              const SizedBox(height: 32),
               AppButton(
                 label: _isEdit ? 'Save Changes' : 'Add Product',
                 loading: loading,

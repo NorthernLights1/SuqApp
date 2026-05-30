@@ -33,6 +33,32 @@ class SalesRemote {
     return (data as List).map((e) => PaymentMethod.fromJson(e)).toList();
   }
 
+  // ─── Customers ─────────────────────────────────────────────────────────────
+
+  Future<List<Customer>> searchCustomers(String shopId, String query) async {
+    final data = await _client
+        .from('customers')
+        .select('id, name, phone, credit_balance')
+        .eq('shop_id', shopId)
+        .ilike('name', '%$query%')
+        .order('name')
+        .limit(10);
+    return (data as List).map((e) => Customer.fromJson(e)).toList();
+  }
+
+  Future<Customer> createCustomer({
+    required String shopId,
+    required String name,
+    String? phone,
+  }) async {
+    final data = await _client.from('customers').insert({
+      'shop_id': shopId,
+      'name': name.trim(),
+      'phone': phone?.trim().isEmpty ?? true ? null : phone?.trim(),
+    }).select('id, name, phone, credit_balance').single();
+    return Customer.fromJson(data);
+  }
+
   // ─── Inventory mode ────────────────────────────────────────────────────────
 
   Future<String> getInventoryMode(String shopId) async {

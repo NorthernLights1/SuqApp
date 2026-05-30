@@ -45,16 +45,13 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       ),
       body: Column(
         children: [
-          // Product search
           _ProductSearch(searchCtrl: _searchCtrl),
           const Divider(height: 1),
-          // Cart items
           Expanded(
             child: cart.isEmpty
                 ? _EmptyCart()
                 : _CartList(cart: cart),
           ),
-          // Footer
           if (cart.isNotEmpty)
             _SaleFooter(
               subtotal: subtotal,
@@ -90,6 +87,8 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   Future<void> _submit() async {
     final cart = ref.read(cartProvider);
     final paymentMethod = ref.read(selectedPaymentMethodProvider);
+    final isCredit = paymentMethod?.code == 'credit';
+    final customer = ref.read(selectedCustomerProvider);
 
     if (cart.isEmpty) {
       _showSnack('Add at least one item');
@@ -99,11 +98,17 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       _showSnack('Select a payment method');
       return;
     }
+    if (isCredit && customer == null) {
+      _showSnack('Select or add a customer for credit sales');
+      return;
+    }
 
     final sale = await ref.read(createSaleProvider.notifier).submit(
           paymentMethodId: paymentMethod.id,
           items: cart,
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+          customerId: customer?.id,
+          isCredit: isCredit,
         );
 
     if (!mounted) return;
@@ -115,6 +120,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     }
 
     if (sale != null) {
+      _notesCtrl.clear();
       _showSaleSuccess(context, sale);
     }
   }
@@ -136,26 +142,21 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Total: ETB ${sale.total}',
-                style: AppTextStyles.amount),
+            Text('Total: ETB ${sale.total}', style: AppTextStyles.amount),
             const SizedBox(height: 4),
-            Text('${sale.items.length} item(s)',
-                style: AppTextStyles.bodySmall),
+            Text('${sale.items.length} item(s)', style: AppTextStyles.bodySmall),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
-              context.pop(); // back to sales list
+              context.pop();
             },
             child: const Text('Done'),
           ),
           ElevatedButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              // stay on new sale screen, cart already cleared
-            },
+            onPressed: () => Navigator.pop(ctx),
             child: const Text('New Sale'),
           ),
         ],
@@ -164,7 +165,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
   }
 }
 
-// ─── Product Search ──────────────────────────────────────────────────────────
+// ─── Product Search ───────────────────────────────────────────────────────────
 
 class _ProductSearch extends ConsumerWidget {
   const _ProductSearch({required this.searchCtrl});
@@ -202,8 +203,7 @@ class _ProductSearch extends ConsumerWidget {
                   child: ListView.separated(
                     shrinkWrap: true,
                     itemCount: list.length,
-                    separatorBuilder: (context, index) =>
-                        const Divider(height: 1),
+                    separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (ctx, i) => ListTile(
                       dense: true,
                       title: Text(list[i].name, style: AppTextStyles.body),
@@ -223,11 +223,9 @@ class _ProductSearch extends ConsumerWidget {
   }
 
   void _addToCart(BuildContext context, WidgetRef ref, product) {
-    // Clear search
     searchCtrl.clear();
     ref.read(productSearchQueryProvider.notifier).state = '';
-
-    final item = CartItem(
+    ref.read(cartProvider.notifier).addItem(CartItem(
       productId: product.id,
       productName: product.name,
       measurementUnitId: product.measurementUnitId,
@@ -235,8 +233,7 @@ class _ProductSearch extends ConsumerWidget {
       quantity: Decimal.one,
       unitPrice: product.sellingPrice ?? Decimal.zero,
       discountAmount: Decimal.zero,
-    );
-    ref.read(cartProvider.notifier).addItem(item);
+    ));
   }
 }
 
@@ -251,7 +248,7 @@ class _CartList extends ConsumerWidget {
     return ListView.separated(
       padding: const EdgeInsets.only(bottom: 8),
       itemCount: cart.length,
-      separatorBuilder: (context, index) => const Divider(height: 1),
+      separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (ctx, i) => _CartItemTile(
         item: cart[i],
         index: i,
@@ -280,8 +277,10 @@ class _CartItemTile extends StatefulWidget {
 }
 
 class _CartItemTileState extends State<_CartItemTile> {
-  late final _priceCtrl =
-      TextEditingController(text: widget.item.unitPrice > Decimal.zero ? widget.item.unitPrice.toString() : '');
+  late final _priceCtrl = TextEditingController(
+      text: widget.item.unitPrice > Decimal.zero
+          ? widget.item.unitPrice.toString()
+          : '');
   late final _qtyCtrl =
       TextEditingController(text: widget.item.quantity.toString());
 
@@ -304,7 +303,6 @@ class _CartItemTileState extends State<_CartItemTile> {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         children: [
-          // Remove button
           IconButton(
             icon: const Icon(Icons.remove_circle_outline, color: AppColors.error),
             onPressed: widget.onRemove,
@@ -312,7 +310,6 @@ class _CartItemTileState extends State<_CartItemTile> {
             constraints: const BoxConstraints(),
           ),
           const SizedBox(width: 8),
-          // Product name
           Expanded(
             flex: 3,
             child: Column(
@@ -323,13 +320,11 @@ class _CartItemTileState extends State<_CartItemTile> {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis),
                 if (widget.item.measurementUnitAbbr != null)
-                  Text(widget.item.measurementUnitAbbr!,
-                      style: AppTextStyles.label),
+                  Text(widget.item.measurementUnitAbbr!, style: AppTextStyles.label),
               ],
             ),
           ),
           const SizedBox(width: 8),
-          // Quantity
           SizedBox(
             width: 52,
             child: TextField(
@@ -342,7 +337,6 @@ class _CartItemTileState extends State<_CartItemTile> {
             ),
           ),
           const SizedBox(width: 8),
-          // Unit price
           SizedBox(
             width: 80,
             child: TextField(
@@ -355,7 +349,6 @@ class _CartItemTileState extends State<_CartItemTile> {
             ),
           ),
           const SizedBox(width: 8),
-          // Line total
           SizedBox(
             width: 72,
             child: Text(
@@ -406,7 +399,8 @@ class _SaleFooter extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final paymentMethods = ref.watch(paymentMethodsProvider);
-    ref.watch(selectedPaymentMethodProvider); // kept for reactivity
+    final selectedMethod = ref.watch(selectedPaymentMethodProvider);
+    final isCredit = selectedMethod?.code == 'credit';
 
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
@@ -428,22 +422,38 @@ class _SaleFooter extends ConsumerWidget {
           paymentMethods.when(
             data: (methods) => methods.isEmpty
                 ? const Text('No payment methods configured')
-                : DropdownButtonFormField<PaymentMethod>(
+                : DropdownButton<PaymentMethod>(
+                    value: selectedMethod,
                     hint: const Text('Payment method'),
-                    decoration: const InputDecoration(isDense: true),
+                    isExpanded: true,
+                    underline: const Divider(height: 1),
                     items: methods
                         .map((m) => DropdownMenuItem(
                               value: m,
                               child: Text(m.name),
                             ))
                         .toList(),
-                    onChanged: (m) => ref
-                        .read(selectedPaymentMethodProvider.notifier)
-                        .state = m,
+                    onChanged: (m) =>
+                        ref.read(selectedPaymentMethodProvider.notifier).state = m,
                   ),
             loading: () => const LinearProgressIndicator(),
             error: (e, _) => const Text('Could not load payment methods'),
           ),
+          // Customer picker (credit only)
+          if (isCredit) ...[
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.person_outline, size: 16, color: AppColors.textSecondary),
+                const SizedBox(width: 6),
+                Text('Customer', style: AppTextStyles.label),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const _CustomerPickerSection(),
+          ],
           const SizedBox(height: 12),
           // Notes
           TextField(
@@ -472,8 +482,8 @@ class _SaleFooter extends ConsumerWidget {
               SizedBox(
                 width: 160,
                 child: AppButton(
-                  label: 'Charge',
-                  icon: Icons.point_of_sale,
+                  label: isCredit ? 'Record Credit' : 'Charge',
+                  icon: isCredit ? Icons.credit_score : Icons.point_of_sale,
                   loading: loading,
                   fullWidth: false,
                   onPressed: onSubmit,
@@ -483,6 +493,221 @@ class _SaleFooter extends ConsumerWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─── Customer Picker ─────────────────────────────────────────────────────────
+
+class _CustomerPickerSection extends ConsumerStatefulWidget {
+  const _CustomerPickerSection();
+
+  @override
+  ConsumerState<_CustomerPickerSection> createState() =>
+      _CustomerPickerSectionState();
+}
+
+class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> {
+  final _searchCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  bool _adding = false;
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final customer = ref.watch(selectedCustomerProvider);
+
+    if (customer != null) {
+      return Material(
+        type: MaterialType.transparency,
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: CircleAvatar(
+            backgroundColor: AppColors.primaryLight,
+            child: Text(
+              customer.name[0].toUpperCase(),
+              style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.w600),
+            ),
+          ),
+          title: Text(customer.name, style: AppTextStyles.body),
+          subtitle: customer.phone != null
+              ? Text(customer.phone!, style: AppTextStyles.bodySmall)
+              : null,
+          trailing: IconButton(
+            icon: const Icon(Icons.close, size: 18, color: AppColors.textSecondary),
+            onPressed: () {
+              ref.read(selectedCustomerProvider.notifier).state = null;
+              setState(() => _adding = false);
+            },
+          ),
+        ),
+      );
+    }
+
+    if (_adding) {
+      return _AddCustomerForm(
+        nameCtrl: _nameCtrl,
+        phoneCtrl: _phoneCtrl,
+        onCancel: () => setState(() {
+          _adding = false;
+          _nameCtrl.clear();
+          _phoneCtrl.clear();
+        }),
+        onSave: _saveCustomer,
+        saving: ref.watch(createCustomerProvider).isLoading,
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _searchCtrl,
+                decoration: const InputDecoration(
+                  hintText: 'Search by name…',
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  isDense: true,
+                ),
+                onChanged: (v) =>
+                    ref.read(customerSearchQueryProvider.notifier).state = v,
+              ),
+            ),
+            TextButton(
+              onPressed: () => setState(() {
+                _adding = true;
+                _searchCtrl.clear();
+                ref.read(customerSearchQueryProvider.notifier).state = '';
+              }),
+              child: const Text('+ New'),
+            ),
+          ],
+        ),
+        if (_searchCtrl.text.length >= 2)
+          _CustomerResults(
+            onSelect: (c) {
+              ref.read(selectedCustomerProvider.notifier).state = c;
+              _searchCtrl.clear();
+              ref.read(customerSearchQueryProvider.notifier).state = '';
+            },
+          ),
+      ],
+    );
+  }
+
+  Future<void> _saveCustomer() async {
+    if (_nameCtrl.text.trim().isEmpty) return;
+    final customer = await ref.read(createCustomerProvider.notifier).create(
+          name: _nameCtrl.text.trim(),
+          phone: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
+        );
+    if (customer != null && mounted) {
+      ref.read(selectedCustomerProvider.notifier).state = customer;
+      setState(() {
+        _adding = false;
+        _nameCtrl.clear();
+        _phoneCtrl.clear();
+      });
+    }
+  }
+}
+
+class _AddCustomerForm extends StatelessWidget {
+  const _AddCustomerForm({
+    required this.nameCtrl,
+    required this.phoneCtrl,
+    required this.onCancel,
+    required this.onSave,
+    required this.saving,
+  });
+  final TextEditingController nameCtrl;
+  final TextEditingController phoneCtrl;
+  final VoidCallback onCancel;
+  final VoidCallback onSave;
+  final bool saving;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: nameCtrl,
+          decoration: const InputDecoration(labelText: 'Full name *', isDense: true),
+          autofocus: true,
+          textCapitalization: TextCapitalization.words,
+        ),
+        const SizedBox(height: 8),
+        TextField(
+          controller: phoneCtrl,
+          decoration: const InputDecoration(labelText: 'Phone (optional)', isDense: true),
+          keyboardType: TextInputType.phone,
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            TextButton(onPressed: onCancel, child: const Text('Cancel')),
+            const Spacer(),
+            saving
+                ? const SizedBox(
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2))
+                : FilledButton(onPressed: onSave, child: const Text('Add Customer')),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _CustomerResults extends ConsumerWidget {
+  const _CustomerResults({required this.onSelect});
+  final ValueChanged<Customer> onSelect;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final results = ref.watch(customerSearchProvider);
+    return results.when(
+      data: (list) {
+        if (list.isEmpty) {
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Text('No customers found — tap + New to add',
+                style: AppTextStyles.bodySmall),
+          );
+        }
+        return Column(
+          children: list
+              .map((c) => ListTile(
+                    dense: true,
+                    leading: CircleAvatar(
+                      radius: 16,
+                      backgroundColor: AppColors.primaryLight,
+                      child: Text(c.name[0].toUpperCase(),
+                          style: const TextStyle(
+                              color: AppColors.primary, fontSize: 12)),
+                    ),
+                    title: Text(c.name, style: AppTextStyles.body),
+                    subtitle: c.phone != null
+                        ? Text(c.phone!, style: AppTextStyles.bodySmall)
+                        : null,
+                    onTap: () => onSelect(c),
+                  ))
+              .toList(),
+        );
+      },
+      loading: () => const LinearProgressIndicator(),
+      error: (e, _) => const SizedBox.shrink(),
     );
   }
 }

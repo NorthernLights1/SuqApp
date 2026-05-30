@@ -4,6 +4,7 @@ import '../../../../domain/models/product.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
+import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../data/sales_remote.dart';
 import '../../domain/sales_repository.dart';
 
@@ -84,6 +85,42 @@ final cartSubtotalProvider = Provider<Decimal>((ref) {
 
 final selectedPaymentMethodProvider = StateProvider<PaymentMethod?>((ref) => null);
 
+// ─── Customer search + selection ───────────────────────────────────────────
+
+final customerSearchQueryProvider = StateProvider<String>((ref) => '');
+
+final customerSearchProvider = FutureProvider<List<Customer>>((ref) async {
+  final query = ref.watch(customerSearchQueryProvider);
+  if (query.trim().length < 2) return [];
+  final shop = await ref.watch(currentShopProvider.future);
+  if (shop == null) return [];
+  return ref.read(salesRepositoryProvider).searchCustomers(shop.id, query);
+});
+
+final selectedCustomerProvider = StateProvider<Customer?>((ref) => null);
+
+class CreateCustomerNotifier extends AsyncNotifier<Customer?> {
+  @override
+  Future<Customer?> build() async => null;
+
+  Future<Customer?> create({required String name, String? phone}) async {
+    final shop = await ref.read(currentShopProvider.future);
+    if (shop == null) return null;
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(
+      () => ref.read(salesRepositoryProvider).createCustomer(
+            shopId: shop.id,
+            name: name,
+            phone: phone,
+          ),
+    );
+    return state.valueOrNull;
+  }
+}
+
+final createCustomerProvider =
+    AsyncNotifierProvider<CreateCustomerNotifier, Customer?>(CreateCustomerNotifier.new);
+
 // ─── Create sale notifier ──────────────────────────────────────────────────
 
 class CreateSaleNotifier extends AsyncNotifier<Sale?> {
@@ -121,7 +158,10 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
             discountReason: discountReason,
           );
       ref.read(cartProvider.notifier).clear();
+      ref.read(selectedCustomerProvider.notifier).state = null;
+      ref.read(customerSearchQueryProvider.notifier).state = '';
       ref.invalidate(todaySalesTotalsProvider);
+      ref.invalidate(stockLevelsProvider);
       return sale;
     });
     return state.valueOrNull;

@@ -9,7 +9,7 @@ This file provides guidance to Claude Code when working in this repository.
 **Suq** is a mobile ERP for small shop owners built with Flutter and Supabase.
 Replaces paper ledgers with digital sales, inventory, credit tracking, and reporting.
 
-Package: `com.temesgen.suq` | Repo: `NorthernLights1/Suq`
+Package: `com.temesgen.suq` | Repo: `NorthernLights1/SuqApp`
 
 ---
 
@@ -29,7 +29,7 @@ Package: `com.temesgen.suq` | Repo: `NorthernLights1/Suq`
 
 - Branch: `git checkout -b feat/...` or `fix/...`
 - Push: `git push origin <branch>`
-- PR at: https://github.com/NorthernLights1/Suq
+- PR at: https://github.com/NorthernLights1/SuqApp
 
 ---
 
