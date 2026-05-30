@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -167,12 +169,32 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
 
 // ─── Product Search ───────────────────────────────────────────────────────────
 
-class _ProductSearch extends ConsumerWidget {
+class _ProductSearch extends ConsumerStatefulWidget {
   const _ProductSearch({required this.searchCtrl});
   final TextEditingController searchCtrl;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ProductSearch> createState() => _ProductSearchState();
+}
+
+class _ProductSearchState extends ConsumerState<_ProductSearch> {
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onChanged(String v) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 350), () {
+      ref.read(productSearchQueryProvider.notifier).state = v;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final results = ref.watch(productSearchProvider);
 
     return Column(
@@ -181,14 +203,13 @@ class _ProductSearch extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.all(12),
           child: TextField(
-            controller: searchCtrl,
+            controller: widget.searchCtrl,
             decoration: const InputDecoration(
               hintText: 'Search products…',
               prefixIcon: Icon(Icons.search),
               isDense: true,
             ),
-            onChanged: (v) =>
-                ref.read(productSearchQueryProvider.notifier).state = v,
+            onChanged: _onChanged,
           ),
         ),
         results.when(
@@ -223,7 +244,8 @@ class _ProductSearch extends ConsumerWidget {
   }
 
   void _addToCart(BuildContext context, WidgetRef ref, product) {
-    searchCtrl.clear();
+    _debounce?.cancel();
+    widget.searchCtrl.clear();
     ref.read(productSearchQueryProvider.notifier).state = '';
     ref.read(cartProvider.notifier).addItem(CartItem(
       productId: product.id,
@@ -512,9 +534,11 @@ class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> 
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   bool _adding = false;
+  Timer? _searchDebounce;
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchCtrl.dispose();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
@@ -579,8 +603,13 @@ class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> 
                   prefixIcon: Icon(Icons.search, size: 18),
                   isDense: true,
                 ),
-                onChanged: (v) =>
-                    ref.read(customerSearchQueryProvider.notifier).state = v,
+                onChanged: (v) {
+                    _searchDebounce?.cancel();
+                    _searchDebounce = Timer(
+                      const Duration(milliseconds: 350),
+                      () => ref.read(customerSearchQueryProvider.notifier).state = v,
+                    );
+                  },
               ),
             ),
             TextButton(

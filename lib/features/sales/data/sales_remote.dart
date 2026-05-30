@@ -104,11 +104,12 @@ class SalesRemote {
   }) async {
     final inventoryMode = await getInventoryMode(shopId);
 
-    // Compute totals
-    final subtotal = items.fold(Decimal.zero, (sum, i) => sum + i.lineTotal);
+    // Compute totals — subtotal is pre-discount, total is what customer pays
+    final subtotal = items.fold(
+        Decimal.zero, (sum, i) => sum + (i.unitPrice * i.quantity));
     final totalDiscount =
         items.fold(Decimal.zero, (sum, i) => sum + i.discountAmount);
-    final total = subtotal;
+    final total = subtotal - totalDiscount;
 
     // Insert sale
     final saleResult = await _client.from('sales').insert({
