@@ -200,6 +200,32 @@ class Discount extends Equatable {
   List<Object?> get props => [id, saleId, value];
 }
 
+// ─── Customer ────────────────────────────────────────────────────────────────
+
+class Customer extends Equatable {
+  const Customer({
+    required this.id,
+    required this.name,
+    this.phone,
+    required this.creditBalance,
+  });
+
+  final String id;
+  final String name;
+  final String? phone;
+  final Decimal creditBalance;
+
+  factory Customer.fromJson(Map<String, dynamic> json) => Customer(
+        id: json['id'] as String,
+        name: json['name'] as String,
+        phone: json['phone'] as String?,
+        creditBalance: Decimal.parse((json['credit_balance'] ?? '0').toString()),
+      );
+
+  @override
+  List<Object?> get props => [id, name];
+}
+
 // ─── PaymentMethod ───────────────────────────────────────────────────────────
 
 class PaymentMethod extends Equatable {

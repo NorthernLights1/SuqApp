@@ -1,83 +1,74 @@
 # Commands Reference — Suq ERP
 
-All Flutter commands run from `c:/Projects/MobERP/suq/` unless noted.
+All commands run from `c:/Projects/SuqApp/` unless noted.
 
 ---
 
-## Run app (Chrome)
-```bash
-cd suq && flutter run -d chrome
+## Run app (emulator / device)
+```powershell
+flutter run --dart-define-from-file=config/env.json
 ```
-Result: Works. Chrome is the only confirmed target (Android SDK not installed).
-Rerun next session: Yes — to test Phase 3 sales features.
+Result: Auto-detects running emulator or connected device.
+Note: First Gradle build takes 2–5 min after adding Windows Defender exclusions.
+
+## Run app (Chrome fallback)
+```powershell
+flutter run -d chrome --dart-define-from-file=config/env.json
+```
+Result: Works. Use when emulator is not running.
 
 ---
 
 ## Static analysis
-```bash
-cd suq && flutter analyze
+```powershell
+flutter analyze
 ```
-Result: 0 issues (as of last run on feat/phase-2-auth-onboarding).
-Rerun next session: Yes — after every code change, before committing.
+Result: 0 issues (last run 2026-05-30). Run before every commit.
 
 ---
 
-## Install dependencies
-```bash
-cd suq && flutter pub get
+## Install / update dependencies
+```powershell
+flutter pub get
 ```
-Result: 143 packages resolved. Requires Windows Developer Mode enabled.
-Rerun next session: Only if `pubspec.yaml` changes.
+Result: Works. Run after any `pubspec.yaml` change.
+Current notable packages: `google_fonts ^6.2.1` (added 2026-05-30)
 
 ---
 
 ## Regenerate l10n
-```bash
-cd suq && flutter gen-l10n
+```powershell
+flutter gen-l10n
 ```
-Result: Generates `suq/lib/l10n/app_localizations.dart` + `app_localizations_en.dart`.
-Rerun next session: Only if `suq/lib/l10n/app_en.arb` is modified.
+Run only after editing `lib/l10n/app_en.arb`.
 
 ---
 
 ## Build runner (Drift + Riverpod codegen)
-```bash
-cd suq && dart run build_runner build --delete-conflicting-outputs
+```powershell
+dart run build_runner build --delete-conflicting-outputs
 ```
-Result: Not yet run — no generated code needed until Phase 5 (Drift).
-Rerun next session: No — until Drift schema is added.
+Not yet needed — run when Drift schema is added (Phase 5).
 
 ---
 
-## Create new branch
-```bash
-cd c:/Projects/MobERP && git checkout -b feat/phase-3-sales
-```
-Result: Not yet run. This is the next branch to create.
-Rerun next session: Yes — run this first when starting Phase 3.
-
----
-
-## Push to Suq repo
-```bash
-git push suq <branch-name>
-```
-Result: Works. Remote `suq` = `https://github.com/NorthernLights1/Suq.git`
-Note: `origin` = `nextlevelbuilder/ui-ux-pro-max-skill` (no push access). Always use `suq`.
+## Windows Defender exclusions (one-time fix for slow Gradle)
+Add these folders in Windows Security → Virus & threat protection → Exclusions:
+- `C:\Users\Hp\AppData\Local\Android\Sdk`
+- `C:\Users\Hp\.gradle`
+- `C:\Projects\SuqApp`
+Without these, first Gradle build can take 1+ hour.
 
 ---
 
 ## Apply Supabase migrations (manual)
 No CLI. Use Supabase Dashboard → SQL Editor.
-Run files in order: 001 → 002 → 003 → 004 → 005 → 006
-Status: All 6 migrations applied to live project. DB trigger fix also applied manually.
-Rerun next session: No — unless schema changes are needed.
+Migrations: `supabase/migrations/001` through `009` — all applied to live project.
 
 ---
 
-## Enable Windows Developer Mode (one-time)
+## Git
 ```powershell
-start ms-settings:developers
+git push origin <branch>
 ```
-Result: Done. Toggle Developer Mode on. Required for Flutter plugin symlinks on Windows.
-Rerun next session: No — already enabled.
+Repo: `https://github.com/NorthernLights1/Suq.git`

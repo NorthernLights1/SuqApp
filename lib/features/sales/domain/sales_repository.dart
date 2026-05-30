@@ -6,6 +6,12 @@ import '../data/sales_remote.dart';
 abstract interface class ISalesRepository {
   Future<List<Product>> searchProducts(String shopId, String query);
   Future<List<PaymentMethod>> getPaymentMethods(String shopId);
+  Future<List<Customer>> searchCustomers(String shopId, String query);
+  Future<Customer> createCustomer({
+    required String shopId,
+    required String name,
+    String? phone,
+  });
   Future<Sale> createSale({
     required String branchId,
     required String shopId,
@@ -43,6 +49,18 @@ class SalesRepository implements ISalesRepository {
   @override
   Future<List<PaymentMethod>> getPaymentMethods(String shopId) =>
       _remote.getPaymentMethods(shopId);
+
+  @override
+  Future<List<Customer>> searchCustomers(String shopId, String query) =>
+      _remote.searchCustomers(shopId, query);
+
+  @override
+  Future<Customer> createCustomer({
+    required String shopId,
+    required String name,
+    String? phone,
+  }) =>
+      _remote.createCustomer(shopId: shopId, name: name, phone: phone);
 
   @override
   Future<Sale> createSale({

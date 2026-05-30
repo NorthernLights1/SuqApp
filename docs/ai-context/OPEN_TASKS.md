@@ -1,63 +1,49 @@
 # Open Tasks — Suq ERP
 
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 ---
 
-## Immediate — Phase 3: Sales Module
+## Phase 3: Sales Module ✅ COMPLETE
 
-Build in this order:
-
-1. **`suq/lib/domain/models/sale.dart`**
-   `Sale`, `SaleItem`, `Discount`, `Refund` models. Use `Decimal` not `double`. Include `product_name_snapshot`.
-
-2. **`suq/lib/features/sales/data/sales_remote.dart`**
-   Supabase: create sale + items + inventory_adjustment in one transaction. Respect `inventory_mode` from `shop_settings`.
-
-3. **`suq/lib/features/sales/domain/sales_repository.dart`**
-   Interface + implementation (Supabase-only for now, Drift stub).
-
-4. **`suq/lib/features/sales/presentation/providers/sales_provider.dart`**
-   Cart state (active sale items), product search, payment method selection.
-
-5. **`suq/lib/features/sales/presentation/screens/new_sale_screen.dart`**
-   Product search → add to cart → set qty/price → apply discount → pick payment method → submit.
-   Must check `PermissionService` for `sales.create`.
-
-6. **`suq/lib/features/sales/presentation/screens/sales_screen.dart`**
-   List today's sales. Filter by date. Tap → detail.
-
-7. **Sale detail + void flow**
-   Void requires reason + `PermissionService` check for `sales.void`.
-   Refund checks `sales.refund_own` vs `sales.refund_any`.
-
-8. **Inventory adjustment on sale**
-   Auto-create `inventory_adjustments` row (`type: 'sale'`) per sale item.
-   Respect `inventory_mode`: `flexible` = warn + flag, `strict` = block.
-
-9. **Wire sales routes in router**
-   Replace `_ShellPage` stubs for `/sales` and `/sales/new` in `app_router.dart`.
-
-10. **Update dashboard summary cards**
-    Replace static "ETB 0" with real today's totals from Supabase.
+All files fully implemented and tested 2026-05-30. No further work needed on Phase 3.
 
 ---
 
-## Follow-up — Phase 4 (after sales)
+## Android Setup (one-time, do before device testing)
 
-- Inventory: product CRUD, stock levels, manual adjustments, low-stock alerts
-- Customers: list, credit balance, transaction history
-- Expenses: record expense, category picker
-- Reports: daily/weekly/monthly, export via `ExportService`
-- Staff: invite by email, assign role, suspend
-- Settings: inventory mode toggle, currency, branch management
+1. Android Studio → Settings → Android SDK → SDK Tools → check **"Android SDK Command-line Tools (latest)"** → Apply
+2. `flutter doctor --android-licenses` (type y to each)
+3. `flutter doctor` — should show [√] Android toolchain
+4. Enable USB debugging on Android 10 phone → plug in → `flutter devices` → `flutter run --dart-define-from-file=config/env.json`
 
 ---
 
-## Blocked / Unclear
+## Phase 4 — Next Up
 
-- **Drift offline DB** — not designed yet; needed for Phase 5
-- **Chapa payments** — out of scope v1; `payment_methods` table ready
-- **Amharic l10n** — l10n layer ready; translations not started
-- **Supabase Edge Functions** — `NotificationService` logs `pending` rows only; no function deployed yet
-- **Android builds** — blocked until Android Studio installed
+Start with: `git checkout -b feat/phase-4-customers-expenses`
+
+Priority order:
+1. **Customers screen** — list with credit balance, tap → transaction history (credit sales for that customer)
+2. **Expenses** — record expense, pick category, branch-scoped
+3. **Reports** — daily/weekly/monthly totals, low stock list
+4. **Settings** — inventory mode toggle (flexible/strict), currency display, branch name edit
+5. **Staff** — invite by email, assign role (owner/manager/cashier), suspend
+
+---
+
+## Tech Debt (tracked, not urgent)
+
+- Hardcoded strings in `inventory_screen.dart` violate l10n rule — need `app_en.arb` entries
+- No error boundaries — raw Supabase exceptions reach snackbars
+- Drift offline DB not wired (Phase 5)
+- `StockAdjustmentNotifier.setOpening` still exposed but never called from UI (only `ProductFormNotifier.save` calls the remote directly now for creation flow)
+
+---
+
+## Blocked / Deferred
+
+- Chapa payments — out of scope v1
+- Amharic l10n — translations not started
+- Supabase Edge Functions for notifications — not deployed
+- Barcode scanning + product images — deferred to post-v1

@@ -7,6 +7,7 @@ class Product extends Equatable {
     required this.shopId,
     required this.name,
     this.categoryId,
+    this.description,
     required this.measurementUnitId,
     required this.measurementUnitAbbr,
     required this.lowStockThreshold,
@@ -18,6 +19,7 @@ class Product extends Equatable {
   final String shopId;
   final String name;
   final String? categoryId;
+  final String? description;
   final String measurementUnitId;
   final String measurementUnitAbbr;
   final Decimal lowStockThreshold;
@@ -29,6 +31,7 @@ class Product extends Equatable {
         shopId: json['shop_id'] as String,
         name: json['name'] as String,
         categoryId: json['category_id'] as String?,
+        description: json['description'] as String?,
         measurementUnitId: json['measurement_unit_id'] as String,
         measurementUnitAbbr:
             (json['measurement_units'] as Map<String, dynamic>?)?['abbreviation']

@@ -19,6 +19,14 @@ final measurementUnitsProvider =
   return ref.read(inventoryRemoteProvider).getMeasurementUnits(shop.id);
 });
 
+// ─── Product categories ────────────────────────────────────────────────────
+
+final productCategoriesProvider = FutureProvider<List<ProductCategory>>((ref) async {
+  final shop = await ref.watch(currentShopProvider.future);
+  if (shop == null) return [];
+  return ref.read(inventoryRemoteProvider).getProductCategories(shop.id);
+});
+
 // ─── Products list ─────────────────────────────────────────────────────────
 
 final productsProvider = FutureProvider((ref) async {
@@ -56,6 +64,9 @@ class ProductFormNotifier extends AsyncNotifier<void> {
     required Decimal lowStockThreshold,
     Decimal? sellingPrice,
     String? categoryId,
+    String? description,
+    Decimal? initialQuantity,
+    DateTime? expiryDate,
   }) async {
     final shop = await ref.read(currentShopProvider.future);
     if (shop == null) return false;
@@ -64,14 +75,30 @@ class ProductFormNotifier extends AsyncNotifier<void> {
     state = await AsyncValue.guard(() async {
       final remote = ref.read(inventoryRemoteProvider);
       if (productId == null) {
-        await remote.createProduct(
+        final product = await remote.createProduct(
           shopId: shop.id,
           name: name,
           measurementUnitId: measurementUnitId,
           lowStockThreshold: lowStockThreshold,
           sellingPrice: sellingPrice,
           categoryId: categoryId,
+          description: description,
         );
+        if (initialQuantity != null && initialQuantity > Decimal.zero) {
+          final userId = ref.read(currentUserIdProvider);
+          final branches = await ref.read(currentShopBranchesProvider.future);
+          final branch = ref.read(activeBranchProvider) ??
+              (branches.isNotEmpty ? branches.first : null);
+          if (userId != null && branch != null) {
+            await remote.setOpeningStock(
+              branchId: branch.id,
+              productId: product.id,
+              quantity: initialQuantity,
+              adjustedBy: userId,
+              expiryDate: expiryDate,
+            );
+          }
+        }
       } else {
         await remote.updateProduct(
           productId: productId,
@@ -80,6 +107,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
           lowStockThreshold: lowStockThreshold,
           sellingPrice: sellingPrice,
           categoryId: categoryId,
+          description: description,
         );
       }
       ref.invalidate(productsProvider);
@@ -111,6 +139,7 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
   Future<bool> setOpening({
     required String productId,
     required Decimal quantity,
+    DateTime? expiryDate,
   }) async {
     final userId = ref.read(currentUserIdProvider);
     final branches = await ref.read(currentShopBranchesProvider.future);
@@ -125,6 +154,7 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
             productId: productId,
             quantity: quantity,
             adjustedBy: userId,
+            expiryDate: expiryDate,
           );
       ref.invalidate(stockLevelsProvider);
     });

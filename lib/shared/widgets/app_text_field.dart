@@ -12,9 +12,11 @@ class AppTextField extends StatelessWidget {
     this.validator,
     this.onFieldSubmitted,
     this.prefixIcon,
+    this.prefixText,
     this.suffixIcon,
     this.autofocus = false,
     this.enabled = true,
+    this.maxLines = 1,
   });
 
   final TextEditingController controller;
@@ -26,9 +28,11 @@ class AppTextField extends StatelessWidget {
   final String? Function(String?)? validator;
   final void Function(String)? onFieldSubmitted;
   final Widget? prefixIcon;
+  final String? prefixText;
   final Widget? suffixIcon;
   final bool autofocus;
   final bool enabled;
+  final int maxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -41,10 +45,12 @@ class AppTextField extends StatelessWidget {
       onFieldSubmitted: onFieldSubmitted,
       autofocus: autofocus,
       enabled: enabled,
+      maxLines: maxLines,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,
         prefixIcon: prefixIcon,
+        prefixText: prefixText,
         suffixIcon: suffixIcon,
       ),
     );

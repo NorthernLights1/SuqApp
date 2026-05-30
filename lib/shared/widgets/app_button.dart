@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../theme/app_colors.dart';
 
 class AppButton extends StatelessWidget {
   const AppButton({
@@ -21,10 +22,13 @@ class AppButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final child = loading
-        ? const SizedBox(
+        ? SizedBox(
             width: 20,
             height: 20,
-            child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            child: CircularProgressIndicator(
+              strokeWidth: 2,
+              color: outlined ? AppColors.primary : Colors.white,
+            ),
           )
         : icon != null
             ? Row(
@@ -39,7 +43,7 @@ class AppButton extends StatelessWidget {
 
     final button = outlined
         ? OutlinedButton(onPressed: loading ? null : onPressed, child: child)
-        : ElevatedButton(onPressed: loading ? null : onPressed, child: child);
+        : FilledButton(onPressed: loading ? null : onPressed, child: child);
 
     return fullWidth ? SizedBox(width: double.infinity, child: button) : button;
   }

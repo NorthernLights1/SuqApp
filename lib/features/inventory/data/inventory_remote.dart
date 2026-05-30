@@ -11,7 +11,7 @@ class InventoryRemote {
   Future<List<Product>> getProducts(String shopId) async {
     final data = await _client
         .from('products')
-        .select('id, shop_id, name, category_id, measurement_unit_id, low_stock_threshold, selling_price, is_active, measurement_units(abbreviation)')
+        .select('id, shop_id, name, description, category_id, measurement_unit_id, low_stock_threshold, selling_price, is_active, measurement_units(abbreviation)')
         .eq('shop_id', shopId)
         .eq('is_active', true)
         .order('name');
@@ -25,16 +25,18 @@ class InventoryRemote {
     required Decimal lowStockThreshold,
     Decimal? sellingPrice,
     String? categoryId,
+    String? description,
   }) async {
     final data = await _client.from('products').insert({
       'shop_id': shopId,
       'name': name.trim(),
+      'description': description?.trim().isEmpty ?? true ? null : description?.trim(),
       'measurement_unit_id': measurementUnitId,
       'low_stock_threshold': lowStockThreshold.toString(),
       'selling_price': sellingPrice?.toString(),
       'category_id': categoryId,
       'is_active': true,
-    }).select('id, shop_id, name, category_id, measurement_unit_id, low_stock_threshold, selling_price, is_active, measurement_units(abbreviation)').single();
+    }).select('id, shop_id, name, description, category_id, measurement_unit_id, low_stock_threshold, selling_price, is_active, measurement_units(abbreviation)').single();
     return Product.fromJson(data);
   }
 
@@ -45,15 +47,17 @@ class InventoryRemote {
     required Decimal lowStockThreshold,
     Decimal? sellingPrice,
     String? categoryId,
+    String? description,
   }) async {
     final data = await _client.from('products').update({
       'name': name.trim(),
+      'description': description?.trim().isEmpty ?? true ? null : description?.trim(),
       'measurement_unit_id': measurementUnitId,
       'low_stock_threshold': lowStockThreshold.toString(),
       'selling_price': sellingPrice?.toString(),
       'category_id': categoryId,
     }).eq('id', productId)
-        .select('id, shop_id, name, category_id, measurement_unit_id, low_stock_threshold, selling_price, is_active, measurement_units(abbreviation)')
+        .select('id, shop_id, name, description, category_id, measurement_unit_id, low_stock_threshold, selling_price, is_active, measurement_units(abbreviation)')
         .single();
     return Product.fromJson(data);
   }
@@ -139,6 +143,29 @@ class InventoryRemote {
         .order('name');
     return (data as List).map((e) => MeasurementUnit.fromJson(e)).toList();
   }
+
+  // ─── Product categories ────────────────────────────────────────────────────
+
+  Future<List<ProductCategory>> getProductCategories(String shopId) async {
+    final data = await _client
+        .from('product_categories')
+        .select('id, name')
+        .eq('shop_id', shopId)
+        .order('name');
+    return (data as List).map((e) => ProductCategory.fromJson(e)).toList();
+  }
+
+  Future<ProductCategory> createProductCategory({
+    required String shopId,
+    required String name,
+  }) async {
+    final data = await _client
+        .from('product_categories')
+        .insert({'shop_id': shopId, 'name': name.trim()})
+        .select('id, name')
+        .single();
+    return ProductCategory.fromJson(data);
+  }
 }
 
 // ─── Local models ─────────────────────────────────────────────────────────────
@@ -168,13 +195,17 @@ class StockEntry {
 
   bool get isLowStock => quantity <= lowStockThreshold && lowStockThreshold > Decimal.zero;
 
-  bool get isExpired =>
-      expiryDate != null && expiryDate!.isBefore(DateTime.now());
+  bool get isExpired {
+    if (expiryDate == null) return false;
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    return expiryDate!.isBefore(today);
+  }
 
-  bool get isExpiringSoon =>
-      expiryDate != null &&
-      !isExpired &&
-      expiryDate!.isBefore(DateTime.now().add(const Duration(days: 7)));
+  bool get isExpiringSoon {
+    if (expiryDate == null || isExpired) return false;
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    return expiryDate!.isBefore(today.add(const Duration(days: 7)));
+  }
 
   factory StockEntry.fromJson(Map<String, dynamic> json) {
     final product = json['products'] as Map<String, dynamic>? ?? {};
@@ -218,4 +249,17 @@ class MeasurementUnit {
 
   @override
   String toString() => '$name ($abbreviation)';
+}
+
+class ProductCategory {
+  const ProductCategory({required this.id, required this.name});
+
+  final String id;
+  final String name;
+
+  factory ProductCategory.fromJson(Map<String, dynamic> json) =>
+      ProductCategory(
+        id: json['id'] as String,
+        name: json['name'] as String,
+      );
 }
