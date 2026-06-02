@@ -177,10 +177,13 @@ class CustomerDetailScreen extends ConsumerWidget {
 
           if (customer.phone != null) ...[
             const SizedBox(height: 8),
-            ListTile(
-              leading: const Icon(Icons.phone_outlined),
-              title: Text(customer.phone!, style: AppTextStyles.body),
-              contentPadding: EdgeInsets.zero,
+            Material(
+              type: MaterialType.transparency,
+              child: ListTile(
+                leading: const Icon(Icons.phone_outlined),
+                title: Text(customer.phone!, style: AppTextStyles.body),
+                contentPadding: EdgeInsets.zero,
+              ),
             ),
             const Divider(),
           ],
@@ -231,69 +234,74 @@ class CustomerDetailScreen extends ConsumerWidget {
                     child: Text('No sales recorded',
                         style: AppTextStyles.bodySmall),
                   )
-                : Column(
-                    children: list.map((s) {
-                      final isVoided = s['status'] == 'voided';
-                      final isCredit = s['is_credit'] == true;
-                      final isSettled = s['credit_settled_at'] != null;
-                      return ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          isVoided
-                              ? Icons.cancel_outlined
-                              : isCredit
-                                  ? Icons.credit_card_outlined
-                                  : Icons.receipt_outlined,
-                          color: isVoided
-                              ? AppColors.error
-                              : isCredit && !isSettled
-                                  ? AppColors.warning
-                                  : AppColors.primary,
-                        ),
-                        title: Text(
-                          'ETB ${Decimal.parse(s['total'].toString()).toStringAsFixed(2)}',
-                          style: AppTextStyles.body,
-                        ),
-                        subtitle: Row(
-                          children: [
-                            Text(
-                              _fmtDate(DateTime.parse(
-                                  s['created_at'] as String)),
-                              style: AppTextStyles.bodySmall,
-                            ),
-                            if (isCredit && isSettled) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: AppColors.success
-                                      .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(4),
+                : Material(
+                    type: MaterialType.transparency,
+                    child: Column(
+                      children: list.map((s) {
+                        final isVoided = s['status'] == 'voided';
+                        final isCredit = s['is_credit'] == true;
+                        final isSettled = s['credit_settled_at'] != null;
+                        return ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            isVoided
+                                ? Icons.cancel_outlined
+                                : isCredit
+                                    ? Icons.credit_card_outlined
+                                    : Icons.receipt_outlined,
+                            color: isVoided
+                                ? AppColors.error
+                                : isCredit && !isSettled
+                                    ? AppColors.warning
+                                    : AppColors.primary,
+                          ),
+                          title: Text(
+                            'ETB ${Decimal.parse(s['total'].toString()).toStringAsFixed(2)}',
+                            style: AppTextStyles.body,
+                          ),
+                          subtitle: Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  _fmtDate(DateTime.parse(
+                                      s['created_at'] as String)),
+                                  style: AppTextStyles.bodySmall,
                                 ),
-                                child: Text('Settled',
-                                    style: AppTextStyles.label.copyWith(
-                                        color: AppColors.success)),
                               ),
-                            ] else if (isCredit && !isSettled) ...[
-                              const SizedBox(width: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: AppColors.warning
-                                      .withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(4),
+                              if (isCredit && isSettled) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.success
+                                        .withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text('Settled',
+                                      style: AppTextStyles.label.copyWith(
+                                          color: AppColors.success)),
                                 ),
-                                child: Text('Credit',
-                                    style: AppTextStyles.label.copyWith(
-                                        color: AppColors.warning)),
-                              ),
+                              ] else if (isCredit && !isSettled) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 1),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.warning
+                                        .withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text('Credit',
+                                      style: AppTextStyles.label.copyWith(
+                                          color: AppColors.warning)),
+                                ),
+                              ],
                             ],
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
             loading: () => const LinearProgressIndicator(),
             error: (e, st) => const SizedBox.shrink(),
