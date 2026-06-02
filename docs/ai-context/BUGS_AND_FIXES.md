@@ -31,128 +31,226 @@ Fix: Removed `part of` directive, made it standalone.
 ## Bug: ProductFormScreen missing Category, Opening Stock, Expiry Date fields
 Status: Fixed (2026-05-29)
 
-Symptoms: Tapping + in Inventory only showed Name, Price, Low Stock Threshold. No category picker, no way to set initial stock quantity or expiry date when creating a product.
+Symptoms: Tapping + in Inventory only showed Name, Price, Low Stock Threshold.
 
 Cause (3 parts):
-1. `product_categories` table existed in DB and `Product.categoryId` existed, but no provider fetched categories and no picker was in the form.
-2. Opening stock lives in `inventory` table (separate from `products`). The form only inserted into `products`. No `setOpeningStock` call was made at creation time.
-3. `inventory.expiry_date` was added in migration 008 but never exposed in the creation flow.
+1. No provider fetched categories, no picker in form.
+2. Opening stock lives in `inventory` table — form only wrote to `products`.
+3. `inventory.expiry_date` never exposed in creation flow.
 
-Fix:
-- Added `ProductCategory` model + `getProductCategories()` + `createProductCategory()` to `InventoryRemote`
-- Added `productCategoriesProvider` to `inventory_provider.dart`
-- Updated `ProductFormNotifier.save` to accept `initialQuantity` + `expiryDate`; calls `setOpeningStock` atomically after product creation if qty > 0
-- Updated `StockAdjustmentNotifier.setOpening` to thread `expiryDate` through
-- Added to `ProductFormScreen`: category dropdown with inline "New category" creation, Opening Stock section (new products only), Expiry Date picker (appears when qty > 0)
+Fix: Added `ProductCategory` model + remote methods; `ProductFormNotifier.save` calls `setOpeningStock` after creation if qty > 0; added category dropdown, Opening Stock section, Expiry Date picker to form.
 
-Files changed: `inventory_remote.dart`, `inventory_provider.dart`, `inventory_screen.dart`
+Files: `inventory_remote.dart`, `inventory_provider.dart`, `inventory_screen.dart`
 
 ---
 
 ## Bug: isExpired / isExpiringSoon used time-sensitive comparison
 Status: Fixed (2026-05-29)
 
-Symptoms: Setting expiry date to today immediately marked stock as expired (today at midnight < DateTime.now() at any time of day = true).
+Cause: `expiryDate!.isBefore(DateTime.now())` compared against current time, not midnight.
+Fix: Both getters compare against `DateTime(now.year, now.month, now.day)`.
+Also: expiry picker `firstDate` set to tomorrow; `_save()` validates expiry > today.
 
-Cause: `expiryDate!.isBefore(DateTime.now())` compares against current time, not midnight.
-
-Fix: Both getters now compare against `DateTime(now.year, now.month, now.day)` (date-only):
-```dart
-bool get isExpired {
-  if (expiryDate == null) return false;
-  final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
-  return expiryDate!.isBefore(today);
-}
-```
-Same pattern applied to `isExpiringSoon`.
-
-Additional: `firstDate` in new product expiry picker changed to tomorrow; `_save()` validates expiry > today as defence-in-depth.
-
-File changed: `inventory_remote.dart`, `inventory_screen.dart`
+File: `inventory_remote.dart`, `inventory_screen.dart`
 
 ---
 
 ## Bug: `permission denied for table shops` / `shop_users` (42501)
 Status: Fixed (2026-05-30)
 
-Symptoms: Onboarding step 1 failed with `PostgrestException code 42501` — first on `shops`, then on `shop_users`.
-
-Cause: Supabase has two independent access layers: (1) PostgreSQL table grants and (2) RLS policies. The migrations created RLS policies but did not include base GRANT statements. PostgREST blocks before RLS even runs if the role has no grant.
-
-Fix: Ran in Supabase SQL Editor:
+Cause: Migrations created RLS policies but no base GRANT statements. PostgREST blocks before RLS if role has no grant.
+Fix:
 ```sql
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
 ```
-
-Note: Always check BOTH grants AND RLS when debugging Supabase 42501 errors. Use:
-```sql
-SELECT table_name, string_agg(privilege_type, ', ') as grants
-FROM information_schema.role_table_grants
-WHERE grantee = 'authenticated' AND table_schema = 'public'
-GROUP BY table_name ORDER BY table_name;
-```
+Note: Always check BOTH grants AND RLS when debugging 42501. Check grants with `information_schema.role_table_grants`.
 
 ---
 
-## Bug: 3 orphaned shops, 0 shop_users records — app broken after failed onboarding
+## Bug: 3 orphaned shops, 0 shop_users records
 Status: Fixed (2026-05-30)
 
-Symptoms: After multiple failed onboarding attempts, `shops` had 3 rows but `shop_users` had 0. App found the shops (via `owner_id = auth.uid()` RLS) and skipped onboarding, but RLS on `measurement_units`, `product_categories`, and `products` all use `is_shop_member()` which reads `shop_users`. With 0 rows, every inventory query failed.
-
-Cause: Each onboarding attempt created a `shops` row but the `shop_users` INSERT failed (42501 grant issue, now fixed). Each failed attempt left an orphaned shop.
-
-Fix: Ran in Supabase SQL Editor:
-```sql
--- Insert missing shop_users record for owner
-INSERT INTO public.shop_users (shop_id, user_id, role_id, status)
-SELECT '12398dee-c037-4ccf-8d11-a19ebddf581f', u.id,
-  '00000000-0000-0000-0000-000000000001', 'active'
-FROM auth.users u WHERE u.email = 'temeg242@gmail.com';
-
--- Delete orphaned shops
-DELETE FROM public.shops
-WHERE id IN ('cb56a4ee-02a9-40f8-96e4-1d5a5636e033', '07f58715-e866-4bc5-8998-43e2fceda27a');
-```
-
-Note: The onboarding flow in `onboarding_provider.dart` is NOT atomic — if the `shop_users` INSERT fails after the `shops` INSERT succeeds, you get orphaned shops. This is low risk now that grants are fixed, but should be wrapped in a Postgres function/transaction if it recurs.
+Cause: Each failed onboarding attempt created a `shops` row but `shop_users` INSERT failed (grants issue). Orphaned shops caused RLS failures on all inventory queries.
+Fix: Manual SQL — inserted missing `shop_users` record, deleted 2 orphaned shops.
+Note: Onboarding is NOT atomic — `shops` INSERT can succeed while `shop_users` fails.
 
 ---
 
 ## Bug: `selling_price` column missing from `products` table
 Status: Fixed (2026-05-30)
 
-Symptoms: `PostgrestException PGRST204 / 42703 — column products.selling_price does not exist`. Reloading schema cache (`NOTIFY pgrst, 'reload schema'`) confirmed the column was never created.
-
-Cause: The migration for `products` table did not include `selling_price`. The app code references it in all SELECT and INSERT queries.
-
-Fix: Ran in Supabase SQL Editor:
-```sql
-ALTER TABLE public.products ADD COLUMN selling_price numeric;
-```
+Cause: Migration never included the column.
+Fix: `ALTER TABLE public.products ADD COLUMN selling_price numeric;`
 
 ---
 
 ## Bug: Stock levels not refreshing in UI after sale
 Status: Fixed (2026-05-30)
 
-Symptoms: Sale recorded correctly in DB (inventory_adjustments confirmed), but inventory screen still showed old quantity until app restart.
-
-Cause: `CreateSaleNotifier.submit` invalidated `todaySalesTotalsProvider` but not `stockLevelsProvider`.
-
-Fix: Added to `CreateSaleNotifier.submit` in `sales_provider.dart`:
-```dart
-ref.invalidate(stockLevelsProvider);
-```
-Also clears `selectedCustomerProvider` and `customerSearchQueryProvider` after sale.
+Cause: `CreateSaleNotifier.submit` did not invalidate `stockLevelsProvider`.
+Fix: Added `ref.invalidate(stockLevelsProvider)` to `CreateSaleNotifier.submit`.
 
 ---
 
 ## Bug: ListTile ink splash invisible + RenderFlex overflow in customer picker
 Status: Fixed (2026-05-30)
 
-Symptoms: Flutter exception "ListTile background color or ink splashes may be invisible" + 14px right overflow when credit payment selected.
+Cause 1: ListTile inside `Container(color:)` has no Material ancestor for ink.
+Fix 1: Wrap in `Material(type: MaterialType.transparency)`.
 
-Cause 1: ListTile inside Container(color:) has no Material ancestor for ink. Fix: Wrap ListTile in `Material(type: MaterialType.transparency)`.
+Cause 2: `TextButton('+ New')` as `suffix` in `InputDecoration` overflowed.
+Fix 2: Moved button outside TextField into `Row([Expanded(TextField), TextButton])`.
 
-Cause 2: `TextButton('+ New')` placed as `suffix` inside `InputDecoration` overflowed. Fix: Moved button outside TextField into a `Row([Expanded(TextField), TextButton])` layout.
+---
+
+## Bug: Product search broken on web (Chrome) after Phase 5
+Status: Fixed (2026-06-02)
+
+Symptoms: Product search returned empty results on Chrome; `salesRepositoryProvider` threw `UnsupportedError`.
+
+Cause: `appDatabaseProvider` called `openDatabase()` on web which throws `UnsupportedError('Drift is not supported on this platform')`. This cascaded through `salesRepositoryProvider` → error state → empty search results.
+
+Fix:
+- `appDatabaseProvider` returns `AppDatabase?` — `null` on web via `if (kIsWeb) return null`
+- `SalesRepository._db` typed as `AppDatabase?`; all DB calls null-guarded
+- `createSale` has early-return path for `_db == null` (direct Supabase)
+- `_db?.markSaleVoided` for optional update in `voidSale`
+- `SyncService._pushSale` refactored to accept `AppDatabase db` parameter (avoids unnecessary `!`)
+- `SeedNotifier.build()` early-returns if db is null
+
+Files: `database_provider.dart`, `sales_repository.dart`, `sync_service.dart`, `sales_provider.dart`
+
+---
+
+## Bug: Sales allowed on negative stock / untracked products
+Status: Fixed (2026-06-02)
+
+Symptoms: Sales could be completed even when stock would go negative, and when products had no inventory record.
+
+Cause: Default `inventory_mode` was `'flexible'`, which bypassed all stock checks. Even in strict mode, `stock == null` was treated as `flagged` (sale allowed) rather than blocked.
+
+Fix (3 iterations, final logic):
+- No stock record → block ("X is not in inventory. Add stock before selling.")
+- Stock record present, stock < quantity → block ("Not enough stock for X. Available: N")
+- Stock record present, stock ≥ quantity → allow, deduct
+- Removed `inventoryMode` condition from both `SalesRemote` and `SalesRepository` checks — enforcement is unconditional
+- Changed `stock == null → flagged` to `stock == null → block` in both paths
+- Changed onboarding default from `'"flexible"'` to `'"strict"'`
+- Updated existing shop in Supabase: `UPDATE shop_settings SET value = '"strict"' WHERE key = 'inventory_mode'`
+
+Files: `sales_remote.dart`, `sales_repository.dart`, `onboarding_provider.dart`
+
+---
+
+## Bug: Same product in multiple cart items could produce negative stock (unit test found)
+Status: Fixed (2026-06-02)
+
+Symptoms: If the same product appeared as two separate cart lines (e.g. qty=5 + qty=5 against stock=8), each line passed the per-item pre-check independently (5 ≤ 8, 5 ≤ 8). The deduction loop then re-read the post-first-deduction value and wrote stock to -2.
+
+Cause: `SalesRepository.createSale` pre-check iterated items individually without aggregating quantities per product.
+
+Fix: Pre-check now aggregates total required qty per `productId` using a `Map<String, Decimal>`, then checks each product's combined total against stock once. Deduction loop unchanged (correct: re-reads after each deduction).
+
+File: `lib/features/sales/domain/sales_repository.dart` (pre-check block)
+
+---
+
+## Bug: Stock Correction password always shows "Incorrect password" even with correct credentials
+Status: Fixed (2026-06-02)
+
+Symptoms: Owner enters their login password in the Correct Stock dialog; dialog shows "Incorrect password" or "Password verification failed. Check your connection."
+
+Causes:
+1. `on AuthException {` (no `catch (e)`) — exception message was unreachable; Supabase rate-limit errors (429) and other AuthException subtypes were all displayed as "Incorrect password"
+2. `_pwCtrl.text` missing `.trim()` — trailing whitespace from the virtual keyboard causes `signInWithPassword` to fail
+
+Fix:
+- Changed to `on AuthException catch (e)` and inspect `e.statusCode` / `e.message`
+- Rate-limit detected (statusCode 429 or message contains "rate"/"after") → shows "Too many attempts — wait a minute then try again"
+- Other AuthException → shows "Incorrect password"
+- Generic exceptions now show the actual error text
+- Added `.trim()` to password value before passing to `signInWithPassword`
+
+File: `inventory_screen.dart` (`_CorrectStockDialogState._submit`)
+
+---
+
+## Bug: Numeric text fields accepted non-numeric characters
+Status: Fixed (2026-06-02)
+
+Symptoms: On web (Chrome) and some Android keyboards, qty/price/amount fields accepted letters, symbols, etc. `keyboardType: numberWithOptions` only controls the soft keyboard; it does not filter input.
+
+Fix: Added `FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))` to every numeric field:
+- `AppTextField` — new `inputFormatters` parameter wired through to `TextFormField`
+- Inventory screen: Add Stock qty, Correct Stock qty, ProductFormScreen (selling price, cost price, threshold, opening qty)
+- New Sale screen: qty and price inline fields
+- Expenses screen: amount field
+
+Files: `app_text_field.dart`, `inventory_screen.dart`, `new_sale_screen.dart`, `expenses_screen.dart`
+
+---
+
+## Bug: `app_database_test.dart` compilation error — `isNull` ambiguous
+Status: Fixed (2026-06-02)
+
+Cause: New edge-case tests used `isNull` matcher; both `drift` and `matcher` export it. The existing `hide isNotNull` on the drift import was not hiding `isNull`.
+
+Fix: `import 'package:drift/dart.dart' hide isNotNull, isNull;`
+
+File: `test/data/local/app_database_test.dart`
+
+---
+
+## Bug: Credit customer name search broken in New Sale screen
+Status: Fixed (2026-06-02)
+
+Symptoms: When "Credit" payment method selected, typing in customer search field returned no results.
+
+Cause: `_CustomerPickerSectionState.build` conditionally shows `_CustomerResults` only when `_searchCtrl.text.length >= 2`. But `onChanged` never called `setState`, so the parent widget never rebuilt after typing. The text-length condition was evaluated only once (at mount, when text = ''), so `_CustomerResults` was never shown.
+
+Fix: Added `setState(() {})` at the top of the `onChanged` callback, triggering a rebuild on each keystroke so the condition re-evaluates correctly.
+
+File: `lib/features/sales/presentation/screens/new_sale_screen.dart` (`_CustomerPickerSectionState`)
+
+---
+
+## Bug: No way to partially settle customer credit
+Status: Fixed (2026-06-02)
+
+Symptoms: "Mark Settled" button on CustomerDetailScreen zeroed the entire balance. No way to record a partial payment.
+
+Fix:
+- Replaced "Mark Settled" button with "Receive Payment" button
+- Opens a dialog pre-filled with the full outstanding balance
+- Owner can enter any amount: ≥ balance → zeros out (full settlement); < balance → reduces by entered amount
+- Added `CustomerFormNotifier.receivePayment(customerId, amount)` — fetches current balance, computes new balance, updates DB
+- `ref.invalidate(customersProvider)` on success refreshes the list
+
+Files: `customers_screen.dart`, `customers_provider.dart`
+
+---
+
+## Bug: Stock Correction always fails — "Correction failed. Try again."
+Status: Fixed (2026-06-02 session 9)
+
+Cause: `inventory_remote.dart correctStock()` was inserting `'type': 'correction'` into `inventory_adjustments`, but the DB check constraint only allows `('opening_stock','sale','refund','manual','supply_received','void')`. The constraint violation caused `AsyncValue.guard` to catch an error → `state.hasError` → `ok = false`.
+
+Fix: Changed `'type': 'correction'` to `'type': 'manual'` (semantically equivalent — both are admin-override quantity changes).
+
+File: `lib/features/inventory/data/inventory_remote.dart`
+
+---
+
+## Bug: Riverpod accidentally upgraded to 3.x, breaking entire codebase
+Status: Fixed (2026-06-02)
+
+Symptoms: 54 analyzer errors — `StateProvider`, `StateNotifierProvider`, `valueOrNull` all undefined.
+
+Cause: `pubspec.yaml` was manually edited (or `flutter pub upgrade --major-versions` was run) between sessions, bumping `flutter_riverpod: ^2.6.1` → `^3.1.0` and several other packages. Riverpod 3.x removed all deprecated 2.x APIs without code migration.
+
+Fix: Restored `pubspec.yaml` to committed versions. Run `flutter pub get`. 0 errors.
+
+Note: Riverpod 3.x migration is a planned task (see OPEN_TASKS.md). Do not run `flutter pub upgrade --major-versions` until the migration is done.
+
+Files: `pubspec.yaml`

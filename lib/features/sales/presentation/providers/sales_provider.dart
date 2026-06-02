@@ -1,9 +1,12 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../data/local/database_provider.dart';
+import '../../../../data/local/seed_service.dart';
 import '../../../../domain/models/product.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
+import '../../../../features/inventory/data/inventory_remote.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../data/sales_remote.dart';
 import '../../domain/sales_repository.dart';
@@ -12,8 +15,48 @@ import '../../domain/sales_repository.dart';
 
 final salesRepositoryProvider = Provider<SalesRepository>((ref) {
   final client = ref.read(supabaseClientProvider);
-  return SalesRepository(SalesRemote(client));
+  final db = ref.read(appDatabaseProvider);
+  return SalesRepository(SalesRemote(client), db);
 });
+
+// ─── Seed notifier — seeds local DB from Supabase on first load ────────────
+
+class SeedNotifier extends AsyncNotifier<void> {
+  @override
+  Future<void> build() async {
+    final db = ref.read(appDatabaseProvider);
+    if (db == null) return; // web — no local DB
+
+    final shop = await ref.watch(currentShopProvider.future);
+    if (shop == null) return;
+    final branches = await ref.read(currentShopBranchesProvider.future);
+    if (branches.isEmpty) return;
+
+    final existing = await db.getProductsByShop(shop.id);
+    if (existing.isNotEmpty) return; // already seeded this session
+
+    final client = ref.read(supabaseClientProvider);
+    await SeedService(client, InventoryRemote(client), db)
+        .seedAll(shopId: shop.id, branchId: branches.first.id);
+  }
+
+  Future<void> reseed() async {
+    final db = ref.read(appDatabaseProvider);
+    if (db == null) return;
+    final shop = await ref.read(currentShopProvider.future);
+    final branches = await ref.read(currentShopBranchesProvider.future);
+    if (shop == null || branches.isEmpty) return;
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final client = ref.read(supabaseClientProvider);
+      await SeedService(client, InventoryRemote(client), db)
+          .seedAll(shopId: shop.id, branchId: branches.first.id);
+    });
+  }
+}
+
+final seedNotifierProvider =
+    AsyncNotifierProvider<SeedNotifier, void>(SeedNotifier.new);
 
 // ─── Payment methods ───────────────────────────────────────────────────────
 
@@ -25,7 +68,14 @@ final paymentMethodsProvider = FutureProvider<List<PaymentMethod>>((ref) async {
 
 // ─── Product search ────────────────────────────────────────────────────────
 
-final productSearchQueryProvider = StateProvider<String>((ref) => '');
+class _ProductSearchQueryNotifier extends Notifier<String> {
+  @override
+  String build() => '';
+  void set(String v) => state = v;
+}
+
+final productSearchQueryProvider =
+    NotifierProvider<_ProductSearchQueryNotifier, String>(_ProductSearchQueryNotifier.new);
 
 final productSearchProvider = FutureProvider<List<Product>>((ref) async {
   final query = ref.watch(productSearchQueryProvider);
@@ -37,8 +87,9 @@ final productSearchProvider = FutureProvider<List<Product>>((ref) async {
 
 // ─── Cart state ────────────────────────────────────────────────────────────
 
-class CartNotifier extends StateNotifier<List<CartItem>> {
-  CartNotifier() : super([]);
+class CartNotifier extends Notifier<List<CartItem>> {
+  @override
+  List<CartItem> build() => [];
 
   void addItem(CartItem item) {
     // If same product already in cart, increase quantity
@@ -72,9 +123,8 @@ class CartNotifier extends StateNotifier<List<CartItem>> {
       state.fold(Decimal.zero, (sum, item) => sum + item.discountAmount);
 }
 
-final cartProvider = StateNotifierProvider<CartNotifier, List<CartItem>>(
-  (ref) => CartNotifier(),
-);
+final cartProvider =
+    NotifierProvider<CartNotifier, List<CartItem>>(CartNotifier.new);
 
 final cartSubtotalProvider = Provider<Decimal>((ref) {
   final cart = ref.watch(cartProvider);
@@ -83,11 +133,26 @@ final cartSubtotalProvider = Provider<Decimal>((ref) {
 
 // ─── Selected payment method ───────────────────────────────────────────────
 
-final selectedPaymentMethodProvider = StateProvider<PaymentMethod?>((ref) => null);
+class _SelectedPaymentMethodNotifier extends Notifier<PaymentMethod?> {
+  @override
+  PaymentMethod? build() => null;
+  void set(PaymentMethod? m) => state = m;
+}
+
+final selectedPaymentMethodProvider =
+    NotifierProvider<_SelectedPaymentMethodNotifier, PaymentMethod?>(
+        _SelectedPaymentMethodNotifier.new);
 
 // ─── Customer search + selection ───────────────────────────────────────────
 
-final customerSearchQueryProvider = StateProvider<String>((ref) => '');
+class _CustomerSearchQueryNotifier extends Notifier<String> {
+  @override
+  String build() => '';
+  void set(String v) => state = v;
+}
+
+final customerSearchQueryProvider =
+    NotifierProvider<_CustomerSearchQueryNotifier, String>(_CustomerSearchQueryNotifier.new);
 
 final customerSearchProvider = FutureProvider<List<Customer>>((ref) async {
   final query = ref.watch(customerSearchQueryProvider);
@@ -97,7 +162,14 @@ final customerSearchProvider = FutureProvider<List<Customer>>((ref) async {
   return ref.read(salesRepositoryProvider).searchCustomers(shop.id, query);
 });
 
-final selectedCustomerProvider = StateProvider<Customer?>((ref) => null);
+class _SelectedCustomerNotifier extends Notifier<Customer?> {
+  @override
+  Customer? build() => null;
+  void set(Customer? c) => state = c;
+}
+
+final selectedCustomerProvider =
+    NotifierProvider<_SelectedCustomerNotifier, Customer?>(_SelectedCustomerNotifier.new);
 
 class CreateCustomerNotifier extends AsyncNotifier<Customer?> {
   @override
@@ -114,7 +186,7 @@ class CreateCustomerNotifier extends AsyncNotifier<Customer?> {
             phone: phone,
           ),
     );
-    return state.valueOrNull;
+    return state.asData?.value;
   }
 }
 
@@ -158,13 +230,13 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
             discountReason: discountReason,
           );
       ref.read(cartProvider.notifier).clear();
-      ref.read(selectedCustomerProvider.notifier).state = null;
-      ref.read(customerSearchQueryProvider.notifier).state = '';
+      ref.read(selectedCustomerProvider.notifier).set(null);
+      ref.read(customerSearchQueryProvider.notifier).set('');
       ref.invalidate(todaySalesTotalsProvider);
       ref.invalidate(stockLevelsProvider);
       return sale;
     });
-    return state.valueOrNull;
+    return state.asData?.value;
   }
 }
 
@@ -173,7 +245,14 @@ final createSaleProvider =
 
 // ─── Sales list ────────────────────────────────────────────────────────────
 
-final selectedSalesDateProvider = StateProvider<DateTime>((ref) => DateTime.now());
+class _SelectedSalesDateNotifier extends Notifier<DateTime> {
+  @override
+  DateTime build() => DateTime.now();
+  void set(DateTime d) => state = d;
+}
+
+final selectedSalesDateProvider =
+    NotifierProvider<_SelectedSalesDateNotifier, DateTime>(_SelectedSalesDateNotifier.new);
 
 final salesListProvider = FutureProvider<List<Sale>>((ref) async {
   final date = ref.watch(selectedSalesDateProvider);

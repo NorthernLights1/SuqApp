@@ -70,8 +70,14 @@ final expenseCategoriesProvider =
   return (data as List).map((e) => ExpenseCategory.fromJson(e)).toList();
 });
 
+class _ExpenseDateNotifier extends Notifier<DateTime> {
+  @override
+  DateTime build() => DateTime.now();
+  void set(DateTime d) => state = d;
+}
+
 final selectedExpenseDateProvider =
-    StateProvider<DateTime>((ref) => DateTime.now());
+    NotifierProvider<_ExpenseDateNotifier, DateTime>(_ExpenseDateNotifier.new);
 
 final expensesProvider = FutureProvider<List<Expense>>((ref) async {
   final date = ref.watch(selectedExpenseDateProvider);

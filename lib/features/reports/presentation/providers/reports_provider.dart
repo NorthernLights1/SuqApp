@@ -1,10 +1,11 @@
 import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 
-enum ReportPeriod { today, week, month }
+enum ReportPeriod { today, week, month, year, custom }
 
 class ReportSummary extends Equatable {
   const ReportSummary({
@@ -35,9 +36,27 @@ class ReportSummary extends Equatable {
   List<Object?> get props => [salesTotal, salesCount, expenseTotal, grossProfit];
 }
 
-final reportPeriodProvider = StateProvider<ReportPeriod>((ref) => ReportPeriod.today);
+class _ReportPeriodNotifier extends Notifier<ReportPeriod> {
+  @override
+  ReportPeriod build() => ReportPeriod.today;
+  void set(ReportPeriod p) => state = p;
+}
 
-({DateTime start, DateTime end}) _rangeFor(ReportPeriod period) {
+final reportPeriodProvider =
+    NotifierProvider<_ReportPeriodNotifier, ReportPeriod>(_ReportPeriodNotifier.new);
+
+// Holds the user-selected custom date range (only used when period == custom).
+class _CustomRangeNotifier extends Notifier<DateTimeRange?> {
+  @override
+  DateTimeRange? build() => null;
+  void set(DateTimeRange? r) => state = r;
+}
+
+final reportCustomRangeProvider =
+    NotifierProvider<_CustomRangeNotifier, DateTimeRange?>(_CustomRangeNotifier.new);
+
+({DateTime start, DateTime end}) _rangeFor(
+    ReportPeriod period, DateTimeRange? custom) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   return switch (period) {
@@ -50,11 +69,33 @@ final reportPeriodProvider = StateProvider<ReportPeriod>((ref) => ReportPeriod.t
         start: DateTime(now.year, now.month, 1),
         end: today.add(const Duration(days: 1)),
       ),
+    ReportPeriod.year => (
+        start: DateTime(now.year, 1, 1),
+        end: today.add(const Duration(days: 1)),
+      ),
+    ReportPeriod.custom => custom != null
+        ? (
+            start: custom.start,
+            end: custom.end.add(const Duration(days: 1)),
+          )
+        : (start: today, end: today.add(const Duration(days: 1))),
   };
 }
 
+// Null = all categories; non-null = filter to that category ID.
+class _ReportCategoryNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+  void set(String? id) => state = id;
+}
+
+final reportCategoryFilterProvider =
+    NotifierProvider<_ReportCategoryNotifier, String?>(_ReportCategoryNotifier.new);
+
 final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   final period = ref.watch(reportPeriodProvider);
+  final customRange = ref.watch(reportCustomRangeProvider);
+  final categoryFilter = ref.watch(reportCategoryFilterProvider);
   final branches = await ref.watch(currentShopBranchesProvider.future);
   final branch =
       ref.watch(activeBranchProvider) ?? (branches.isNotEmpty ? branches.first : null);
@@ -72,13 +113,14 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
     );
   }
 
-  final range = _rangeFor(period);
+  final range = _rangeFor(period, customRange);
   final client = ref.read(supabaseClientProvider);
 
-  // Sales — embed sale_items to compute gross profit
+  // Sales — include product category info for optional category filter
   final salesData = await client
       .from('sales')
-      .select('total, status, is_credit, sale_items(quantity, unit_price, cost_price_snapshot)')
+      .select(
+          'total, status, is_credit, sale_items(quantity, unit_price, discount_amount, cost_price_snapshot, products(category_id))')
       .eq('branch_id', branch.id)
       .gte('created_at', range.start.toIso8601String())
       .lt('created_at', range.end.toIso8601String());
@@ -89,26 +131,58 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   int salesCount = 0;
   int creditCount = 0;
   int profitItemCount = 0;
+
   for (final row in salesData as List) {
     if (row['status'] != 'completed') continue;
-    final amount = Decimal.parse(row['total'].toString());
-    salesTotal += amount;
-    salesCount++;
-    if (row['is_credit'] == true) {
-      creditTotal += amount;
-      creditCount++;
-    }
-    for (final item in (row['sale_items'] as List? ?? [])) {
-      if (item['cost_price_snapshot'] == null) continue;
-      final qty = Decimal.parse(item['quantity'].toString());
-      final unitPrice = Decimal.parse(item['unit_price'].toString());
-      final costPrice = Decimal.parse(item['cost_price_snapshot'].toString());
-      grossProfit += (unitPrice - costPrice) * qty;
-      profitItemCount++;
+    final items = (row['sale_items'] as List? ?? []);
+
+    if (categoryFilter != null) {
+      // Category mode: sum only items from the selected category.
+      Decimal catRevenue = Decimal.zero;
+      bool hasCatItem = false;
+      for (final item in items) {
+        final catId = (item['products'] as Map<String, dynamic>?)?['category_id'];
+        if (catId != categoryFilter) continue;
+        hasCatItem = true;
+        final qty = Decimal.parse(item['quantity'].toString());
+        final unitPrice = Decimal.parse(item['unit_price'].toString());
+        final disc = Decimal.parse((item['discount_amount'] ?? '0').toString());
+        catRevenue += (unitPrice * qty) - disc;
+        if (item['cost_price_snapshot'] != null) {
+          final costPrice =
+              Decimal.parse(item['cost_price_snapshot'].toString());
+          grossProfit += (unitPrice - costPrice) * qty;
+          profitItemCount++;
+        }
+      }
+      if (!hasCatItem) continue;
+      salesTotal += catRevenue;
+      salesCount++;
+      if (row['is_credit'] == true) {
+        creditTotal += catRevenue;
+        creditCount++;
+      }
+    } else {
+      // All categories: use the stored sale total.
+      final amount = Decimal.parse(row['total'].toString());
+      salesTotal += amount;
+      salesCount++;
+      if (row['is_credit'] == true) {
+        creditTotal += amount;
+        creditCount++;
+      }
+      for (final item in items) {
+        if (item['cost_price_snapshot'] == null) continue;
+        final qty = Decimal.parse(item['quantity'].toString());
+        final unitPrice = Decimal.parse(item['unit_price'].toString());
+        final costPrice = Decimal.parse(item['cost_price_snapshot'].toString());
+        grossProfit += (unitPrice - costPrice) * qty;
+        profitItemCount++;
+      }
     }
   }
 
-  // Expenses
+  // Expenses (not category-filtered — expense categories are separate from product categories)
   final expData = await client
       .from('expenses')
       .select('amount, expense_categories(name)')
@@ -121,12 +195,13 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   for (final row in expData as List) {
     final amount = Decimal.parse(row['amount'].toString());
     final catName =
-        (row['expense_categories'] as Map<String, dynamic>?)?['name'] as String? ?? 'Other';
+        (row['expense_categories'] as Map<String, dynamic>?)?['name'] as String? ??
+            'Other';
     expenseTotal += amount;
-    expByCategory[catName] = (expByCategory[catName] ?? Decimal.zero) + amount;
+    expByCategory[catName] =
+        (expByCategory[catName] ?? Decimal.zero) + amount;
   }
 
-  // Sort categories by amount descending
   final sortedCategories = Map.fromEntries(
     expByCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
   );

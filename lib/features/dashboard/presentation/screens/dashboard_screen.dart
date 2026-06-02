@@ -34,6 +34,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(seedNotifierProvider); // triggers local DB seed on login
     final shop = ref.watch(currentShopProvider);
 
     return Scaffold(

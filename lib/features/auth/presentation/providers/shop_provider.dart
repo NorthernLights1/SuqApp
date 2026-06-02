@@ -49,4 +49,11 @@ final currentShopBranchesProvider = FutureProvider<List<Branch>>((ref) async {
 });
 
 /// The active branch for this session (first branch by default).
-final activeBranchProvider = StateProvider<Branch?>((ref) => null);
+class _ActiveBranchNotifier extends Notifier<Branch?> {
+  @override
+  Branch? build() => null;
+  void set(Branch? branch) => state = branch;
+}
+
+final activeBranchProvider =
+    NotifierProvider<_ActiveBranchNotifier, Branch?>(_ActiveBranchNotifier.new);

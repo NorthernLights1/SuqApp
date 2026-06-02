@@ -4,6 +4,28 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 
+// Lightweight model for a single unsettled credit sale shown on the customer screen.
+class CreditSale extends Equatable {
+  const CreditSale({
+    required this.id,
+    required this.total,
+    required this.createdAt,
+  });
+
+  final String id;
+  final Decimal total;
+  final DateTime createdAt;
+
+  factory CreditSale.fromJson(Map<String, dynamic> j) => CreditSale(
+        id: j['id'] as String,
+        total: Decimal.parse(j['total'].toString()),
+        createdAt: DateTime.parse(j['created_at'] as String),
+      );
+
+  @override
+  List<Object?> get props => [id];
+}
+
 class Customer extends Equatable {
   const Customer({
     required this.id,
@@ -55,11 +77,26 @@ final customerSalesProvider =
   final client = ref.read(supabaseClientProvider);
   final data = await client
       .from('sales')
-      .select('id, total, status, created_at, is_credit')
+      .select('id, total, status, created_at, is_credit, credit_settled_at')
       .eq('customer_id', customerId)
       .order('created_at', ascending: false)
       .limit(20);
   return (data as List).cast<Map<String, dynamic>>();
+});
+
+// Unsettled credit sales for a customer — no date filter; only disappear when settled.
+final customerCreditSalesProvider =
+    FutureProvider.family<List<CreditSale>, String>((ref, customerId) async {
+  final client = ref.read(supabaseClientProvider);
+  final data = await client
+      .from('sales')
+      .select('id, total, created_at')
+      .eq('customer_id', customerId)
+      .eq('is_credit', true)
+      .eq('status', 'completed')
+      .filter('credit_settled_at', 'is', null)
+      .order('created_at', ascending: false);
+  return (data as List).map((e) => CreditSale.fromJson(e)).toList();
 });
 
 class CustomerFormNotifier extends AsyncNotifier<void> {
@@ -102,6 +139,57 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
       await client
           .from('customers')
           .update({'credit_balance': '0'}).eq('id', customerId);
+      ref.invalidate(customersProvider);
+    });
+    return !state.hasError;
+  }
+
+  // Mark a specific credit sale as settled and reduce the customer's running balance.
+  Future<bool> settleCreditSale({
+    required String customerId,
+    required String saleId,
+    required Decimal saleTotal,
+  }) async {
+    final client = ref.read(supabaseClientProvider);
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await client
+          .from('sales')
+          .update({'credit_settled_at': DateTime.now().toIso8601String()})
+          .eq('id', saleId);
+      final data = await client
+          .from('customers')
+          .select('credit_balance')
+          .eq('id', customerId)
+          .single();
+      final current = Decimal.parse(data['credit_balance'].toString());
+      final newBalance =
+          saleTotal >= current ? Decimal.zero : current - saleTotal;
+      await client
+          .from('customers')
+          .update({'credit_balance': newBalance.toString()})
+          .eq('id', customerId);
+      ref.invalidate(customersProvider);
+      ref.invalidate(customerCreditSalesProvider(customerId));
+    });
+    return !state.hasError;
+  }
+
+  Future<bool> receivePayment(String customerId, Decimal amount) async {
+    final client = ref.read(supabaseClientProvider);
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      final data = await client
+          .from('customers')
+          .select('credit_balance')
+          .eq('id', customerId)
+          .single();
+      final current = Decimal.parse(data['credit_balance'].toString());
+      final newBalance = amount >= current ? Decimal.zero : current - amount;
+      await client
+          .from('customers')
+          .update({'credit_balance': newBalance.toString()})
+          .eq('id', customerId);
       ref.invalidate(customersProvider);
     });
     return !state.hasError;

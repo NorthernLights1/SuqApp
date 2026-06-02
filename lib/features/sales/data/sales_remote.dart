@@ -92,6 +92,7 @@ class SalesRemote {
   // to ensure consistency. The DB schema enforces FK constraints.
 
   Future<Sale> createSale({
+    required String id,
     required String branchId,
     required String shopId,
     required String cashierId,
@@ -102,8 +103,6 @@ class SalesRemote {
     String? notes,
     String? discountReason,
   }) async {
-    final inventoryMode = await getInventoryMode(shopId);
-
     // Compute totals — subtotal is pre-discount, total is what customer pays
     final subtotal = items.fold(
         Decimal.zero, (sum, i) => sum + (i.unitPrice * i.quantity));
@@ -111,8 +110,9 @@ class SalesRemote {
         items.fold(Decimal.zero, (sum, i) => sum + i.discountAmount);
     final total = subtotal - totalDiscount;
 
-    // Insert sale
+    // Insert sale with client-generated id so offline and online paths share the same UUID
     final saleResult = await _client.from('sales').insert({
+      'id': id,
       'branch_id': branchId,
       'customer_id': customerId,
       'cashier_id': cashierId,
@@ -135,15 +135,15 @@ class SalesRemote {
         final stock = await getStockLevel(branchId, item.productId!);
 
         if (stock == null) {
-          invStatus = InventoryStatus.flagged;
-        } else if (inventoryMode == 'strict' && stock < item.quantity) {
+          await _client.from('sales').delete().eq('id', saleId);
+          throw Exception(
+              '"${item.productName}" is not in inventory. Add stock before selling.');
+        } else if (stock < item.quantity) {
           await _client.from('sales').delete().eq('id', saleId);
           throw Exception(
               'Not enough stock for "${item.productName}". Available: $stock ${item.measurementUnitAbbr ?? ''}');
         } else {
-          invStatus = stock >= item.quantity
-              ? InventoryStatus.tracked
-              : InventoryStatus.flagged;
+          invStatus = InventoryStatus.tracked;
         }
       }
 
@@ -172,8 +172,10 @@ class SalesRemote {
         });
       }
 
-      // Create inventory adjustment for tracked products
-      if (item.productId != null && invStatus != InventoryStatus.untracked) {
+      // Create inventory adjustment only for fully-tracked items (stock was sufficient).
+      // Flagged items are allowed through in flexible mode but we do not write
+      // a negative quantity — the flagged status on the sale item records the discrepancy.
+      if (item.productId != null && invStatus == InventoryStatus.tracked) {
         final stock = await getStockLevel(branchId, item.productId!) ??
             Decimal.zero;
         final newQty = stock - item.quantity;

@@ -81,7 +81,7 @@ class SalesScreen extends ConsumerWidget {
       lastDate: DateTime.now(),
     );
     if (picked != null) {
-      ref.read(selectedSalesDateProvider.notifier).state = picked;
+      ref.read(selectedSalesDateProvider.notifier).set(picked);
     }
   }
 

@@ -1,4 +1,8 @@
+import 'dart:async';
 import 'package:decimal/decimal.dart';
+import 'package:drift/drift.dart';
+import 'package:uuid/uuid.dart';
+import '../../../data/local/app_database.dart';
 import '../../../domain/models/product.dart';
 import '../../../domain/models/sale.dart';
 import '../data/sales_remote.dart';
@@ -39,28 +43,62 @@ abstract interface class ISalesRepository {
 }
 
 class SalesRepository implements ISalesRepository {
-  SalesRepository(this._remote);
+  SalesRepository(this._remote, this._db);
+
   final SalesRemote _remote;
+  final AppDatabase? _db;
+
+  // ── Products ───────────────────────────────────────────────────────────────
 
   @override
-  Future<List<Product>> searchProducts(String shopId, String query) =>
-      _remote.searchProducts(shopId, query);
+  Future<List<Product>> searchProducts(String shopId, String query) async {
+    if (query.trim().length < 2) return [];
+    if (_db != null) {
+      final rows = await _db.searchProducts(shopId, query.toLowerCase());
+      if (rows.isNotEmpty) return rows.map(_productFromRow).toList();
+    }
+    return _remote.searchProducts(shopId, query);
+  }
 
   @override
   Future<List<PaymentMethod>> getPaymentMethods(String shopId) =>
       _remote.getPaymentMethods(shopId);
 
+  // ── Customers ──────────────────────────────────────────────────────────────
+
   @override
-  Future<List<Customer>> searchCustomers(String shopId, String query) =>
-      _remote.searchCustomers(shopId, query);
+  Future<List<Customer>> searchCustomers(String shopId, String query) async {
+    if (query.trim().length < 2) return [];
+    if (_db != null) {
+      final rows = await _db.searchCustomers(shopId, query.toLowerCase());
+      if (rows.isNotEmpty) return rows.map(_customerFromRow).toList();
+    }
+    return _remote.searchCustomers(shopId, query);
+  }
 
   @override
   Future<Customer> createCustomer({
     required String shopId,
     required String name,
     String? phone,
-  }) =>
-      _remote.createCustomer(shopId: shopId, name: name, phone: phone);
+  }) async {
+    final customer =
+        await _remote.createCustomer(shopId: shopId, name: name, phone: phone);
+    if (_db != null) {
+      unawaited(_db.upsertCustomer(LocalCustomersCompanion(
+        id: Value(customer.id),
+        shopId: Value(shopId),
+        name: Value(customer.name),
+        phone: Value(customer.phone),
+        creditBalance: Value(customer.creditBalance),
+        updatedAt: Value(DateTime.now()),
+        isSynced: const Value(true),
+      )));
+    }
+    return customer;
+  }
+
+  // ── Create sale (local-first) ──────────────────────────────────────────────
 
   @override
   Future<Sale> createSale({
@@ -73,8 +111,50 @@ class SalesRepository implements ISalesRepository {
     bool isCredit = false,
     String? notes,
     String? discountReason,
-  }) =>
-      _remote.createSale(
+  }) async {
+    final saleId = const Uuid().v4();
+
+    final subtotal =
+        items.fold(Decimal.zero, (sum, i) => sum + (i.unitPrice * i.quantity));
+    final totalDiscount =
+        items.fold(Decimal.zero, (sum, i) => sum + i.discountAmount);
+    final total = subtotal - totalDiscount;
+    final now = DateTime.now();
+
+    // Pre-check local stock before writing anything.
+    // Aggregate quantities per product so that two cart lines for the same
+    // product are checked against their combined total, not each individually.
+    if (_db != null) {
+      final neededQty = <String, Decimal>{};
+      final productNames = <String, String>{};
+      final unitAbbrs = <String, String?>{};
+      for (final item in items) {
+        if (item.productId == null) continue;
+        neededQty[item.productId!] =
+            (neededQty[item.productId!] ?? Decimal.zero) + item.quantity;
+        productNames.putIfAbsent(item.productId!, () => item.productName);
+        unitAbbrs.putIfAbsent(item.productId!, () => item.measurementUnitAbbr);
+      }
+      for (final entry in neededQty.entries) {
+        final stock = await _db.getStockLevel(branchId, entry.key);
+        final name = productNames[entry.key]!;
+        if (stock == null) {
+          throw Exception(
+              '"$name" is not in inventory. Add stock before selling.');
+        }
+        if (stock < entry.value) {
+          final abbr = unitAbbrs[entry.key];
+          throw Exception(
+              'Not enough stock for "$name". Available: $stock${abbr != null ? ' $abbr' : ''}');
+        }
+      }
+    }
+
+    // When DB is available: write locally first (offline-safe), then sync to Supabase.
+    // When DB is null (web): write directly to Supabase and return its result.
+    if (_db == null) {
+      return _remote.createSale(
+        id: saleId,
         branchId: branchId,
         shopId: shopId,
         cashierId: cashierId,
@@ -85,6 +165,78 @@ class SalesRepository implements ISalesRepository {
         notes: notes,
         discountReason: discountReason,
       );
+    }
+
+    final itemCompanions = items.map((item) {
+      InventoryStatus status = InventoryStatus.untracked;
+      if (item.productId != null) status = InventoryStatus.tracked;
+      return LocalSaleItemsCompanion(
+        id: Value(const Uuid().v4()),
+        saleId: Value(saleId),
+        productId: Value(item.productId),
+        productNameSnapshot: Value(item.productName),
+        measurementUnitId: Value(item.measurementUnitId),
+        quantity: Value(item.quantity),
+        unitPrice: Value(item.unitPrice),
+        discountAmount: Value(item.discountAmount),
+        total: Value(item.lineTotal),
+        inventoryStatus: Value(status.name),
+        costPriceSnapshot: Value(item.costPrice),
+      );
+    }).toList();
+
+    final saleRow = await _db.insertSaleWithItems(
+      LocalSalesCompanion(
+        id: Value(saleId),
+        branchId: Value(branchId),
+        customerId: Value(customerId),
+        cashierId: Value(cashierId),
+        paymentMethodId: Value(paymentMethodId),
+        subtotal: Value(subtotal),
+        discountAmount: Value(totalDiscount),
+        total: Value(total),
+        status: const Value('completed'),
+        isCredit: Value(isCredit),
+        notes: Value(notes),
+        createdAt: Value(now),
+        isSynced: const Value(false),
+      ),
+      itemCompanions,
+    );
+
+    // Update local stock levels
+    for (final item in items) {
+      if (item.productId == null) continue;
+      final stock = await _db.getStockLevel(branchId, item.productId!);
+      if (stock != null) {
+        await _db.adjustStock(branchId, item.productId!, stock - item.quantity);
+      }
+    }
+
+    // Fire-and-forget push to Supabase; SyncService handles retries on failure
+    unawaited(
+      _remote
+          .createSale(
+            id: saleId,
+            branchId: branchId,
+            shopId: shopId,
+            cashierId: cashierId,
+            paymentMethodId: paymentMethodId,
+            items: items,
+            customerId: customerId,
+            isCredit: isCredit,
+            notes: notes,
+            discountReason: discountReason,
+          )
+          .then((_) => _db.markSaleSynced(saleId))
+          .catchError((_) {}),
+    );
+
+    final itemRows = await _db.getSaleItems(saleId);
+    return _saleFromRows(saleRow, itemRows);
+  }
+
+  // ── Void sale ──────────────────────────────────────────────────────────────
 
   @override
   Future<void> voidSale({
@@ -92,26 +244,108 @@ class SalesRepository implements ISalesRepository {
     required String voidedBy,
     required String reason,
     required String branchId,
-  }) =>
-      _remote.voidSale(
-        saleId: saleId,
-        voidedBy: voidedBy,
-        reason: reason,
-        branchId: branchId,
-      );
+  }) async {
+    // Void requires connectivity — inventory reversal must reach the server
+    await _remote.voidSale(
+        saleId: saleId, voidedBy: voidedBy, reason: reason, branchId: branchId);
+    await _db?.markSaleVoided(saleId, reason, voidedBy);
+  }
+
+  // ── Reads ──────────────────────────────────────────────────────────────────
 
   @override
-  Future<Sale> getSale(String saleId) => _remote.getSale(saleId);
+  Future<Sale> getSale(String saleId) async {
+    if (_db != null) {
+      final row = await _db.getSale(saleId);
+      if (row != null) {
+        final items = await _db.getSaleItems(saleId);
+        return _saleFromRows(row, items);
+      }
+    }
+    return _remote.getSale(saleId);
+  }
 
   @override
   Future<List<Sale>> getSalesForBranch({
     required String branchId,
     required DateTime from,
     required DateTime to,
-  }) =>
-      _remote.getSalesForBranch(branchId: branchId, from: from, to: to);
+  }) async {
+    if (_db != null) {
+      final rows = await _db.getSalesByBranch(branchId, from, to);
+      if (rows.isNotEmpty) {
+        final result = <Sale>[];
+        for (final row in rows) {
+          final items = await _db.getSaleItems(row.id);
+          result.add(_saleFromRows(row, items));
+        }
+        return result;
+      }
+    }
+    return _remote.getSalesForBranch(branchId: branchId, from: from, to: to);
+  }
 
   @override
-  Future<Map<String, Decimal>> getTodayTotals(String branchId) =>
-      _remote.getTodayTotals(branchId);
+  Future<Map<String, Decimal>> getTodayTotals(String branchId) async {
+    if (_db != null) {
+      final local = await _db.getTodayTotals(branchId, DateTime.now());
+      if (local['count']! > Decimal.zero) return local;
+    }
+    return _remote.getTodayTotals(branchId);
+  }
+
+  // ── Mappers ────────────────────────────────────────────────────────────────
+
+  Product _productFromRow(ProductRow r) => Product(
+        id: r.id,
+        shopId: r.shopId,
+        name: r.name,
+        categoryId: r.categoryId,
+        description: r.description,
+        measurementUnitId: r.measurementUnitId,
+        measurementUnitAbbr: r.measurementUnitAbbr,
+        lowStockThreshold: r.lowStockThreshold,
+        sellingPrice: r.sellingPrice,
+        costPrice: r.costPrice,
+        isActive: r.isActive,
+      );
+
+  Customer _customerFromRow(CustomerRow r) => Customer(
+        id: r.id,
+        name: r.name,
+        phone: r.phone,
+        creditBalance: r.creditBalance,
+      );
+
+  Sale _saleFromRows(SaleRow r, List<SaleItemRow> items) => Sale(
+        id: r.id,
+        branchId: r.branchId,
+        customerId: r.customerId,
+        cashierId: r.cashierId,
+        paymentMethodId: r.paymentMethodId,
+        subtotal: r.subtotal,
+        discountAmount: r.discountAmount,
+        total: r.total,
+        status: SaleStatus.values.byName(r.status),
+        voidReason: r.voidReason,
+        voidedBy: r.voidedBy,
+        voidedAt: r.voidedAt,
+        isCredit: r.isCredit,
+        notes: r.notes,
+        createdAt: r.createdAt,
+        items: items.map(_saleItemFromRow).toList(),
+      );
+
+  SaleItem _saleItemFromRow(SaleItemRow r) => SaleItem(
+        id: r.id,
+        saleId: r.saleId,
+        productId: r.productId,
+        productNameSnapshot: r.productNameSnapshot,
+        measurementUnitId: r.measurementUnitId,
+        quantity: r.quantity,
+        unitPrice: r.unitPrice,
+        discountAmount: r.discountAmount,
+        total: r.total,
+        inventoryStatus: InventoryStatus.values.byName(r.inventoryStatus),
+      );
 }

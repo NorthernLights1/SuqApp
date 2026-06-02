@@ -12,6 +12,9 @@ class ReportsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final period = ref.watch(reportPeriodProvider);
+    final customRange = ref.watch(reportCustomRangeProvider);
+    final categoryFilter = ref.watch(reportCategoryFilterProvider);
+    final categories = ref.watch(productCategoriesProvider);
     final summary = ref.watch(reportSummaryProvider);
     final stock = ref.watch(stockLevelsProvider);
 
@@ -20,21 +23,149 @@ class ReportsScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Period selector
+          // ── Period selector ────────────────────────────────────────────
           SegmentedButton<ReportPeriod>(
             segments: const [
               ButtonSegment(value: ReportPeriod.today, label: Text('Today')),
-              ButtonSegment(value: ReportPeriod.week, label: Text('This Week')),
-              ButtonSegment(value: ReportPeriod.month, label: Text('This Month')),
+              ButtonSegment(value: ReportPeriod.week,  label: Text('Week')),
+              ButtonSegment(value: ReportPeriod.month, label: Text('Month')),
+              ButtonSegment(value: ReportPeriod.year,  label: Text('Year')),
             ],
-            selected: {period},
-            onSelectionChanged: (s) =>
-                ref.read(reportPeriodProvider.notifier).state = s.first,
+            selected: {if (period != ReportPeriod.custom) period else ReportPeriod.today},
+            showSelectedIcon: false,
+            onSelectionChanged: (s) {
+              ref.read(reportPeriodProvider.notifier).set(s.first);
+              ref.read(reportCustomRangeProvider.notifier).set(null);
+            },
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 8),
+
+          // ── Custom date range ──────────────────────────────────────────
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.date_range_outlined, size: 16),
+                  label: Text(
+                    period == ReportPeriod.custom && customRange != null
+                        ? '${_fmtDate(customRange.start)} – ${_fmtDate(customRange.end)}'
+                        : 'Custom Range',
+                    style: AppTextStyles.bodySmall,
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: period == ReportPeriod.custom
+                        ? AppColors.primary
+                        : AppColors.textSecondary,
+                    side: BorderSide(
+                      color: period == ReportPeriod.custom
+                          ? AppColors.primary
+                          : AppColors.cardBorder,
+                    ),
+                  ),
+                  onPressed: () async {
+                    final picked = await showDateRangePicker(
+                      context: context,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                      initialDateRange: customRange,
+                    );
+                    if (picked == null) return;
+                    ref.read(reportCustomRangeProvider.notifier).set(picked);
+                    ref.read(reportPeriodProvider.notifier).set(ReportPeriod.custom);
+                  },
+                ),
+              ),
+              if (period == ReportPeriod.custom) ...[
+                const SizedBox(width: 8),
+                IconButton(
+                  icon: const Icon(Icons.close, size: 18),
+                  tooltip: 'Clear custom range',
+                  onPressed: () {
+                    ref.read(reportPeriodProvider.notifier).set(ReportPeriod.today);
+                    ref.read(reportCustomRangeProvider.notifier).set(null);
+                  },
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 12),
+
+          // ── Category filter ────────────────────────────────────────────
+          categories.when(
+            data: (cats) {
+              if (cats.isEmpty) return const SizedBox.shrink();
+              return SizedBox(
+                height: 36,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: FilterChip(
+                        label: const Text('All'),
+                        selected: categoryFilter == null,
+                        onSelected: (_) =>
+                            ref.read(reportCategoryFilterProvider.notifier).set(null),
+                        selectedColor: AppColors.primaryLight,
+                        checkmarkColor: AppColors.primary,
+                      ),
+                    ),
+                    ...cats.map((c) => Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: FilterChip(
+                            label: Text(c.name),
+                            selected: categoryFilter == c.id,
+                            onSelected: (_) => ref
+                                .read(reportCategoryFilterProvider.notifier)
+                                .set(categoryFilter == c.id ? null : c.id),
+                            selectedColor: AppColors.primaryLight,
+                            checkmarkColor: AppColors.primary,
+                          ),
+                        )),
+                  ],
+                ),
+              );
+            },
+            loading: () => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Summary ────────────────────────────────────────────────────
+          if (categoryFilter != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: categories.when(
+                data: (cats) {
+                  final cat = cats.where((c) => c.id == categoryFilter).firstOrNull;
+                  if (cat == null) return const SizedBox.shrink();
+                  return Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryLight,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.filter_list,
+                            size: 14, color: AppColors.primary),
+                        const SizedBox(width: 6),
+                        Text('Filtered: ${cat.name}',
+                            style: AppTextStyles.label
+                                .copyWith(color: AppColors.primary)),
+                      ],
+                    ),
+                  );
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (_, _) => const SizedBox.shrink(),
+              ),
+            ),
 
           summary.when(
-            data: (s) => _SummaryBody(summary: s),
+            data: (s) => _SummaryBody(summary: s, isCategoryFiltered: categoryFilter != null),
             loading: () => const Padding(
               padding: EdgeInsets.symmetric(vertical: 40),
               child: Center(child: CircularProgressIndicator()),
@@ -87,11 +218,17 @@ class ReportsScreen extends ConsumerWidget {
       ),
     );
   }
+
+  String _fmtDate(DateTime d) {
+    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${m[d.month - 1]} ${d.day}';
+  }
 }
 
 class _SummaryBody extends StatelessWidget {
-  const _SummaryBody({required this.summary});
+  const _SummaryBody({required this.summary, this.isCategoryFiltered = false});
   final ReportSummary summary;
+  final bool isCategoryFiltered;
 
   @override
   Widget build(BuildContext context) {
@@ -102,7 +239,7 @@ class _SummaryBody extends StatelessWidget {
         Text('Sales', style: AppTextStyles.headline3),
         const SizedBox(height: 8),
         _StatRow(
-          label: 'Revenue',
+          label: isCategoryFiltered ? 'Category Revenue' : 'Revenue',
           value: 'ETB ${summary.salesTotal.toStringAsFixed(2)}',
           icon: Icons.trending_up,
           color: AppColors.success,

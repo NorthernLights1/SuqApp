@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../domain/models/sale.dart';
@@ -189,7 +190,7 @@ class _ProductSearchState extends ConsumerState<_ProductSearch> {
   void _onChanged(String v) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () {
-      ref.read(productSearchQueryProvider.notifier).state = v;
+      ref.read(productSearchQueryProvider.notifier).set(v);
     });
   }
 
@@ -246,7 +247,7 @@ class _ProductSearchState extends ConsumerState<_ProductSearch> {
   void _addToCart(BuildContext context, WidgetRef ref, product) {
     _debounce?.cancel();
     widget.searchCtrl.clear();
-    ref.read(productSearchQueryProvider.notifier).state = '';
+    ref.read(productSearchQueryProvider.notifier).set('');
     ref.read(cartProvider.notifier).addItem(CartItem(
       productId: product.id,
       productName: product.name,
@@ -353,6 +354,7 @@ class _CartItemTileState extends State<_CartItemTile> {
             child: TextField(
               controller: _qtyCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
               textAlign: TextAlign.center,
               decoration: const InputDecoration(
                   labelText: 'Qty', isDense: true, contentPadding: EdgeInsets.all(8)),
@@ -365,6 +367,7 @@ class _CartItemTileState extends State<_CartItemTile> {
             child: TextField(
               controller: _priceCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
               textAlign: TextAlign.end,
               decoration: const InputDecoration(
                   labelText: 'Price', isDense: true, contentPadding: EdgeInsets.all(8)),
@@ -457,7 +460,7 @@ class _SaleFooter extends ConsumerWidget {
                             ))
                         .toList(),
                     onChanged: (m) =>
-                        ref.read(selectedPaymentMethodProvider.notifier).state = m,
+                        ref.read(selectedPaymentMethodProvider.notifier).set(m),
                   ),
             loading: () => const LinearProgressIndicator(),
             error: (e, _) => const Text('Could not load payment methods'),
@@ -569,7 +572,7 @@ class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> 
           trailing: IconButton(
             icon: const Icon(Icons.close, size: 18, color: AppColors.textSecondary),
             onPressed: () {
-              ref.read(selectedCustomerProvider.notifier).state = null;
+              ref.read(selectedCustomerProvider.notifier).set(null);
               setState(() => _adding = false);
             },
           ),
@@ -605,10 +608,11 @@ class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> 
                   isDense: true,
                 ),
                 onChanged: (v) {
+                    setState(() {});
                     _searchDebounce?.cancel();
                     _searchDebounce = Timer(
                       const Duration(milliseconds: 350),
-                      () => ref.read(customerSearchQueryProvider.notifier).state = v,
+                      () => ref.read(customerSearchQueryProvider.notifier).set(v),
                     );
                   },
               ),
@@ -617,7 +621,7 @@ class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> 
               onPressed: () => setState(() {
                 _adding = true;
                 _searchCtrl.clear();
-                ref.read(customerSearchQueryProvider.notifier).state = '';
+                ref.read(customerSearchQueryProvider.notifier).set('');
               }),
               child: const Text('+ New'),
             ),
@@ -626,9 +630,9 @@ class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> 
         if (_searchCtrl.text.length >= 2)
           _CustomerResults(
             onSelect: (c) {
-              ref.read(selectedCustomerProvider.notifier).state = c;
+              ref.read(selectedCustomerProvider.notifier).set(c);
               _searchCtrl.clear();
-              ref.read(customerSearchQueryProvider.notifier).state = '';
+              ref.read(customerSearchQueryProvider.notifier).set('');
             },
           ),
       ],
@@ -642,7 +646,7 @@ class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> 
           phone: _phoneCtrl.text.trim().isEmpty ? null : _phoneCtrl.text.trim(),
         );
     if (customer != null && mounted) {
-      ref.read(selectedCustomerProvider.notifier).state = customer;
+      ref.read(selectedCustomerProvider.notifier).set(customer);
       setState(() {
         _adding = false;
         _nameCtrl.clear();

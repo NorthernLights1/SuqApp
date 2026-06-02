@@ -35,11 +35,15 @@ class OnboardingState {
       );
 }
 
-class OnboardingNotifier extends StateNotifier<OnboardingState> {
-  OnboardingNotifier(this._client, this._userId) : super(const OnboardingState());
+class OnboardingNotifier extends Notifier<OnboardingState> {
+  @override
+  OnboardingState build() {
+    ref.watch(currentUserIdProvider); // rebuild if user changes
+    return const OnboardingState();
+  }
 
-  final SupabaseClient _client;
-  final String _userId;
+  SupabaseClient get _client => ref.read(supabaseClientProvider);
+  String get _userId => ref.read(currentUserIdProvider)!;
 
   Future<bool> createShop(String name) async {
     state = state.copyWith(loading: true, error: null);
@@ -103,7 +107,7 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 
   Future<void> _writeDefaultSettings(String shopId, String branchId) async {
     final defaults = [
-      {'key': 'inventory_mode', 'value': '"flexible"'},
+      {'key': 'inventory_mode', 'value': '"strict"'},
       {'key': 'sync_warning_hours', 'value': '12'},
       {'key': 'low_stock_notify', 'value': 'true'},
       {'key': 'currency_code', 'value': '"ETB"'},
@@ -122,8 +126,4 @@ class OnboardingNotifier extends StateNotifier<OnboardingState> {
 }
 
 final onboardingProvider =
-    StateNotifierProvider<OnboardingNotifier, OnboardingState>((ref) {
-  final userId = ref.watch(currentUserIdProvider)!;
-  final client = ref.read(supabaseClientProvider);
-  return OnboardingNotifier(client, userId);
-});
+    NotifierProvider<OnboardingNotifier, OnboardingState>(OnboardingNotifier.new);

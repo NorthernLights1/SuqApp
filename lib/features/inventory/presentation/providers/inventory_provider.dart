@@ -192,8 +192,74 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
     });
     return !state.hasError;
   }
+
+  Future<bool> addStock({
+    required String productId,
+    required Decimal quantityToAdd,
+    DateTime? expiryDate,
+  }) async {
+    final userId = ref.read(currentUserIdProvider);
+    final branches = await ref.read(currentShopBranchesProvider.future);
+    final branch = ref.read(activeBranchProvider) ??
+        (branches.isNotEmpty ? branches.first : null);
+    if (userId == null || branch == null) return false;
+
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(inventoryRemoteProvider).addStock(
+            branchId: branch.id,
+            productId: productId,
+            quantityToAdd: quantityToAdd,
+            adjustedBy: userId,
+            expiryDate: expiryDate,
+          );
+      ref.invalidate(stockLevelsProvider);
+    });
+    return !state.hasError;
+  }
+
+  Future<bool> correctStock({
+    required String productId,
+    required Decimal newQuantity,
+    required Decimal currentQuantity,
+    required String notes,
+    DateTime? expiryDate,
+  }) async {
+    final userId = ref.read(currentUserIdProvider);
+    final branches = await ref.read(currentShopBranchesProvider.future);
+    final branch = ref.read(activeBranchProvider) ??
+        (branches.isNotEmpty ? branches.first : null);
+    if (userId == null || branch == null) return false;
+
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(inventoryRemoteProvider).correctStock(
+            branchId: branch.id,
+            productId: productId,
+            newQuantity: newQuantity,
+            currentQuantity: currentQuantity,
+            adjustedBy: userId,
+            notes: notes,
+            expiryDate: expiryDate,
+          );
+      ref.invalidate(stockLevelsProvider);
+    });
+    return !state.hasError;
+  }
 }
 
 final stockAdjustmentProvider =
     AsyncNotifierProvider<StockAdjustmentNotifier, void>(
         StockAdjustmentNotifier.new);
+
+// ─── Inventory category filter ─────────────────────────────────────────────
+
+class _InventoryCategoryNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+  void set(String? id) => state = id;
+}
+
+final inventoryCategoryFilterProvider =
+    NotifierProvider<_InventoryCategoryNotifier, String?>(
+        _InventoryCategoryNotifier.new);

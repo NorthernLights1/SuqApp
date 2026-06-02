@@ -1,11 +1,20 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_text_field.dart';
 import '../providers/customers_provider.dart';
+
+const _months = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+];
+
+String _fmtDate(DateTime dt) =>
+    '${_months[dt.month - 1]} ${dt.day}, ${dt.year}';
 
 class CustomersScreen extends ConsumerWidget {
   const CustomersScreen({super.key});
@@ -110,6 +119,7 @@ class CustomerDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sales = ref.watch(customerSalesProvider(customer.id));
+    final creditSales = ref.watch(customerCreditSalesProvider(customer.id));
 
     return Scaffold(
       appBar: AppBar(
@@ -127,7 +137,7 @@ class CustomerDetailScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Credit card
+          // ── Credit balance summary ─────────────────────────────────────
           if (customer.hasDebt)
             Card(
               color: AppColors.warning.withValues(alpha: 0.08),
@@ -142,8 +152,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Outstanding Credit',
-                              style: AppTextStyles.label),
+                          Text('Total Outstanding', style: AppTextStyles.label),
                           Text(
                             'ETB ${customer.creditBalance.toStringAsFixed(2)}',
                             style: AppTextStyles.amount
@@ -153,8 +162,13 @@ class CustomerDetailScreen extends ConsumerWidget {
                       ),
                     ),
                     TextButton(
-                      onPressed: () => _settleDebt(context, ref),
-                      child: const Text('Mark Settled'),
+                      onPressed: () => showDialog(
+                        context: context,
+                        builder: (_) =>
+                            _ReceivePaymentDialog(customer: customer),
+                      ),
+                      child: const Text('Receive\nPayment',
+                          textAlign: TextAlign.center),
                     ),
                   ],
                 ),
@@ -171,10 +185,45 @@ class CustomerDetailScreen extends ConsumerWidget {
             const Divider(),
           ],
 
+          // ── Unsettled credit sales ─────────────────────────────────────
+          const SizedBox(height: 16),
+          Text('Outstanding Credit Sales', style: AppTextStyles.headline3),
+          const SizedBox(height: 4),
+          Text(
+            'Settle individual sales when the customer pays for them.',
+            style: AppTextStyles.bodySmall,
+          ),
           const SizedBox(height: 8),
-          Text('Recent Sales', style: AppTextStyles.headline3),
-          const SizedBox(height: 8),
+          creditSales.when(
+            data: (list) => list.isEmpty
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.check_circle_outline,
+                            color: AppColors.success, size: 18),
+                        const SizedBox(width: 6),
+                        Text('No unsettled credit sales',
+                            style: AppTextStyles.bodySmall),
+                      ],
+                    ),
+                  )
+                : Column(
+                    children: list.map((s) => _CreditSaleTile(
+                      creditSale: s,
+                      customerId: customer.id,
+                    )).toList(),
+                  ),
+            loading: () => const LinearProgressIndicator(),
+            error: (e, _) => const SizedBox.shrink(),
+          ),
 
+          // ── All sales history ──────────────────────────────────────────
+          const SizedBox(height: 16),
+          const Divider(),
+          const SizedBox(height: 8),
+          Text('All Sales', style: AppTextStyles.headline3),
+          const SizedBox(height: 8),
           sales.when(
             data: (list) => list.isEmpty
                 ? Padding(
@@ -183,30 +232,68 @@ class CustomerDetailScreen extends ConsumerWidget {
                         style: AppTextStyles.bodySmall),
                   )
                 : Column(
-                    children: list
-                        .map((s) => ListTile(
-                              contentPadding: EdgeInsets.zero,
-                              leading: Icon(
-                                s['status'] == 'voided'
-                                    ? Icons.cancel_outlined
-                                    : s['is_credit'] == true
-                                        ? Icons.credit_card_outlined
-                                        : Icons.receipt_outlined,
-                                color: s['status'] == 'voided'
-                                    ? AppColors.error
-                                    : AppColors.primary,
+                    children: list.map((s) {
+                      final isVoided = s['status'] == 'voided';
+                      final isCredit = s['is_credit'] == true;
+                      final isSettled = s['credit_settled_at'] != null;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          isVoided
+                              ? Icons.cancel_outlined
+                              : isCredit
+                                  ? Icons.credit_card_outlined
+                                  : Icons.receipt_outlined,
+                          color: isVoided
+                              ? AppColors.error
+                              : isCredit && !isSettled
+                                  ? AppColors.warning
+                                  : AppColors.primary,
+                        ),
+                        title: Text(
+                          'ETB ${Decimal.parse(s['total'].toString()).toStringAsFixed(2)}',
+                          style: AppTextStyles.body,
+                        ),
+                        subtitle: Row(
+                          children: [
+                            Text(
+                              _fmtDate(DateTime.parse(
+                                  s['created_at'] as String)),
+                              style: AppTextStyles.bodySmall,
+                            ),
+                            if (isCredit && isSettled) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success
+                                      .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text('Settled',
+                                    style: AppTextStyles.label.copyWith(
+                                        color: AppColors.success)),
                               ),
-                              title: Text(
-                                'ETB ${Decimal.parse(s['total'].toString()).toStringAsFixed(2)}',
-                                style: AppTextStyles.body,
+                            ] else if (isCredit && !isSettled) ...[
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: AppColors.warning
+                                      .withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text('Credit',
+                                    style: AppTextStyles.label.copyWith(
+                                        color: AppColors.warning)),
                               ),
-                              subtitle: Text(
-                                _formatDate(
-                                    DateTime.parse(s['created_at'] as String)),
-                                style: AppTextStyles.bodySmall,
-                              ),
-                            ))
-                        .toList(),
+                            ],
+                          ],
+                        ),
+                      );
+                    }).toList(),
                   ),
             loading: () => const LinearProgressIndicator(),
             error: (e, st) => const SizedBox.shrink(),
@@ -215,18 +302,60 @@ class CustomerDetailScreen extends ConsumerWidget {
       ),
     );
   }
+}
 
-  void _settleDebt(BuildContext context, WidgetRef ref) async {
-    final ok = await ref
-        .read(customerFormProvider.notifier)
-        .settleDebt(customer.id);
-    if (context.mounted && ok) Navigator.pop(context);
+// Per-sale settle tile
+class _CreditSaleTile extends ConsumerWidget {
+  const _CreditSaleTile({required this.creditSale, required this.customerId});
+  final CreditSale creditSale;
+  final String customerId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final loading = ref.watch(customerFormProvider).isLoading;
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: const Icon(Icons.credit_card_outlined,
+            color: AppColors.warning),
+        title: Text(
+          'ETB ${creditSale.total.toStringAsFixed(2)}',
+          style: AppTextStyles.body
+              .copyWith(fontWeight: FontWeight.w600, color: AppColors.warning),
+        ),
+        subtitle:
+            Text(_fmtDate(creditSale.createdAt), style: AppTextStyles.bodySmall),
+        trailing: loading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2))
+            : FilledButton(
+                onPressed: () => _settle(context, ref),
+                style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 12, vertical: 0),
+                    minimumSize: const Size(0, 32)),
+                child: const Text('Settle'),
+              ),
+      ),
+    );
   }
 
-  String _formatDate(DateTime dt) {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun',
-        'Jul','Aug','Sep','Oct','Nov','Dec'];
-    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+  Future<void> _settle(BuildContext context, WidgetRef ref) async {
+    final ok = await ref.read(customerFormProvider.notifier).settleCreditSale(
+          customerId: customerId,
+          saleId: creditSale.id,
+          saleTotal: creditSale.total,
+        );
+    if (!context.mounted) return;
+    if (!ok) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Failed to settle. Try again.'),
+        backgroundColor: AppColors.error,
+      ));
+    }
   }
 }
 
@@ -314,6 +443,102 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
           ),
         ),
       ),
+    );
+  }
+}
+
+// ─── Receive Payment Dialog ───────────────────────────────────────────────────
+
+class _ReceivePaymentDialog extends ConsumerStatefulWidget {
+  const _ReceivePaymentDialog({required this.customer});
+  final Customer customer;
+
+  @override
+  ConsumerState<_ReceivePaymentDialog> createState() =>
+      _ReceivePaymentDialogState();
+}
+
+class _ReceivePaymentDialogState extends ConsumerState<_ReceivePaymentDialog> {
+  late final _amountCtrl = TextEditingController(
+      text: widget.customer.creditBalance.toStringAsFixed(2));
+
+  @override
+  void dispose() {
+    _amountCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _apply() async {
+    final amount = Decimal.tryParse(_amountCtrl.text.trim());
+    if (amount == null || amount <= Decimal.zero) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a valid amount')),
+      );
+      return;
+    }
+    final ok = await ref
+        .read(customerFormProvider.notifier)
+        .receivePayment(widget.customer.id, amount);
+    if (mounted && ok) Navigator.pop(context);
+    if (mounted && !ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to record payment'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final loading = ref.watch(customerFormProvider).isLoading;
+    return AlertDialog(
+      title: const Text('Receive Payment'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Outstanding: ETB ${widget.customer.creditBalance.toStringAsFixed(2)}',
+            style: AppTextStyles.bodySmall,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Pre-filled with full balance. Change to record a partial payment.',
+            style: AppTextStyles.label,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _amountCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+            ],
+            decoration: const InputDecoration(
+              labelText: 'Amount paid (ETB)',
+              isDense: true,
+            ),
+            autofocus: true,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: loading ? null : () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        loading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : FilledButton(
+                onPressed: _apply,
+                child: const Text('Apply'),
+              ),
+      ],
     );
   }
 }

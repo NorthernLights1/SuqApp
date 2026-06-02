@@ -137,6 +137,71 @@ class InventoryRemote {
     });
   }
 
+  // Additive restock — type is 'opening_stock' for first entry, 'restock' otherwise.
+  Future<void> addStock({
+    required String branchId,
+    required String productId,
+    required Decimal quantityToAdd,
+    required String adjustedBy,
+    DateTime? expiryDate,
+  }) async {
+    final existing = await _client
+        .from('inventory')
+        .select('quantity')
+        .eq('branch_id', branchId)
+        .eq('product_id', productId)
+        .maybeSingle();
+    final before = existing != null
+        ? Decimal.parse(existing['quantity'].toString())
+        : Decimal.zero;
+    final after = before + quantityToAdd;
+    await _client.from('inventory').upsert({
+      'branch_id': branchId,
+      'product_id': productId,
+      'quantity': after.toString(),
+      if (expiryDate != null)
+        'expiry_date': expiryDate.toIso8601String().substring(0, 10),
+      'updated_at': DateTime.now().toIso8601String(),
+    });
+    await _client.from('inventory_adjustments').insert({
+      'branch_id': branchId,
+      'product_id': productId,
+      'adjusted_by': adjustedBy,
+      'type': existing == null ? 'opening_stock' : 'restock',
+      'quantity_before': before.toString(),
+      'quantity_after': after.toString(),
+    });
+  }
+
+  // Owner-only absolute correction — requires prior password verification by caller.
+  Future<void> correctStock({
+    required String branchId,
+    required String productId,
+    required Decimal newQuantity,
+    required Decimal currentQuantity,
+    required String adjustedBy,
+    required String notes,
+    DateTime? expiryDate,
+  }) async {
+    await _client.from('inventory').upsert({
+      'branch_id': branchId,
+      'product_id': productId,
+      'quantity': newQuantity.toString(),
+      if (expiryDate != null)
+        'expiry_date': expiryDate.toIso8601String().substring(0, 10),
+      'updated_at': DateTime.now().toIso8601String(),
+    });
+    await _client.from('inventory_adjustments').insert({
+      'branch_id': branchId,
+      'product_id': productId,
+      'adjusted_by': adjustedBy,
+      'type': 'manual',
+      'quantity_before': currentQuantity.toString(),
+      'quantity_after': newQuantity.toString(),
+      'notes': notes,
+    });
+  }
+
   // ─── Measurement units ─────────────────────────────────────────────────────
 
   Future<List<MeasurementUnit>> getMeasurementUnits(String shopId) async {

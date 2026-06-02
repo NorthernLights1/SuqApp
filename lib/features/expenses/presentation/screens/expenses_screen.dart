@@ -1,5 +1,6 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -108,7 +109,7 @@ class ExpensesScreen extends ConsumerWidget {
       lastDate: DateTime.now(),
     );
     if (picked != null) {
-      ref.read(selectedExpenseDateProvider.notifier).state = picked;
+      ref.read(selectedExpenseDateProvider.notifier).set(picked);
     }
   }
 
@@ -238,6 +239,9 @@ class _RecordExpenseScreenState extends ConsumerState<RecordExpenseScreen> {
                 label: 'Amount (ETB)',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [
+                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                ],
                 prefixIcon: const Icon(Icons.attach_money),
                 textInputAction: TextInputAction.next,
                 autofocus: true,

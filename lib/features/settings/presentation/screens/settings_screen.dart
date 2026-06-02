@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../domain/models/shop.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
-import '../providers/settings_provider.dart';
+import '../providers/settings_provider.dart' show branchNameNotifierProvider;
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -12,7 +13,6 @@ class SettingsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final shop = ref.watch(currentShopProvider);
     final branches = ref.watch(currentShopBranchesProvider);
-    final modeAsync = ref.watch(inventoryModeProvider);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
@@ -38,24 +38,16 @@ class SettingsScreen extends ConsumerWidget {
                         color: AppColors.textSecondary),
                     title: Text(list.first.name, style: AppTextStyles.body),
                     subtitle: Text('Branch', style: AppTextStyles.bodySmall),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.edit_outlined, size: 18,
+                          color: AppColors.textSecondary),
+                      tooltip: 'Edit branch name',
+                      onPressed: () => _showEditBranchDialog(
+                          context, ref, list.first),
+                    ),
                   ),
             loading: () => const SizedBox.shrink(),
             error: (_, _) => const SizedBox.shrink(),
-          ),
-          const Divider(),
-
-          // ── Inventory ────────────────────────────────────────────────────
-          _SectionHeader(label: 'Inventory'),
-          modeAsync.when(
-            data: (mode) => _InventoryModeTile(currentMode: mode),
-            loading: () => const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: LinearProgressIndicator(),
-            ),
-            error: (e, _) => ListTile(
-              title: Text('Could not load setting: $e',
-                  style: AppTextStyles.bodySmall),
-            ),
           ),
           const Divider(),
 
@@ -72,6 +64,21 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+Future<void> _showEditBranchDialog(
+    BuildContext context, WidgetRef ref, Branch branch) async {
+  final result = await showDialog<String>(
+    context: context,
+    builder: (_) => _EditBranchDialog(initialName: branch.name),
+  );
+  if (result == null || !context.mounted) return;
+  await ref.read(branchNameNotifierProvider.notifier).rename(branch.id, result);
+  if (!context.mounted) return;
+  final state = ref.read(branchNameNotifierProvider);
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text(state.hasError ? 'Failed to update branch name' : 'Branch name updated'),
+  ));
 }
 
 class _SectionHeader extends StatelessWidget {
@@ -94,36 +101,57 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _InventoryModeTile extends ConsumerWidget {
-  const _InventoryModeTile({required this.currentMode});
-  final String currentMode;
+class _EditBranchDialog extends StatefulWidget {
+  const _EditBranchDialog({required this.initialName});
+  final String initialName;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isStrict = currentMode == 'strict';
-    final saving = ref.watch(inventoryModeNotifierProvider).isLoading;
+  State<_EditBranchDialog> createState() => _EditBranchDialogState();
+}
 
-    return Column(
-      children: [
-        SwitchListTile(
-          secondary: const Icon(Icons.inventory_2_outlined,
-              color: AppColors.textSecondary),
-          title: Text('Strict Inventory Mode', style: AppTextStyles.body),
-          subtitle: Text(
-            isStrict
-                ? 'Sales blocked when stock is insufficient'
-                : 'Sales allowed even when stock is low',
-            style: AppTextStyles.bodySmall,
-          ),
-          value: isStrict,
-          activeThumbColor: AppColors.primary,
-          onChanged: saving
-              ? null
-              : (v) {
-                  ref
-                      .read(inventoryModeNotifierProvider.notifier)
-                      .setMode(v ? 'strict' : 'flexible');
-                },
+class _EditBranchDialogState extends State<_EditBranchDialog> {
+  late final TextEditingController _ctrl;
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.initialName);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit Branch Name'),
+      content: Form(
+        key: _formKey,
+        child: TextFormField(
+          controller: _ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Branch Name'),
+          textCapitalization: TextCapitalization.words,
+          validator: (v) =>
+              (v == null || v.trim().isEmpty) ? 'Branch name is required' : null,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () {
+            if (_formKey.currentState!.validate()) {
+              Navigator.pop(context, _ctrl.text.trim());
+            }
+          },
+          child: const Text('Save'),
         ),
       ],
     );
