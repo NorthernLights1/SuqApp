@@ -1,6 +1,6 @@
 # Current State — Suq ERP
 
-Last updated: 2026-06-06 (session 12)
+Last updated: 2026-06-06 (session 13)
 
 ---
 
@@ -9,8 +9,8 @@ Last updated: 2026-06-06 (session 12)
 **Suq** — mobile ERP for small shop owners. Flutter + Supabase.
 Package: `com.temesgen.suq` | Repo: `NorthernLights1/SuqApp`
 Flutter app root: `c:/Projects/SuqApp/`
-Active branch: `feat/phase-4`
-Push: `git push origin feat/phase-4`
+Active branch: `feat/notifications`
+Push: `git push origin feat/notifications`
 
 ---
 
@@ -36,12 +36,13 @@ Push: `git push origin feat/phase-4`
 | Session 10 — Inventory correction unit test suite (15 tests) | ✅ Done |
 | Session 11 — Credits tab, sale color-coding, detail screen enhancements, post-sale refresh fix | ✅ Done |
 | Session 12 — ListTile warnings, RenderFlex overflow, staff invite v4 (403 fix + duplicate check) | ✅ Done |
+| Session 13 — Notifications phase: low-stock + overdue-credit alerts via email (Resend) and Telegram | ✅ Done |
 
 ---
 
 ## What Works Right Now
 
-- `flutter analyze` — 0 issues ✅ (last run 2026-06-06, session 11; session 12 changes pending verify)
+- `flutter analyze` — 0 issues ✅ (last run 2026-06-06, session 13)
 - `flutter test` — 96 tests passing ✅ (last run 2026-06-03)
 - Auth (signup/login/logout) ✅
 - Onboarding: shop + branch creation + default settings ✅
@@ -129,6 +130,36 @@ Bottom nav: Home / Sales / Inventory / **Credits** / More. Customers moved to Mo
 - `creditSettlementMethod`, `creditSettlementNotes` — from `sales.*`
 
 **Bug fixed**: `CreateSaleNotifier.submit` now invalidates `salesListProvider` (always) and `outstandingCreditProvider` (credit sales). Sales and Credits tabs now refresh immediately after a new sale without restart.
+
+---
+
+## Notifications (Session 13)
+
+**Edge Function**: `dispatch-notifications` (ACTIVE, v1) — handles both notification types in one function.
+
+**Low-stock alerts**:
+- Triggered automatically after every completed sale (fire-and-forget in `CreateSaleNotifier._checkLowStock`)
+- Queries `inventory JOIN products` for all shop branches, filters where `quantity <= low_stock_threshold`
+- Skips silently if no products are below threshold or if no channels configured
+
+**Overdue credit alerts**:
+- Triggered manually via "Send Overdue Credit Reminders Now" button in Settings screen
+- Queries `sales` where `is_credit=true AND credit_settled_at IS NULL AND created_at < now() - overdue_days`
+- `overdue_credit_days` is a shop setting (default 7)
+
+**Delivery channel**: Email via **Resend** API (v2 — Telegram removed, deferred).
+- Requires `RESEND_API_KEY` Supabase secret + `notification_email` in shop_settings
+- Owner's domain can be used as sender by verifying it in Resend + adding DNS records in Cloudflare
+
+**Shop settings keys added** (`SettingKeys`):
+- `notification_email` — destination email address
+- `overdue_credit_days` — integer, days before credit is overdue (default 7)
+
+**Setup required** (one-time):
+- Sign up at resend.com → get API key → add as Supabase secret `RESEND_API_KEY`
+- Optionally verify own domain in Resend → update `from` address in Edge Function
+
+All notifications logged to `notification_logs` table with `sent`/`failed` status.
 
 ---
 

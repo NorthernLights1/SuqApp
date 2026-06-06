@@ -7,4 +7,8 @@ class SettingKeys {
   static const String lowStockNotify = 'low_stock_notify';
   static const String currencyCode = 'currency_code';
   static const String locale = 'locale';
+
+  // Notifications
+  static const String notificationEmail = 'notification_email';
+  static const String overdueCreditDays = 'overdue_credit_days';
 }

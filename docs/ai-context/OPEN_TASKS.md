@@ -1,6 +1,6 @@
 # Open Tasks — Suq ERP
 
-Last updated: 2026-06-06 (session 12)
+Last updated: 2026-06-06 (session 13)
 
 ---
 
@@ -19,14 +19,13 @@ Last updated: 2026-06-06 (session 12)
 
 ---
 
-## Notifications Phase (new branch: `feat/notifications`)
+## Notifications Phase (branch: `feat/notifications`)
 
-- [ ] Email notifications for low stock (trigger when stock ≤ threshold after a sale)
-- [ ] Telegram notifications for low stock
-- [ ] Email notifications for overdue credits (owner sets overdue period in Settings)
-- [ ] Telegram notifications for overdue credits
-- [ ] Settings screen: add notification config (email address, Telegram bot token / chat ID, overdue days)
-- [ ] Staff invite via Telegram (phone number input → bot sends OTP/link)
+- [x] Email + Telegram notifications for low stock — done (session 13, dispatch-notifications Edge Function)
+- [x] Email + Telegram notifications for overdue credits — done (session 13, manual trigger in Settings)
+- [x] Settings screen: notification config (email, Telegram bot token/chat ID, overdue days) — done (session 13)
+- [ ] One-time setup: add `RESEND_API_KEY` as Supabase secret (supabase.com → Edge Functions → Secrets); optionally verify own domain in Resend and update `from` in dispatch-notifications Edge Function
+- [ ] Telegram notifications — deferred (was abandoned this session; revisit later)
 
 ---
 

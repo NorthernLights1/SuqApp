@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:decimal/decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../data/local/database_provider.dart';
@@ -237,9 +238,23 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
       ref.invalidate(salesListProvider);
       ref.invalidate(stockLevelsProvider);
       if (isCredit) ref.invalidate(outstandingCreditProvider);
+      // Fire-and-forget low-stock check — must not throw into sale flow
+      unawaited(_checkLowStock(shop.id));
       return sale;
     });
     return state.asData?.value;
+  }
+
+  Future<void> _checkLowStock(String shopId) async {
+    try {
+      final client = ref.read(supabaseClientProvider);
+      await client.functions.invoke(
+        'dispatch-notifications',
+        body: {'shopId': shopId, 'type': 'low_stock'},
+      );
+    } catch (_) {
+      // Notification failure must never surface to the user during a sale
+    }
   }
 }
 
