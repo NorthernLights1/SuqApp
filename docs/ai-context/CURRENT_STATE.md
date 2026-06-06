@@ -1,6 +1,6 @@
 # Current State — Suq ERP
 
-Last updated: 2026-06-06 (session 13)
+Last updated: 2026-06-06 (session 14)
 
 ---
 
@@ -37,6 +37,7 @@ Push: `git push origin feat/notifications`
 | Session 11 — Credits tab, sale color-coding, detail screen enhancements, post-sale refresh fix | ✅ Done |
 | Session 12 — ListTile warnings, RenderFlex overflow, staff invite v4 (403 fix + duplicate check) | ✅ Done |
 | Session 13 — Notifications phase: low-stock + overdue-credit alerts via email (Resend) and Telegram | ✅ Done |
+| Session 14 — CodeRabbit review: null-safety fix + explicit branch_id in settings upsert | ✅ Done |
 
 ---
 

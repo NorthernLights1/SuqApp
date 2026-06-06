@@ -330,3 +330,11 @@ Fix (v4): Before calling `inviteUserByEmail`, call `admin.auth.admin.listUsers()
 Flutter UI: `invite()` now returns `bool isExisting`. Success snackbar shows "Invite email sent to X" or "X already has an account — added to your shop directly" accordingly.
 
 Files: Supabase Edge Function `invite-staff` (v4), `staff_provider.dart`, `staff_screen.dart`
+---
+
+## Bug: settings upsert inserting duplicates instead of updating (branch_id NULL)
+Status: Fixed (session 14, CodeRabbit)
+
+Cause: shop_settings unique constraint is (shop_id, branch_id, key). PostgreSQL treats NULL != NULL in unique indexes, so omitting branch_id from the upsert body meant ON CONFLICT never triggered — rows were inserted rather than updated.
+Fix: Explicitly include 'branch_id': null in every shop_settings upsert call.
+File: lib/features/settings/presentation/providers/settings_provider.dart

@@ -83,19 +83,22 @@ class NotificationSettingsNotifier extends AsyncNotifier<void> {
     final shop = await ref.read(currentShopProvider.future);
     if (shop == null) return;
     final client = ref.read(supabaseClientProvider);
-    final userId = ref.read(currentUserIdProvider)!;
+    final userId = ref.read(currentUserIdProvider);
+    if (userId == null) return;
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final updates = [
         {
           'shop_id': shop.id,
+          'branch_id': null,
           'key': SettingKeys.notificationEmail,
           'value': email.trim(),
           'updated_by': userId,
         },
         {
           'shop_id': shop.id,
+          'branch_id': null,
           'key': SettingKeys.overdueCreditDays,
           'value': overdueDays.toString(),
           'updated_by': userId,
