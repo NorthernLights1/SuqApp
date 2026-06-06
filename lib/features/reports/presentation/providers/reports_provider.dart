@@ -122,8 +122,8 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
       .select(
           'total, status, is_credit, sale_items(quantity, unit_price, discount_amount, cost_price_snapshot, products(category_id))')
       .eq('branch_id', branch.id)
-      .gte('created_at', range.start.toIso8601String())
-      .lt('created_at', range.end.toIso8601String());
+      .gte('created_at', range.start.toUtc().toIso8601String())
+      .lt('created_at', range.end.toUtc().toIso8601String());
 
   Decimal salesTotal = Decimal.zero;
   Decimal creditTotal = Decimal.zero;

@@ -274,8 +274,8 @@ class SalesRemote {
         .from('sales')
         .select('*, sale_items(*), customers(id, name, phone), payment_methods(id, name, code)')
         .eq('branch_id', branchId)
-        .gte('created_at', from.toIso8601String())
-        .lte('created_at', to.toIso8601String())
+        .gte('created_at', from.toUtc().toIso8601String())
+        .lt('created_at', to.toUtc().toIso8601String())
         .order('created_at', ascending: false);
     return (data as List).map((e) => Sale.fromJson(e)).toList();
   }
@@ -289,8 +289,8 @@ class SalesRemote {
         .from('sales')
         .select('total, status')
         .eq('branch_id', branchId)
-        .gte('created_at', start.toIso8601String())
-        .lt('created_at', end.toIso8601String());
+        .gte('created_at', start.toUtc().toIso8601String())
+        .lt('created_at', end.toUtc().toIso8601String());
 
     Decimal salesTotal = Decimal.zero;
     int txCount = 0;
