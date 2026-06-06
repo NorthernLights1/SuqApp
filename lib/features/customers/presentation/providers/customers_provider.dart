@@ -3,6 +3,8 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
+import '../../../../features/reports/presentation/providers/reports_provider.dart'
+    show reportSummaryProvider;
 
 // Unsettled credit sale joined with its customer — used in the reconciliation screen.
 class CreditSaleWithCustomer extends Equatable {
@@ -227,6 +229,7 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
       ref.invalidate(customersProvider);
       ref.invalidate(customerCreditSalesProvider(customerId));
       ref.invalidate(outstandingCreditProvider);
+      ref.invalidate(reportSummaryProvider);
     });
     return !state.hasError;
   }
@@ -260,6 +263,7 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
       ref.invalidate(customersProvider);
       ref.invalidate(customerCreditSalesProvider(customerId));
       ref.invalidate(outstandingCreditProvider);
+      ref.invalidate(reportSummaryProvider);
     });
     return !state.hasError;
   }

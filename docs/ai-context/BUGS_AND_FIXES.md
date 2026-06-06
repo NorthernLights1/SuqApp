@@ -333,6 +333,7 @@ Files: Supabase Edge Function `invite-staff` (v4), `staff_provider.dart`, `staff
 ---
 
 ## Bug: settings upsert inserting duplicates instead of updating (branch_id NULL)
+
 Status: Fixed (session 14, CodeRabbit)
 
 Cause: shop_settings unique constraint is (shop_id, branch_id, key). PostgreSQL treats NULL != NULL in unique indexes, so omitting branch_id from the upsert body meant ON CONFLICT never triggered — rows were inserted rather than updated.
@@ -342,6 +343,7 @@ File: lib/features/settings/presentation/providers/settings_provider.dart
 ---
 
 ## Bugs: 9 code-review findings fixed (session 15)
+
 Status: All fixed (2026-06-06)
 
 **HIGH**

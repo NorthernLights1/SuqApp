@@ -8,7 +8,10 @@ import '../../../../domain/models/sale.dart';
 import '../../../../domain/interfaces/notification_service_interface.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
-import '../../../../features/customers/presentation/providers/customers_provider.dart' show outstandingCreditProvider;
+import '../../../../features/customers/presentation/providers/customers_provider.dart'
+    show outstandingCreditProvider, customerSalesProvider;
+import '../../../../features/reports/presentation/providers/reports_provider.dart'
+    show reportSummaryProvider;
 import '../../../../features/inventory/data/inventory_remote.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../data/sales_remote.dart';
@@ -238,7 +241,9 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
       ref.invalidate(todaySalesTotalsProvider);
       ref.invalidate(salesListProvider);
       ref.invalidate(stockLevelsProvider);
+      ref.invalidate(reportSummaryProvider);
       if (isCredit) ref.invalidate(outstandingCreditProvider);
+      if (customerId != null) ref.invalidate(customerSalesProvider(customerId));
       // Fire-and-forget low-stock check — must not throw into sale flow
       unawaited(_checkLowStock(shop.id));
       return sale;
