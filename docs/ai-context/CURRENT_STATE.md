@@ -1,6 +1,6 @@
 # Current State — Suq ERP
 
-Last updated: 2026-06-06 (session 14)
+Last updated: 2026-06-06 (session 15)
 
 ---
 
@@ -38,12 +38,13 @@ Push: `git push origin feat/notifications`
 | Session 12 — ListTile warnings, RenderFlex overflow, staff invite v4 (403 fix + duplicate check) | ✅ Done |
 | Session 13 — Notifications phase: low-stock + overdue-credit alerts via email (Resend) and Telegram | ✅ Done |
 | Session 14 — CodeRabbit review: null-safety fix + explicit branch_id in settings upsert | ✅ Done |
+| Session 15 — Code review: 9 findings fixed (atomic upsert, CHECK constraint, false-success snackbar, unsafe cast, INotificationService wiring, Telegram flag, stale controllers, regex, raw error) | ✅ Done |
 
 ---
 
 ## What Works Right Now
 
-- `flutter analyze` — 0 issues ✅ (last run 2026-06-06, session 13)
+- `flutter analyze` — 0 issues ✅ (last run 2026-06-06, session 15)
 - `flutter test` — 96 tests passing ✅ (last run 2026-06-03)
 - Auth (signup/login/logout) ✅
 - Onboarding: shop + branch creation + default settings ✅
@@ -136,7 +137,7 @@ Bottom nav: Home / Sales / Inventory / **Credits** / More. Customers moved to Mo
 
 ## Notifications (Session 13)
 
-**Edge Function**: `dispatch-notifications` (ACTIVE, v1) — handles both notification types in one function.
+**Edge Function**: `dispatch-notifications` (ACTIVE, v2) — handles both notification types in one function.
 
 **Low-stock alerts**:
 - Triggered automatically after every completed sale (fire-and-forget in `CreateSaleNotifier._checkLowStock`)
@@ -148,9 +149,10 @@ Bottom nav: Home / Sales / Inventory / **Credits** / More. Customers moved to Mo
 - Queries `sales` where `is_credit=true AND credit_settled_at IS NULL AND created_at < now() - overdue_days`
 - `overdue_credit_days` is a shop setting (default 7)
 
-**Delivery channel**: Email via **Resend** API (v2 — Telegram removed, deferred).
+**Delivery channel**: Email via **Resend** API (Telegram deferred, seeded as `is_active=false`).
 - Requires `RESEND_API_KEY` Supabase secret + `notification_email` in shop_settings
 - Owner's domain can be used as sender by verifying it in Resend + adding DNS records in Cloudflare
+- Dispatch goes through `notificationServiceProvider` → `NotificationService.dispatch()` → Edge Function (session 15: direct Supabase calls removed from features)
 
 **Shop settings keys added** (`SettingKeys`):
 - `notification_email` — destination email address

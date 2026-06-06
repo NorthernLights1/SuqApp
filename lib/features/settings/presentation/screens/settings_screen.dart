@@ -147,6 +147,17 @@ class _NotificationsCardState extends ConsumerState<_NotificationsCard> {
   }
 
   @override
+  void didUpdateWidget(_NotificationsCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.initial.email != widget.initial.email) {
+      _emailCtrl.text = widget.initial.email;
+    }
+    if (oldWidget.initial.overdueDays != widget.initial.overdueDays) {
+      _overdueDaysCtrl.text = widget.initial.overdueDays.toString();
+    }
+  }
+
+  @override
   void dispose() {
     _emailCtrl.dispose();
     _overdueDaysCtrl.dispose();
@@ -193,7 +204,7 @@ class _NotificationsCardState extends ConsumerState<_NotificationsCard> {
     final state = ref.read(sendOverdueRemindersProvider);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(state.hasError
-          ? 'Failed to send reminders: ${state.error}'
+          ? 'Failed to send reminders'
           : 'Overdue credit reminders sent'),
       backgroundColor:
           state.hasError ? AppColors.error : AppColors.success,
@@ -223,7 +234,7 @@ class _NotificationsCardState extends ConsumerState<_NotificationsCard> {
               keyboardType: TextInputType.emailAddress,
               validator: (v) {
                 if (v == null || v.trim().isEmpty) return null; // optional
-                final ok = RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(v.trim());
+                final ok = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(v.trim());
                 return ok ? null : 'Enter a valid email address';
               },
             ),

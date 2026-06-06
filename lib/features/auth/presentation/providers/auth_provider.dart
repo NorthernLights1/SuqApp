@@ -1,8 +1,14 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/services/notification_service.dart';
+import '../../../../domain/interfaces/notification_service_interface.dart';
 
 final supabaseClientProvider = Provider<SupabaseClient>(
   (ref) => Supabase.instance.client,
+);
+
+final notificationServiceProvider = Provider<INotificationService>(
+  (ref) => NotificationService(ref.read(supabaseClientProvider)),
 );
 
 /// Streams every auth state change (sign in, sign out, token refresh).

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/setting_keys.dart';
+import '../../../../domain/interfaces/notification_service_interface.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 
@@ -80,37 +81,37 @@ class NotificationSettingsNotifier extends AsyncNotifier<void> {
     required String email,
     required int overdueDays,
   }) async {
-    final shop = await ref.read(currentShopProvider.future);
-    if (shop == null) return;
-    final client = ref.read(supabaseClientProvider);
-    final userId = ref.read(currentUserIdProvider);
-    if (userId == null) return;
-
+    // All guards are inside the guard so early-exit sets state to AsyncError,
+    // preventing a false-success snackbar.
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final updates = [
-        {
-          'shop_id': shop.id,
-          'branch_id': null,
-          'key': SettingKeys.notificationEmail,
-          'value': email.trim(),
-          'updated_by': userId,
-        },
-        {
-          'shop_id': shop.id,
-          'branch_id': null,
-          'key': SettingKeys.overdueCreditDays,
-          'value': overdueDays.toString(),
-          'updated_by': userId,
-        },
-      ];
+      final shop = await ref.read(currentShopProvider.future);
+      if (shop == null) throw StateError('No active shop');
+      final client = ref.read(supabaseClientProvider);
+      final userId = ref.read(currentUserIdProvider);
+      if (userId == null) throw StateError('Not authenticated');
 
-      for (final row in updates) {
-        await client.from('shop_settings').upsert(
-              row,
-              onConflict: 'shop_id,branch_id,key',
-            );
-      }
+      // Single upsert call with both rows — avoids a half-written state if one
+      // row commits and the second fails.
+      await client.from('shop_settings').upsert(
+        [
+          {
+            'shop_id': shop.id,
+            'branch_id': null,
+            'key': SettingKeys.notificationEmail,
+            'value': email.trim(),
+            'updated_by': userId,
+          },
+          {
+            'shop_id': shop.id,
+            'branch_id': null,
+            'key': SettingKeys.overdueCreditDays,
+            'value': overdueDays.toString(),
+            'updated_by': userId,
+          },
+        ],
+        onConflict: 'shop_id,branch_id,key',
+      );
       ref.invalidate(notificationSettingsProvider);
     });
   }
@@ -123,20 +124,15 @@ class SendOverdueRemindersNotifier extends AsyncNotifier<void> {
   Future<void> build() async {}
 
   Future<void> send() async {
-    final shop = await ref.read(currentShopProvider.future);
-    if (shop == null) return;
-    final client = ref.read(supabaseClientProvider);
-
+    // Guard inside AsyncValue.guard so shop == null sets state to AsyncError.
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final response = await client.functions.invoke(
-        'dispatch-notifications',
-        body: {'shopId': shop.id, 'type': 'overdue_credits'},
+      final shop = await ref.read(currentShopProvider.future);
+      if (shop == null) throw StateError('No active shop');
+      await ref.read(notificationServiceProvider).dispatch(
+        type: NotificationType.overdueCredits,
+        shopId: shop.id,
       );
-      if (response.status != 200) {
-        final data = response.data as Map<String, dynamic>?;
-        throw Exception(data?['error'] ?? 'Failed (${response.status})');
-      }
     });
   }
 }

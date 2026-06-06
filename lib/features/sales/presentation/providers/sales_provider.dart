@@ -5,6 +5,7 @@ import '../../../../data/local/database_provider.dart';
 import '../../../../data/local/seed_service.dart';
 import '../../../../domain/models/product.dart';
 import '../../../../domain/models/sale.dart';
+import '../../../../domain/interfaces/notification_service_interface.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../features/customers/presentation/providers/customers_provider.dart' show outstandingCreditProvider;
@@ -247,10 +248,9 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
 
   Future<void> _checkLowStock(String shopId) async {
     try {
-      final client = ref.read(supabaseClientProvider);
-      await client.functions.invoke(
-        'dispatch-notifications',
-        body: {'shopId': shopId, 'type': 'low_stock'},
+      await ref.read(notificationServiceProvider).dispatch(
+        type: NotificationType.lowStock,
+        shopId: shopId,
       );
     } catch (_) {
       // Notification failure must never surface to the user during a sale

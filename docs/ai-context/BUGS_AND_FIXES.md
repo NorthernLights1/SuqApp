@@ -338,3 +338,25 @@ Status: Fixed (session 14, CodeRabbit)
 Cause: shop_settings unique constraint is (shop_id, branch_id, key). PostgreSQL treats NULL != NULL in unique indexes, so omitting branch_id from the upsert body meant ON CONFLICT never triggered — rows were inserted rather than updated.
 Fix: Explicitly include 'branch_id': null in every shop_settings upsert call.
 File: lib/features/settings/presentation/providers/settings_provider.dart
+
+---
+
+## Bugs: 9 code-review findings fixed (session 15)
+Status: All fixed (2026-06-06)
+
+**HIGH**
+1. Non-atomic sequential upserts — email and overdue_days rows were sent in a for-loop; a network drop after the first commit left settings half-written. Fix: replaced loop with single `upsert(list)` call.
+2. Migration 012 CHECK constraint silently skipped — `ADD COLUMN IF NOT EXISTS` no-ops the entire clause (including inline CHECK) when column already exists. Fix: moved constraint to a separate idempotent `DO $$ ADD CONSTRAINT IF NOT EXISTS $$` block.
+3. Early-return false-success snackbar — `save()` and `send()` returned early (shop/userId == null) before setting state, leaving it as AsyncData → UI showed "saved" when nothing happened. Fix: moved all guards inside `AsyncValue.guard` so they throw → AsyncError.
+4. Unsafe `response.data as Map` cast — Edge Function error with plain-text body threw TypeError instead of the intended message. Fix: `data is Map<String, dynamic>` type check before indexing.
+
+**MEDIUM**
+5. Direct `client.functions.invoke` in feature providers bypassed `INotificationService` interface (CLAUDE.md rule #2). Added `dispatch()` method to interface + implementation; registered `notificationServiceProvider` in auth_provider.dart; both callers updated. Also added `NotificationType.overdueCredits` to the enum.
+6. Telegram channel seeded as `is_active=true` in migration 012 with no supporting code. Changed to `false`; `ON CONFLICT DO UPDATE` ensures correction on re-run.
+7. `_NotificationsCard` `late final` controllers never updated when `notificationSettingsProvider` reloads after save. Fix: added `didUpdateWidget` override.
+8. Email regex missing `$` anchor — `hasMatch` accepted strings like `foo@bar.com extra`. Fix: `r'^[^@\s]+@[^@\s]+\.[^@\s]+$'`.
+
+**LOW**
+9. Raw `${state.error}` interpolated in user-facing snackbar for reminder send failures. Replaced with generic message.
+
+Files: `settings_provider.dart`, `settings_screen.dart`, `sales_provider.dart`, `auth_provider.dart`, `notification_service.dart`, `notification_service_interface.dart`, `012_notifications.sql`

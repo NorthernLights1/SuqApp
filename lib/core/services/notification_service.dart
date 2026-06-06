@@ -9,6 +9,7 @@ class NotificationService implements INotificationService {
     NotificationType.lowStock: 'low_stock',
     NotificationType.syncWarning: 'sync_warning',
     NotificationType.debtReminder: 'debt_reminder',
+    NotificationType.overdueCredits: 'overdue_credits',
     NotificationType.reconciliationReminder: 'reconciliation_reminder',
   };
 
@@ -23,7 +24,8 @@ class NotificationService implements INotificationService {
     // Load enabled configs for this shop + type
     final configs = await _supabase
         .from('notification_configs')
-        .select('id, channel_id, notification_types!inner(code), notification_channels(code, is_active)')
+        .select(
+            'id, channel_id, notification_types!inner(code), notification_channels(code, is_active)')
         .eq('shop_id', shopId)
         .eq('notification_types.code', typeCode)
         .eq('is_enabled', true);
@@ -32,14 +34,31 @@ class NotificationService implements INotificationService {
       final channel = config['notification_channels'];
       if (channel == null || channel['is_active'] != true) continue;
 
-      // Log the attempt — actual dispatch handled by Supabase Edge Functions
       await _supabase.from('notification_logs').insert({
         'shop_id': shopId,
         'notification_config_id': config['id'],
-        'recipient': shopId, // Edge Function resolves actual recipient
+        'recipient': shopId,
         'status': 'pending',
         'payload': payload,
       });
+    }
+  }
+
+  @override
+  Future<void> dispatch({
+    required NotificationType type,
+    required String shopId,
+  }) async {
+    final typeCode = _typeCodeMap[type]!;
+    final response = await _supabase.functions.invoke(
+      'dispatch-notifications',
+      body: {'shopId': shopId, 'type': typeCode},
+    );
+    if (response.status != 200) {
+      final data = response.data;
+      final message =
+          data is Map<String, dynamic> ? data['error'] as String? : null;
+      throw Exception(message ?? 'Failed (${response.status})');
     }
   }
 }
