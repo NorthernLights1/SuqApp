@@ -97,7 +97,7 @@ class InventoryRemote {
       'quantity': quantity.toString(),
       'expiry_date': expiryDate?.toIso8601String().substring(0, 10),
       'updated_at': DateTime.now().toIso8601String(),
-    });
+    }, onConflict: 'branch_id,product_id');
 
     await _client.from('inventory_adjustments').insert({
       'branch_id': branchId,
@@ -124,7 +124,7 @@ class InventoryRemote {
       'quantity': newQuantity.toString(),
       'expiry_date': expiryDate?.toIso8601String().substring(0, 10),
       'updated_at': DateTime.now().toIso8601String(),
-    });
+    }, onConflict: 'branch_id,product_id');
 
     await _client.from('inventory_adjustments').insert({
       'branch_id': branchId,
@@ -162,7 +162,7 @@ class InventoryRemote {
       if (expiryDate != null)
         'expiry_date': expiryDate.toIso8601String().substring(0, 10),
       'updated_at': DateTime.now().toIso8601String(),
-    });
+    }, onConflict: 'branch_id,product_id');
     await _client.from('inventory_adjustments').insert({
       'branch_id': branchId,
       'product_id': productId,
@@ -190,7 +190,7 @@ class InventoryRemote {
       if (expiryDate != null)
         'expiry_date': expiryDate.toIso8601String().substring(0, 10),
       'updated_at': DateTime.now().toIso8601String(),
-    });
+    }, onConflict: 'branch_id,product_id');
     await _client.from('inventory_adjustments').insert({
       'branch_id': branchId,
       'product_id': productId,

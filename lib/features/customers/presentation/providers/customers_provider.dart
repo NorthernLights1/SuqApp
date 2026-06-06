@@ -4,6 +4,37 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 
+// Unsettled credit sale joined with its customer — used in the reconciliation screen.
+class CreditSaleWithCustomer extends Equatable {
+  const CreditSaleWithCustomer({
+    required this.id,
+    required this.total,
+    required this.createdAt,
+    required this.customerId,
+    required this.customerName,
+  });
+
+  final String id;
+  final Decimal total;
+  final DateTime createdAt;
+  final String customerId;
+  final String customerName;
+
+  factory CreditSaleWithCustomer.fromJson(Map<String, dynamic> j) {
+    final customer = j['customers'] as Map<String, dynamic>? ?? {};
+    return CreditSaleWithCustomer(
+      id: j['id'] as String,
+      total: Decimal.parse(j['total'].toString()),
+      createdAt: DateTime.parse(j['created_at'] as String),
+      customerId: j['customer_id'] as String,
+      customerName: customer['name'] as String? ?? 'Unknown',
+    );
+  }
+
+  @override
+  List<Object?> get props => [id];
+}
+
 // Lightweight model for a single unsettled credit sale shown on the customer screen.
 class CreditSale extends Equatable {
   const CreditSale({
@@ -99,6 +130,26 @@ final customerCreditSalesProvider =
   return (data as List).map((e) => CreditSale.fromJson(e)).toList();
 });
 
+// All unsettled credit sales across every customer for the current shop.
+final outstandingCreditProvider =
+    FutureProvider<List<CreditSaleWithCustomer>>((ref) async {
+  final shop = await ref.watch(currentShopProvider.future);
+  if (shop == null) return [];
+  final client = ref.read(supabaseClientProvider);
+  final data = await client
+      .from('sales')
+      .select('id, total, created_at, customer_id, customers(id, name)')
+      .eq('is_credit', true)
+      .eq('status', 'completed')
+      .filter('credit_settled_at', 'is', null)
+      .not('customer_id', 'is', null)
+      .order('created_at', ascending: false);
+  return (data as List)
+      .where((e) => (e as Map<String, dynamic>)['customers'] != null)
+      .map((e) => CreditSaleWithCustomer.fromJson(e as Map<String, dynamic>))
+      .toList();
+});
+
 class CustomerFormNotifier extends AsyncNotifier<void> {
   @override
   Future<void> build() async {}
@@ -149,14 +200,18 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
     required String customerId,
     required String saleId,
     required Decimal saleTotal,
+    required String settlementMethod, // 'cash' or 'bank_transfer'
+    String? settlementNotes,
   }) async {
     final client = ref.read(supabaseClientProvider);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      await client
-          .from('sales')
-          .update({'credit_settled_at': DateTime.now().toIso8601String()})
-          .eq('id', saleId);
+      await client.from('sales').update({
+        'credit_settled_at': DateTime.now().toIso8601String(),
+        'credit_settlement_method': settlementMethod,
+        if (settlementNotes != null && settlementNotes.isNotEmpty)
+          'credit_settlement_notes': settlementNotes,
+      }).eq('id', saleId);
       final data = await client
           .from('customers')
           .select('credit_balance')
@@ -171,6 +226,7 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
           .eq('id', customerId);
       ref.invalidate(customersProvider);
       ref.invalidate(customerCreditSalesProvider(customerId));
+      ref.invalidate(outstandingCreditProvider);
     });
     return !state.hasError;
   }
@@ -190,7 +246,20 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
           .from('customers')
           .update({'credit_balance': newBalance.toString()})
           .eq('id', customerId);
+      // When balance is fully cleared, settle all outstanding credit sales so they
+      // disappear from the reconciliation screen automatically.
+      if (newBalance == Decimal.zero) {
+        await client
+            .from('sales')
+            .update({'credit_settled_at': DateTime.now().toIso8601String()})
+            .eq('customer_id', customerId)
+            .eq('is_credit', true)
+            .eq('status', 'completed')
+            .filter('credit_settled_at', 'is', null);
+      }
       ref.invalidate(customersProvider);
+      ref.invalidate(customerCreditSalesProvider(customerId));
+      ref.invalidate(outstandingCreditProvider);
     });
     return !state.hasError;
   }

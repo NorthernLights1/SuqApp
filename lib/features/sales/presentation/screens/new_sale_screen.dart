@@ -226,14 +226,17 @@ class _ProductSearchState extends ConsumerState<_ProductSearch> {
                     shrinkWrap: true,
                     itemCount: list.length,
                     separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (ctx, i) => ListTile(
-                      dense: true,
-                      title: Text(list[i].name, style: AppTextStyles.body),
-                      subtitle: Text(list[i].measurementUnitAbbr,
-                          style: AppTextStyles.bodySmall),
-                      trailing: const Icon(Icons.add_circle_outline,
-                          color: AppColors.primary),
-                      onTap: () => _addToCart(ctx, ref, list[i]),
+                    itemBuilder: (ctx, i) => Material(
+                      type: MaterialType.transparency,
+                      child: ListTile(
+                        dense: true,
+                        title: Text(list[i].name, style: AppTextStyles.body),
+                        subtitle: Text(list[i].measurementUnitAbbr,
+                            style: AppTextStyles.bodySmall),
+                        trailing: const Icon(Icons.add_circle_outline,
+                            color: AppColors.primary),
+                        onTap: () => _addToCart(ctx, ref, list[i]),
+                      ),
                     ),
                   ),
                 ),
@@ -375,12 +378,12 @@ class _CartItemTileState extends State<_CartItemTile> {
             ),
           ),
           const SizedBox(width: 8),
-          SizedBox(
-            width: 72,
+          Flexible(
             child: Text(
               widget.item.lineTotal.toStringAsFixed(2),
               style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
               textAlign: TextAlign.end,
+              overflow: TextOverflow.ellipsis,
             ),
           ),
         ],
@@ -722,20 +725,23 @@ class _CustomerResults extends ConsumerWidget {
         }
         return Column(
           children: list
-              .map((c) => ListTile(
-                    dense: true,
-                    leading: CircleAvatar(
-                      radius: 16,
-                      backgroundColor: AppColors.primaryLight,
-                      child: Text(c.name[0].toUpperCase(),
-                          style: const TextStyle(
-                              color: AppColors.primary, fontSize: 12)),
+              .map((c) => Material(
+                    type: MaterialType.transparency,
+                    child: ListTile(
+                      dense: true,
+                      leading: CircleAvatar(
+                        radius: 16,
+                        backgroundColor: AppColors.primaryLight,
+                        child: Text(c.name[0].toUpperCase(),
+                            style: const TextStyle(
+                                color: AppColors.primary, fontSize: 12)),
+                      ),
+                      title: Text(c.name, style: AppTextStyles.body),
+                      subtitle: c.phone != null
+                          ? Text(c.phone!, style: AppTextStyles.bodySmall)
+                          : null,
+                      onTap: () => onSelect(c),
                     ),
-                    title: Text(c.name, style: AppTextStyles.body),
-                    subtitle: c.phone != null
-                        ? Text(c.phone!, style: AppTextStyles.bodySmall)
-                        : null,
-                    onTap: () => onSelect(c),
                   ))
               .toList(),
         );

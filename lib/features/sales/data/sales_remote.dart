@@ -259,7 +259,7 @@ class SalesRemote {
   Future<Sale> getSale(String saleId) async {
     final data = await _client
         .from('sales')
-        .select('*, sale_items(*)')
+        .select('*, sale_items(*), customers(id, name, phone), payment_methods(id, name, code)')
         .eq('id', saleId)
         .single();
     return Sale.fromJson(data);
@@ -272,7 +272,7 @@ class SalesRemote {
   }) async {
     final data = await _client
         .from('sales')
-        .select('*, sale_items(*)')
+        .select('*, sale_items(*), customers(id, name, phone), payment_methods(id, name, code)')
         .eq('branch_id', branchId)
         .gte('created_at', from.toIso8601String())
         .lte('created_at', to.toIso8601String())

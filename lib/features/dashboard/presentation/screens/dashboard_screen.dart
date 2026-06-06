@@ -4,8 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../domain/models/sale.dart';
-import '../../../../features/customers/presentation/providers/customers_provider.dart';
-import '../../../../features/customers/presentation/screens/customers_screen.dart';
+import '../../../../features/customers/presentation/screens/credits_screen.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../../../features/sales/presentation/providers/sales_provider.dart';
 import '../../../../features/sales/presentation/screens/sales_screen.dart';
@@ -28,7 +27,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
     NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
     NavigationDestination(icon: Icon(Icons.point_of_sale_outlined), selectedIcon: Icon(Icons.point_of_sale), label: 'Sales'),
     NavigationDestination(icon: Icon(Icons.inventory_2_outlined), selectedIcon: Icon(Icons.inventory_2), label: 'Inventory'),
-    NavigationDestination(icon: Icon(Icons.people_outline), selectedIcon: Icon(Icons.people), label: 'Customers'),
+    NavigationDestination(icon: Icon(Icons.credit_card_outlined), selectedIcon: Icon(Icons.credit_card), label: 'Credits'),
     NavigationDestination(icon: Icon(Icons.more_horiz), selectedIcon: Icon(Icons.more_horiz), label: 'More'),
   ];
 
@@ -39,11 +38,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: shop.when(
-          data: (s) => Text(s?.name ?? 'Suq'),
-          loading: () => const Text('Suq'),
-          error: (e, st) => const Text('Suq'),
-        ),
+        title: _selectedIndex == 3
+            ? const Text('Credits')
+            : shop.when(
+                data: (s) => Text(s?.name ?? 'Suq'),
+                loading: () => const Text('Suq'),
+                error: (e, _) => const Text('Suq'),
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.notifications_outlined),
@@ -83,7 +84,7 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
       0 => const _HomeTab(),
       1 => const _SalesTab(),
       2 => const _InventoryQuickTab(),
-      3 => const _CustomersQuickTab(),
+      3 => const CreditsScreen(),
       _ => const _MoreTab(),
     };
   }
@@ -295,18 +296,47 @@ class _SalesTab extends ConsumerWidget {
               itemBuilder: (ctx, i) {
                 final s = list[i];
                 final isVoided = s.status == SaleStatus.voided;
+                final isUnsettledCredit = s.isCredit && !s.isCreditSettled;
+                final isSettledCredit = s.isCredit && s.isCreditSettled;
+
+                final Color iconColor;
+                final Color iconBg;
+                final IconData iconData;
+
+                if (isVoided) {
+                  iconColor = AppColors.error;
+                  iconBg = AppColors.error.withValues(alpha: 0.1);
+                  iconData = Icons.cancel_outlined;
+                } else if (isUnsettledCredit) {
+                  iconColor = AppColors.warning;
+                  iconBg = AppColors.warning.withValues(alpha: 0.1);
+                  iconData = Icons.credit_card_outlined;
+                } else if (isSettledCredit) {
+                  iconColor = AppColors.success;
+                  iconBg = AppColors.success.withValues(alpha: 0.1);
+                  iconData = Icons.credit_score;
+                } else {
+                  iconColor = AppColors.primary;
+                  iconBg = AppColors.primaryLight;
+                  iconData = Icons.receipt_outlined;
+                }
+
                 return ListTile(
                   leading: CircleAvatar(
-                    backgroundColor: isVoided ? AppColors.error.withValues(alpha: 0.1) : AppColors.primaryLight,
-                    child: Icon(isVoided ? Icons.cancel_outlined : Icons.receipt_outlined,
-                        color: isVoided ? AppColors.error : AppColors.primary, size: 20),
+                    backgroundColor: iconBg,
+                    child: Icon(iconData, color: iconColor, size: 20),
                   ),
                   title: Text('ETB ${s.total.toStringAsFixed(2)}',
                       style: AppTextStyles.body.copyWith(
                         fontWeight: FontWeight.w600,
                         decoration: isVoided ? TextDecoration.lineThrough : null,
                       )),
-                  subtitle: Text('${s.items.length} item(s)', style: AppTextStyles.bodySmall),
+                  subtitle: Text(
+                    isUnsettledCredit && s.customerName != null
+                        ? s.customerName!
+                        : '${s.items.length} item(s)',
+                    style: AppTextStyles.bodySmall,
+                  ),
                   trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute(builder: (_) => SaleDetailScreen(sale: s)),
@@ -383,68 +413,7 @@ class _InventoryQuickTab extends ConsumerWidget {
   }
 }
 
-// ─── Customers Quick Tab ─────────────────────────────────────────────────────
 
-class _CustomersQuickTab extends ConsumerWidget {
-  const _CustomersQuickTab();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final customers = ref.watch(customersProvider);
-    return customers.when(
-      data: (list) {
-        final debtors = list.where((c) => c.hasDebt).toList();
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            if (debtors.isNotEmpty) ...[
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.warning.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Text(
-                  '${debtors.length} customer(s) with outstanding credit',
-                  style: AppTextStyles.body.copyWith(color: AppColors.warning),
-                ),
-              ),
-              const SizedBox(height: 12),
-            ],
-            AppButton(
-              label: 'Manage Customers',
-              outlined: true,
-              onPressed: () => context.push(AppRoutes.customers),
-            ),
-            const SizedBox(height: 16),
-            ...list.take(10).map((c) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: c.hasDebt
-                        ? AppColors.warning.withValues(alpha: 0.15)
-                        : AppColors.primaryLight,
-                    child: Text(c.name[0].toUpperCase(),
-                        style: TextStyle(
-                            color: c.hasDebt ? AppColors.warning : AppColors.primary,
-                            fontWeight: FontWeight.w700)),
-                  ),
-                  title: Text(c.name, style: AppTextStyles.body),
-                  trailing: c.hasDebt
-                      ? Text('ETB ${c.creditBalance.toStringAsFixed(2)}',
-                          style: AppTextStyles.bodySmall.copyWith(
-                              color: AppColors.warning, fontWeight: FontWeight.w600))
-                      : null,
-                  onTap: () => Navigator.of(context).push(MaterialPageRoute(
-                      builder: (_) => CustomerDetailScreen(customer: c))),
-                )),
-          ],
-        );
-      },
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, st) => Center(child: Text('Error: $e', style: AppTextStyles.bodySmall)),
-    );
-  }
-}
 
 // ─── More Tab ───────────────────────────────────────────────────────────────
 
@@ -456,9 +425,10 @@ class _MoreTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        _MoreTile(icon: Icons.people_outline, label: 'Customers', route: AppRoutes.customers),
         _MoreTile(icon: Icons.money_off_outlined, label: 'Expenses', route: AppRoutes.expenses),
         _MoreTile(icon: Icons.bar_chart, label: 'Reports', route: AppRoutes.reports),
-        _MoreTile(icon: Icons.people_outline, label: 'Staff', route: AppRoutes.staff),
+        _MoreTile(icon: Icons.manage_accounts_outlined, label: 'Staff', route: AppRoutes.staff),
         _MoreTile(icon: Icons.settings_outlined, label: 'Settings', route: AppRoutes.settings),
         const Divider(),
         ListTile(

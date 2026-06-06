@@ -114,10 +114,13 @@ class InviteStaffNotifier extends AsyncNotifier<void> {
   @override
   Future<void> build() async {}
 
-  Future<void> invite({required String email, required String roleId}) async {
+  /// Returns true if the invitee already had an account (added directly),
+  /// false if a new invite email was sent.
+  Future<bool> invite({required String email, required String roleId}) async {
     final shop = await ref.read(currentShopProvider.future);
     if (shop == null) throw Exception('No shop found');
 
+    bool isExisting = false;
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final client = ref.read(supabaseClientProvider);
@@ -129,8 +132,11 @@ class InviteStaffNotifier extends AsyncNotifier<void> {
         final data = response.data as Map<String, dynamic>?;
         throw Exception(data?['error'] ?? 'Invite failed (${response.status})');
       }
+      final data = response.data as Map<String, dynamic>?;
+      isExisting = data?['existing'] == true;
       ref.invalidate(staffListProvider);
     });
+    return isExisting;
   }
 }
 

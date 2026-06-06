@@ -1,6 +1,6 @@
 # Current State — Suq ERP
 
-Last updated: 2026-06-02 (session 9)
+Last updated: 2026-06-06 (session 12)
 
 ---
 
@@ -33,16 +33,19 @@ Push: `git push origin feat/phase-4`
 | Session 7 — Remove inventory mode toggle, wire seed auto-trigger | ✅ Done |
 | Session 8 — Riverpod 3.x + go_router v17 + google_fonts v8 + connectivity_plus v7 migration | ✅ Done |
 | Session 9 — Stock correction bug fix, credit reconciliation, report year/custom/category, inventory category filter | ✅ Done |
+| Session 10 — Inventory correction unit test suite (15 tests) | ✅ Done |
+| Session 11 — Credits tab, sale color-coding, detail screen enhancements, post-sale refresh fix | ✅ Done |
+| Session 12 — ListTile warnings, RenderFlex overflow, staff invite v4 (403 fix + duplicate check) | ✅ Done |
 
 ---
 
 ## What Works Right Now
 
-- `flutter analyze` — 0 issues ✅ (last run 2026-06-02)
-- `flutter test` — 81 tests passing ✅ (last run 2026-06-02)
+- `flutter analyze` — 0 issues ✅ (last run 2026-06-06, session 11; session 12 changes pending verify)
+- `flutter test` — 96 tests passing ✅ (last run 2026-06-03)
 - Auth (signup/login/logout) ✅
 - Onboarding: shop + branch creation + default settings ✅
-- Dashboard: home summary, sales tab, inventory tab, customers tab, more tab ✅
+- Dashboard: home summary, sales tab (color-coded), inventory tab, **credits tab**, more tab ✅
 - **Inventory: unified product+stock list (tabs removed), strict enforcement, Add Stock / Correct Stock flows** ✅
 - ProductFormScreen: all fields including cost_price, opening stock required on create ✅
 - Sales: new sale, cart, payment methods (Cash/Bank/Credit), credit customer, void ✅
@@ -50,6 +53,7 @@ Push: `git push origin feat/phase-4`
 - **Sales: credit customer name search fixed** ✅
 - Customers: list, credit balance, transaction history, add/edit ✅
 - **Customers: Receive Payment dialog — partial or full credit settlement** ✅
+- **Credits tab: dedicated bottom nav tab, per-bill settlement with Cash/Bank Transfer + notes** ✅
 - Expenses: record expense, category, date filter ✅
 - Reports: today/week/month, sales summary, gross profit, expense breakdown, low-stock ✅
 - Settings: branch name edit ✅; inventory mode toggle removed (enforcement is unconditional, no UI for it)
@@ -91,14 +95,56 @@ Product detail edit: tap product → "Edit Product Details" → `ProductFormScre
 
 ---
 
-## Staff Invite Flow (Option B — Edge Function)
+## Credits Tab (Session 11)
+
+Bottom nav: Home / Sales / Inventory / **Credits** / More. Customers moved to More tab.
+
+- `CreditsScreen` — shows only customers with unsettled credit bills, grouped alphabetically
+- Each bill card: amount, date, **Details** button (fetches full sale → `SaleDetailScreen`), **Settle** button
+- Settle sheet: selects Cash or Bank Transfer; Bank Transfer reveals optional notes field
+- `outstandingCreditProvider` — fetches all unsettled credit sales joined with `customers(id, name, phone)`
+- `settleCreditSale` — requires `settlementMethod` ('cash'|'bank_transfer'), optional `settlementNotes`
+- `receivePayment` — auto-settles all outstanding bills when balance reaches zero
+- `showCreditSettleSheet()` — public helper shared with `CustomerDetailScreen`
+- DB columns added: `sales.credit_settlement_method`, `sales.credit_settlement_notes`
+
+## Sales Color Coding + Detail Screen (Session 11)
+
+**Color coding** (both Sales screen and Dashboard Sales tab):
+- Cash → blue receipt icon
+- Unsettled credit → orange credit card icon + "Credit" badge; subtitle shows customer name
+- Settled credit → green checkmark icon + "Paid" badge
+- Voided → red cancel icon + "Voided" badge
+
+**SaleDetailScreen** now shows:
+- Transaction ref (`#` + last UUID segment)
+- Payment row: "Cash", "Credit — Outstanding" (warning), "Credit — Settled (Cash/Bank Transfer)" (success)
+- Customer card (name + phone) for credit sales
+- Settlement Notes card for bank transfer settlements with notes
+- Outstanding credit banner at top if unsettled
+
+**Sale model** additions (nullable, populated from Supabase join, null in local Drift path):
+- `customerName`, `customerPhone` — from `customers(id, name, phone)` join
+- `paymentMethodName` — from `payment_methods(id, name, code)` join
+- `creditSettlementMethod`, `creditSettlementNotes` — from `sales.*`
+
+**Bug fixed**: `CreateSaleNotifier.submit` now invalidates `salesListProvider` (always) and `outstandingCreditProvider` (credit sales). Sales and Credits tabs now refresh immediately after a new sale without restart.
+
+---
+
+## Staff Invite Flow (Edge Function v4 — session 12)
 
 1. Owner taps "Invite Staff" FAB → enters email + role
-2. App calls `invite-staff` Edge Function (deployed, ACTIVE)
-3. Edge Function: verifies caller is shop owner → `auth.admin.inviteUserByEmail` → inserts `shop_users` with `status='invited'`
-4. Staff receives invite email → sets password → opens app
-5. Router routes non-owner with `shop_users` record to dashboard (not onboarding)
-6. `shop_users.status` updated `invited` → `active` on first login
+2. App calls `invite-staff` Edge Function v4 (deployed, ACTIVE)
+3. Function verifies caller via `shop_users` (role_id = owner UUID, status = active)
+4. Checks `listUsers` for existing email:
+   - Already in this shop → returns 400 with clear message
+   - Exists but not in shop → inserts `shop_users` with `status='active'` (no email sent), returns `existing: true`
+   - New email → `auth.admin.inviteUserByEmail` + inserts `shop_users` with `status='invited'`, returns `existing: false`
+5. Flutter shows: "Invite email sent to X" or "X already has an account — added to your shop directly"
+6. Staff receives invite email → sets password → opens app
+7. Router routes non-owner with `shop_users` record to dashboard (not onboarding)
+8. `shop_users.status` updated `invited` → `active` on first login
 
 ---
 

@@ -7,6 +7,7 @@ import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_text_field.dart';
 import '../providers/customers_provider.dart';
+import 'credits_screen.dart' show showCreditSettleSheet;
 
 const _months = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
@@ -120,6 +121,14 @@ class CustomerDetailScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sales = ref.watch(customerSalesProvider(customer.id));
     final creditSales = ref.watch(customerCreditSalesProvider(customer.id));
+    // Re-watch so balance refreshes after settle/payment without requiring back-navigate
+    final customerList = ref.watch(customersProvider).asData?.value;
+    final freshCustomer = customerList == null
+        ? customer
+        : customerList.firstWhere(
+            (c) => c.id == customer.id,
+            orElse: () => customer,
+          );
 
     return Scaffold(
       appBar: AppBar(
@@ -138,7 +147,7 @@ class CustomerDetailScreen extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         children: [
           // ── Credit balance summary ─────────────────────────────────────
-          if (customer.hasDebt)
+          if (freshCustomer.hasDebt)
             Card(
               color: AppColors.warning.withValues(alpha: 0.08),
               child: Padding(
@@ -154,7 +163,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                         children: [
                           Text('Total Outstanding', style: AppTextStyles.label),
                           Text(
-                            'ETB ${customer.creditBalance.toStringAsFixed(2)}',
+                            'ETB ${freshCustomer.creditBalance.toStringAsFixed(2)}',
                             style: AppTextStyles.amount
                                 .copyWith(color: AppColors.warning),
                           ),
@@ -165,7 +174,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                       onPressed: () => showDialog(
                         context: context,
                         builder: (_) =>
-                            _ReceivePaymentDialog(customer: customer),
+                            _ReceivePaymentDialog(customer: freshCustomer),
                       ),
                       child: const Text('Receive\nPayment',
                           textAlign: TextAlign.center),
@@ -215,10 +224,16 @@ class CustomerDetailScreen extends ConsumerWidget {
                     children: list.map((s) => _CreditSaleTile(
                       creditSale: s,
                       customerId: customer.id,
+                      customerName: freshCustomer.name,
                     )).toList(),
                   ),
             loading: () => const LinearProgressIndicator(),
-            error: (e, _) => const SizedBox.shrink(),
+            error: (e, _) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text('Could not load credit sales: $e',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.error)),
+            ),
           ),
 
           // ── All sales history ──────────────────────────────────────────
@@ -314,9 +329,14 @@ class CustomerDetailScreen extends ConsumerWidget {
 
 // Per-sale settle tile
 class _CreditSaleTile extends ConsumerWidget {
-  const _CreditSaleTile({required this.creditSale, required this.customerId});
+  const _CreditSaleTile({
+    required this.creditSale,
+    required this.customerId,
+    required this.customerName,
+  });
   final CreditSale creditSale;
   final String customerId;
+  final String customerName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -352,18 +372,14 @@ class _CreditSaleTile extends ConsumerWidget {
   }
 
   Future<void> _settle(BuildContext context, WidgetRef ref) async {
-    final ok = await ref.read(customerFormProvider.notifier).settleCreditSale(
-          customerId: customerId,
-          saleId: creditSale.id,
-          saleTotal: creditSale.total,
-        );
-    if (!context.mounted) return;
-    if (!ok) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Failed to settle. Try again.'),
-        backgroundColor: AppColors.error,
-      ));
-    }
+    await showCreditSettleSheet(
+      context,
+      saleId: creditSale.id,
+      saleTotal: creditSale.total,
+      saleDate: creditSale.createdAt,
+      customerId: customerId,
+      customerName: customerName,
+    );
   }
 }
 

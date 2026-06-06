@@ -10,7 +10,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 |---|---|---|
 | `lib/main.dart` | App entry — Supabase init + ProviderScope + runApp | Rarely |
 | `lib/app.dart` | MaterialApp.router — theme, router, l10n | Changing theme, locale, router wiring |
-| `pubspec.yaml` | All dependencies — **pinned to Riverpod 2.x / go_router 14.x** | Adding/removing packages; see OPEN_TASKS before upgrading |
+| `pubspec.yaml` | All dependencies — Riverpod 3.x, go_router 17.x | Adding/removing packages |
 | `config/env.json` | Supabase URL + anon key (gitignored) | On project change |
 | `config/env.json.example` | Template for env.json | Documenting new env vars |
 
@@ -32,7 +32,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 
 | Path | Purpose | Edit when |
 |---|---|---|
-| `domain/models/product.dart` | `Product`, `CartItem`, `PaymentMethod`, `Customer`, `SaleItem`, `Sale` models | Changing model shape |
+| `domain/models/sale.dart` | `Sale` (with `customerName`, `customerPhone`, `paymentMethodName`, `creditSettlementMethod`, `creditSettlementNotes`), `SaleItem`, `CartItem`, `PaymentMethod`, `Customer` | Changing sale model shape |
 | `domain/models/shop.dart` | `Shop`, `Branch` models | Changing shop/branch shape |
 | `domain/interfaces/` | Service contracts (`IPermissionService`, `ISyncService`, etc.) | Changing service API |
 
@@ -101,7 +101,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 | `sales/data/sales_remote.dart` | Supabase sales calls — search products/customers, create/void sale, stock enforcement | Changing sale write logic |
 | `sales/domain/sales_repository.dart` | Local-first sale logic — Drift pre-check (aggregated per product), fire-and-forget Supabase sync | Changing sale flow |
 | `sales/presentation/providers/sales_provider.dart` | All sale providers — cart, search, create, void, `SeedNotifier` | Adding sale state |
-| `sales/presentation/screens/` | NewSaleScreen, SalesScreen, SaleDetailScreen | Changing sales UI |
+| `sales/presentation/screens/` | NewSaleScreen, SalesScreen, **SaleDetailScreen** (tx ref, customer card, settlement notes card, credit status banner) | Changing sales UI |
 
 ---
 
@@ -109,8 +109,9 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 
 | Path | Purpose | Edit when |
 |---|---|---|
-| `customers/presentation/providers/customers_provider.dart` | `customersProvider`, `CustomerFormNotifier` (save, settleDebt, **receivePayment**), `customerSalesProvider` | Adding customer operations |
-| `customers/presentation/screens/customers_screen.dart` | Customer list, `CustomerDetailScreen` (with **Receive Payment** dialog), `CustomerFormScreen`, `_ReceivePaymentDialog` | Changing customer UI |
+| `customers/presentation/providers/customers_provider.dart` | `customersProvider`, `CustomerFormNotifier` (save, settleDebt, **receivePayment**, **settleCreditSale**), `outstandingCreditProvider`, `CreditSaleWithCustomer` model | Adding customer operations |
+| `customers/presentation/screens/customers_screen.dart` | Customer list, `CustomerDetailScreen` (with **Receive Payment** dialog), `CustomerFormScreen` | Changing customer UI |
+| `customers/presentation/screens/credits_screen.dart` | **Credits tab** — unsettled bills grouped by customer, per-bill settle sheet (Cash/Bank Transfer), `showCreditSettleSheet()` public helper | Changing credit reconciliation UI |
 
 ---
 

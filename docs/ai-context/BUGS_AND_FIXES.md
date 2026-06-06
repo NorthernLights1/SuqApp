@@ -231,12 +231,20 @@ Files: `customers_screen.dart`, `customers_provider.dart`
 
 ---
 
-## Bug: Stock Correction always fails — "Correction failed. Try again."
-Status: Fixed (2026-06-02 session 9)
+## Bug: Stock Correction (and second Add Stock) always fails — 409 Conflict
+Status: Fixed (2026-06-03 session 10)
 
-Cause: `inventory_remote.dart correctStock()` was inserting `'type': 'correction'` into `inventory_adjustments`, but the DB check constraint only allows `('opening_stock','sale','refund','manual','supply_received','void')`. The constraint violation caused `AsyncValue.guard` to catch an error → `state.hasError` → `ok = false`.
+Cause: All four inventory upserts (`setOpeningStock`, `manualAdjustment`, `addStock`, `correctStock`) called `.upsert({...})` WITHOUT `onConflict`. PostgREST defaults to conflict-detection on the PRIMARY KEY (`id`). Since `id` is never included in the payload, no PK conflict is found and PostgREST issues a plain INSERT. The INSERT then hits the `unique(branch_id, product_id)` constraint and returns HTTP 409, which `AsyncValue.guard` catches → `state.hasError` → `ok = false`.
 
-Fix: Changed `'type': 'correction'` to `'type': 'manual'` (semantically equivalent — both are admin-override quantity changes).
+`setOpeningStock` only runs when no row exists yet (first stock entry) so it happened to work. `correctStock` ALWAYS fails because you can only correct stock for a product that is already in inventory (button only shown when `entry != null`). `addStock` would also fail on any re-stock call.
+
+Root cause confirmed via Supabase postgres logs: `duplicate key value violates unique constraint "inventory_branch_id_product_id_key"` and API logs: `POST /rest/v1/inventory → 409`.
+
+Session 9 fix (`'correction'` → `'manual'`) was a red herring — changed which error fired first, but the 409 was always the real killer.
+
+Fix: Added `onConflict: 'branch_id,product_id'` to all four `.upsert()` calls in `inventory_remote.dart`.
+
+Regression tests: `test/features/inventory/inventory_correction_test.dart` — 15 tests (DB layer + enforcement after correction).
 
 File: `lib/features/inventory/data/inventory_remote.dart`
 
@@ -254,3 +262,71 @@ Fix: Restored `pubspec.yaml` to committed versions. Run `flutter pub get`. 0 err
 Note: Riverpod 3.x migration is a planned task (see OPEN_TASKS.md). Do not run `flutter pub upgrade --major-versions` until the migration is done.
 
 Files: `pubspec.yaml`
+
+---
+
+## Bug: Sales tab and Credits tab stale after new sale (no refresh without restart)
+Status: Fixed (2026-06-06)
+
+Cause: `CreateSaleNotifier.submit` only invalidated `todaySalesTotalsProvider` and `stockLevelsProvider`. `salesListProvider` and `outstandingCreditProvider` were never invalidated, so the lists only updated on next cold load.
+
+Fix: Added `ref.invalidate(salesListProvider)` (always) and `ref.invalidate(outstandingCreditProvider)` (when `isCredit == true`) inside `CreateSaleNotifier.submit`.
+
+File: `lib/features/sales/presentation/providers/sales_provider.dart`
+
+---
+
+## Bug: ListTile ink splash invisible in NewSaleScreen (product search + customer results)
+Status: Fixed (2026-06-06)
+
+Cause: `ListTile` inside `Container(BoxDecoration(color: Colors.white))` has no Material ancestor for ink effects — the DecoratedBox sits between ListTile and its nearest Material, making splash invisible.
+
+Fix: Wrapped both `ListTile` instances in `Material(type: MaterialType.transparency)`.
+- Product search dropdown: `itemBuilder` in `_ProductSearchSection`
+- Customer results: `_CustomerResults` `map()` entries
+
+File: `lib/features/sales/presentation/screens/new_sale_screen.dart`
+
+---
+
+## Bug: RenderFlex overflow 13px in cart item row
+Status: Fixed (2026-06-06)
+
+Cause: Line total text wrapped in `SizedBox(width: 72)` — too narrow for 6+ digit amounts (e.g. "1234.50").
+
+Fix: Replaced `SizedBox(width: 72)` with `Flexible(child: Text(..., overflow: TextOverflow.ellipsis))`.
+
+File: `lib/features/sales/presentation/screens/new_sale_screen.dart` (cart item row)
+
+---
+
+## Bug: Staff invite always returns 403 (owner check fails)
+Status: Fixed (2026-06-06)
+
+Cause: Edge Function v3 verified ownership with:
+`admin.from('shops').select('id').eq('id', shopId).eq('owner_id', caller.id)`
+Despite the DB data matching, the admin client query returned null on every call (root cause unclear — possibly a Supabase Edge Function runtime issue with the admin client in this context).
+
+Fix (v4): Replaced the `shops` check with a `shop_users` check using the fixed owner role UUID:
+`admin.from('shop_users').select('id').eq('shop_id', shopId).eq('user_id', caller.id).eq('role_id', OWNER_ROLE_ID).eq('status', 'active')`
+This is also more robust — works even if `shops.owner_id` is ever out of sync.
+
+Note: Always use `shop_users + role_id` to verify ownership in Edge Functions, not `shops.owner_id`.
+
+File: Supabase Edge Function `invite-staff` (v4 deployed)
+
+---
+
+## Bug: Staff invite accepts duplicate email with no error
+Status: Fixed (2026-06-06)
+
+Cause: Edge Function called `inviteUserByEmail` without checking if the email was already registered. For already-registered users, Supabase could return an opaque error or silently resend.
+
+Fix (v4): Before calling `inviteUserByEmail`, call `admin.auth.admin.listUsers()` and search for the email. Three cases:
+- Email exists + already in this shop → return 400 with clear message ("already a member" / "already has a pending invite")
+- Email exists + not in this shop → insert `shop_users` directly with `status: 'active'` (no invite needed, they can log in), return `{ existing: true }`
+- Email not found → send invite normally, return `{ existing: false }`
+
+Flutter UI: `invite()` now returns `bool isExisting`. Success snackbar shows "Invite email sent to X" or "X already has an account — added to your shop directly" accordingly.
+
+Files: Supabase Edge Function `invite-staff` (v4), `staff_provider.dart`, `staff_screen.dart`

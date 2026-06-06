@@ -16,8 +16,11 @@ class Sale extends Equatable {
     required this.id,
     required this.branchId,
     this.customerId,
+    this.customerName,
+    this.customerPhone,
     required this.cashierId,
     required this.paymentMethodId,
+    this.paymentMethodName,
     required this.subtotal,
     required this.discountAmount,
     required this.total,
@@ -27,6 +30,8 @@ class Sale extends Equatable {
     this.voidedAt,
     required this.isCredit,
     this.creditSettledAt,
+    this.creditSettlementMethod,
+    this.creditSettlementNotes,
     this.notes,
     required this.createdAt,
     this.items = const [],
@@ -35,8 +40,11 @@ class Sale extends Equatable {
   final String id;
   final String branchId;
   final String? customerId;
+  final String? customerName;
+  final String? customerPhone;
   final String cashierId;
   final String paymentMethodId;
+  final String? paymentMethodName;
   final Decimal subtotal;
   final Decimal discountAmount;
   final Decimal total;
@@ -46,37 +54,48 @@ class Sale extends Equatable {
   final DateTime? voidedAt;
   final bool isCredit;
   final DateTime? creditSettledAt;
+  final String? creditSettlementMethod;
+  final String? creditSettlementNotes;
   final String? notes;
   final DateTime createdAt;
   final List<SaleItem> items;
 
   bool get isCreditSettled => creditSettledAt != null;
 
-  factory Sale.fromJson(Map<String, dynamic> json) => Sale(
-        id: json['id'] as String,
-        branchId: json['branch_id'] as String,
-        customerId: json['customer_id'] as String?,
-        cashierId: json['cashier_id'] as String,
-        paymentMethodId: json['payment_method_id'] as String,
-        subtotal: Decimal.parse(json['subtotal'].toString()),
-        discountAmount: Decimal.parse(json['discount_amount'].toString()),
-        total: Decimal.parse(json['total'].toString()),
-        status: SaleStatus.values.byName(json['status'] as String),
-        voidReason: json['void_reason'] as String?,
-        voidedBy: json['voided_by'] as String?,
-        voidedAt: json['voided_at'] != null
-            ? DateTime.parse(json['voided_at'] as String)
-            : null,
-        isCredit: json['is_credit'] as bool,
-        creditSettledAt: json['credit_settled_at'] != null
-            ? DateTime.parse(json['credit_settled_at'] as String)
-            : null,
-        notes: json['notes'] as String?,
-        createdAt: DateTime.parse(json['created_at'] as String),
-        items: (json['sale_items'] as List? ?? [])
-            .map((e) => SaleItem.fromJson(e as Map<String, dynamic>))
-            .toList(),
-      );
+  factory Sale.fromJson(Map<String, dynamic> json) {
+    final customer = json['customers'] as Map<String, dynamic>?;
+    final paymentMethod = json['payment_methods'] as Map<String, dynamic>?;
+    return Sale(
+      id: json['id'] as String,
+      branchId: json['branch_id'] as String,
+      customerId: json['customer_id'] as String?,
+      customerName: customer?['name'] as String?,
+      customerPhone: customer?['phone'] as String?,
+      cashierId: json['cashier_id'] as String,
+      paymentMethodId: json['payment_method_id'] as String,
+      paymentMethodName: paymentMethod?['name'] as String?,
+      subtotal: Decimal.parse(json['subtotal'].toString()),
+      discountAmount: Decimal.parse(json['discount_amount'].toString()),
+      total: Decimal.parse(json['total'].toString()),
+      status: SaleStatus.values.byName(json['status'] as String),
+      voidReason: json['void_reason'] as String?,
+      voidedBy: json['voided_by'] as String?,
+      voidedAt: json['voided_at'] != null
+          ? DateTime.parse(json['voided_at'] as String)
+          : null,
+      isCredit: json['is_credit'] as bool,
+      creditSettledAt: json['credit_settled_at'] != null
+          ? DateTime.parse(json['credit_settled_at'] as String)
+          : null,
+      creditSettlementMethod: json['credit_settlement_method'] as String?,
+      creditSettlementNotes: json['credit_settlement_notes'] as String?,
+      notes: json['notes'] as String?,
+      createdAt: DateTime.parse(json['created_at'] as String),
+      items: (json['sale_items'] as List? ?? [])
+          .map((e) => SaleItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
 
   @override
   List<Object?> get props => [id, status, total, createdAt];

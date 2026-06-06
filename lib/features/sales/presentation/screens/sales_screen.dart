@@ -152,15 +152,63 @@ class _SaleTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isVoided = sale.status == SaleStatus.voided;
+    final isUnsettledCredit = sale.isCredit && !sale.isCreditSettled;
+    final isSettledCredit = sale.isCredit && sale.isCreditSettled;
+
+    final Color iconColor;
+    final Color iconBg;
+    final IconData iconData;
+    final Widget trailing;
+
+    if (isVoided) {
+      iconColor = AppColors.error;
+      iconBg = AppColors.error.withValues(alpha: 0.1);
+      iconData = Icons.cancel_outlined;
+      trailing = const Chip(
+        label: Text('Voided'),
+        backgroundColor: Color(0xFFFFEBEE),
+        labelStyle: TextStyle(color: AppColors.error, fontSize: 11),
+        padding: EdgeInsets.zero,
+      );
+    } else if (isUnsettledCredit) {
+      iconColor = AppColors.warning;
+      iconBg = AppColors.warning.withValues(alpha: 0.1);
+      iconData = Icons.credit_card_outlined;
+      trailing = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.warning.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text('Credit', style: AppTextStyles.label.copyWith(color: AppColors.warning)),
+      );
+    } else if (isSettledCredit) {
+      iconColor = AppColors.success;
+      iconBg = AppColors.success.withValues(alpha: 0.1);
+      iconData = Icons.credit_score;
+      trailing = Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: AppColors.success.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Text('Paid', style: AppTextStyles.label.copyWith(color: AppColors.success)),
+      );
+    } else {
+      iconColor = AppColors.primary;
+      iconBg = AppColors.primaryLight;
+      iconData = Icons.receipt_outlined;
+      trailing = const Icon(Icons.chevron_right, color: AppColors.textSecondary);
+    }
+
+    final subtitle = isUnsettledCredit && sale.customerName != null
+        ? '${sale.customerName} • ${_formatTime(sale.createdAt)}'
+        : '${sale.items.length} item(s) • ${_formatTime(sale.createdAt)}';
+
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor:
-            isVoided ? AppColors.error.withValues(alpha: 0.1) : AppColors.primaryLight,
-        child: Icon(
-          isVoided ? Icons.cancel_outlined : Icons.receipt_outlined,
-          color: isVoided ? AppColors.error : AppColors.primary,
-          size: 20,
-        ),
+        backgroundColor: iconBg,
+        child: Icon(iconData, color: iconColor, size: 20),
       ),
       title: Text(
         'ETB ${sale.total.toStringAsFixed(2)}',
@@ -170,18 +218,8 @@ class _SaleTile extends StatelessWidget {
           color: isVoided ? AppColors.textSecondary : AppColors.textPrimary,
         ),
       ),
-      subtitle: Text(
-        '${sale.items.length} item(s) • ${_formatTime(sale.createdAt)}',
-        style: AppTextStyles.bodySmall,
-      ),
-      trailing: isVoided
-          ? const Chip(
-              label: Text('Voided'),
-              backgroundColor: Color(0xFFFFEBEE),
-              labelStyle: TextStyle(color: AppColors.error, fontSize: 11),
-              padding: EdgeInsets.zero,
-            )
-          : const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+      subtitle: Text(subtitle, style: AppTextStyles.bodySmall),
+      trailing: trailing,
       onTap: () => _showDetail(context, sale),
     );
   }
@@ -232,6 +270,25 @@ class SaleDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isVoided = sale.status == SaleStatus.voided;
+    final isUnsettledCredit = sale.isCredit && !sale.isCreditSettled;
+    final isSettledCredit = sale.isCredit && sale.isCreditSettled;
+    final txRef = '#${sale.id.split('-').last.toUpperCase()}';
+
+    String paymentLabel;
+    Color paymentColor;
+    if (isUnsettledCredit) {
+      paymentLabel = 'Credit — Outstanding';
+      paymentColor = AppColors.warning;
+    } else if (isSettledCredit) {
+      final method = sale.creditSettlementMethod == 'bank_transfer'
+          ? 'Bank Transfer'
+          : 'Cash';
+      paymentLabel = 'Credit — Settled ($method)';
+      paymentColor = AppColors.success;
+    } else {
+      paymentLabel = sale.paymentMethodName ?? 'Cash';
+      paymentColor = AppColors.textPrimary;
+    }
 
     return Scaffold(
       appBar: AppBar(
@@ -248,7 +305,7 @@ class SaleDetailScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Status banner
+          // Voided banner
           if (isVoided)
             Container(
               padding: const EdgeInsets.all(12),
@@ -264,10 +321,28 @@ class SaleDetailScreen extends ConsumerWidget {
                   Expanded(
                     child: Text(
                       'Voided${sale.voidReason != null ? ': ${sale.voidReason}' : ''}',
-                      style: AppTextStyles.bodySmall
-                          .copyWith(color: AppColors.error),
+                      style: AppTextStyles.bodySmall.copyWith(color: AppColors.error),
                     ),
                   ),
+                ],
+              ),
+            ),
+
+          // Outstanding credit banner
+          if (isUnsettledCredit)
+            Container(
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.only(bottom: 16),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.credit_card_outlined, color: AppColors.warning, size: 20),
+                  const SizedBox(width: 8),
+                  Text('Credit not yet settled',
+                      style: AppTextStyles.bodySmall.copyWith(color: AppColors.warning)),
                 ],
               ),
             ),
@@ -278,10 +353,14 @@ class SaleDetailScreen extends ConsumerWidget {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  _DetailRow(label: 'Date',
-                      value: _formatDateTime(sale.createdAt)),
-                  _DetailRow(label: 'Items',
-                      value: '${sale.items.length}'),
+                  _DetailRow(label: 'Ref', value: txRef),
+                  _DetailRow(label: 'Date', value: _formatDateTime(sale.createdAt)),
+                  _DetailRow(
+                    label: 'Payment',
+                    value: paymentLabel,
+                    valueColor: paymentColor,
+                  ),
+                  _DetailRow(label: 'Items', value: '${sale.items.length}'),
                   _DetailRow(label: 'Subtotal',
                       value: 'ETB ${sale.subtotal.toStringAsFixed(2)}'),
                   if (sale.discountAmount > Decimal.zero)
@@ -300,6 +379,60 @@ class SaleDetailScreen extends ConsumerWidget {
             ),
           ),
 
+          // Customer info (credit sales)
+          if (sale.isCredit && (sale.customerName != null || sale.customerId != null)) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.person_outline, size: 16, color: AppColors.textSecondary),
+                        const SizedBox(width: 6),
+                        Text('Customer', style: AppTextStyles.label),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    if (sale.customerName != null)
+                      _DetailRow(label: 'Name', value: sale.customerName!),
+                    if (sale.customerPhone != null)
+                      _DetailRow(label: 'Phone', value: sale.customerPhone!),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
+          // Settlement notes (bank transfer)
+          if (isSettledCredit &&
+              sale.creditSettlementMethod == 'bank_transfer' &&
+              sale.creditSettlementNotes != null) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.account_balance_outlined,
+                            size: 16, color: AppColors.textSecondary),
+                        const SizedBox(width: 6),
+                        Text('Settlement Notes', style: AppTextStyles.label),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(sale.creditSettlementNotes!, style: AppTextStyles.body),
+                  ],
+                ),
+              ),
+            ),
+          ],
+
           const SizedBox(height: 16),
           Text('Items', style: AppTextStyles.headline3),
           const SizedBox(height: 8),
@@ -308,16 +441,14 @@ class SaleDetailScreen extends ConsumerWidget {
           ...sale.items.map((item) => Card(
                 margin: const EdgeInsets.only(bottom: 8),
                 child: ListTile(
-                  title: Text(item.productNameSnapshot,
-                      style: AppTextStyles.body),
+                  title: Text(item.productNameSnapshot, style: AppTextStyles.body),
                   subtitle: Text(
                     '${item.quantity} × ETB ${item.unitPrice.toStringAsFixed(2)}',
                     style: AppTextStyles.bodySmall,
                   ),
                   trailing: Text(
                     'ETB ${item.total.toStringAsFixed(2)}',
-                    style: AppTextStyles.body
-                        .copyWith(fontWeight: FontWeight.w600),
+                    style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
               )),

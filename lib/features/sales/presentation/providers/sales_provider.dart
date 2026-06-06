@@ -6,6 +6,7 @@ import '../../../../domain/models/product.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
+import '../../../../features/customers/presentation/providers/customers_provider.dart' show outstandingCreditProvider;
 import '../../../../features/inventory/data/inventory_remote.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../data/sales_remote.dart';
@@ -233,7 +234,9 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
       ref.read(selectedCustomerProvider.notifier).set(null);
       ref.read(customerSearchQueryProvider.notifier).set('');
       ref.invalidate(todaySalesTotalsProvider);
+      ref.invalidate(salesListProvider);
       ref.invalidate(stockLevelsProvider);
+      if (isCredit) ref.invalidate(outstandingCreditProvider);
       return sale;
     });
     return state.asData?.value;

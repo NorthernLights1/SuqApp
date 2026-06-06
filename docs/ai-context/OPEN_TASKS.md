@@ -1,14 +1,32 @@
 # Open Tasks — Suq ERP
 
-Last updated: 2026-06-02 (session 9)
+Last updated: 2026-06-06 (session 12)
 
 ---
 
 ## Immediate / Next Session
 
-- [x] Remove inventory mode toggle from Settings — done (session 7); `_InventoryModeTile`, `inventoryModeProvider`, `InventoryModeNotifier` all deleted
-- [x] Watch `seedNotifierProvider` in `dashboard_screen.dart` — done (session 7); seeding now triggers automatically on login
-- [ ] "Gaps" view — surface products sold as `untracked` (if any historical records exist) to prompt owner to add them to inventory
+- [x] Remove inventory mode toggle from Settings — done (session 7)
+- [x] Watch `seedNotifierProvider` in `dashboard_screen.dart` — done (session 7)
+- [x] Credits tab with per-bill settlement — done (session 11)
+- [x] Sales list color-coding (cash / unsettled credit / settled credit / voided) — done (session 11)
+- [x] SaleDetailScreen: transaction ref, customer info, settlement notes — done (session 11)
+- [x] Post-sale stale lists bug (Sales tab + Credits tab not refreshing) — done (session 11)
+- [x] Fix `ListTile` ink splash invisible warnings — done (session 12)
+- [x] Fix `RenderFlex` overflow by 13px in cart item row — done (session 12)
+- [x] Staff invite 403 + duplicate email — done (session 12, Edge Function v4)
+- [ ] "Gaps" view — surface products sold as `untracked` to prompt owner to add them to inventory
+
+---
+
+## Notifications Phase (new branch: `feat/notifications`)
+
+- [ ] Email notifications for low stock (trigger when stock ≤ threshold after a sale)
+- [ ] Telegram notifications for low stock
+- [ ] Email notifications for overdue credits (owner sets overdue period in Settings)
+- [ ] Telegram notifications for overdue credits
+- [ ] Settings screen: add notification config (email address, Telegram bot token / chat ID, overdue days)
+- [ ] Staff invite via Telegram (phone number input → bot sends OTP/link)
 
 ---
 

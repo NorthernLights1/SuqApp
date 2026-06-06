@@ -88,14 +88,17 @@ class _InviteSheetState extends ConsumerState<_InviteSheet> {
       return;
     }
     try {
-      await ref
+      final isExisting = await ref
           .read(inviteStaffProvider.notifier)
           .invite(email: email, roleId: _selectedRoleId);
       if (mounted) {
         Navigator.pop(context);
+        final message = isExisting
+            ? '$email already has an account — added to your shop directly'
+            : 'Invite email sent to $email';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Invite sent to $email'),
+            content: Text(message),
             backgroundColor: AppColors.success,
           ),
         );
