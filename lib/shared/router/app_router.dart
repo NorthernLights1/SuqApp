@@ -66,11 +66,11 @@ GoRouter createRouter() {
             .maybeSingle();
 
         if (memberData != null) {
-          // Activate invited staff on first login
+          // Activate invited staff on first login. shop_users is
+          // owner-write-only, so a staff member can't update their own row;
+          // this SECURITY DEFINER RPC flips their own invited membership active.
           if (memberData['status'] == 'invited') {
-            await client
-                .from('shop_users')
-                .update({'status': 'active'}).eq('id', memberData['id'] as String);
+            await client.rpc('activate_my_membership');
           }
           return AppRoutes.dashboard;
         }
