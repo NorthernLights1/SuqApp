@@ -19,6 +19,7 @@ class AppTextField extends StatelessWidget {
     this.enabled = true,
     this.maxLines = 1,
     this.inputFormatters,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   final TextEditingController controller;
@@ -36,6 +37,7 @@ class AppTextField extends StatelessWidget {
   final bool enabled;
   final int maxLines;
   final List<TextInputFormatter>? inputFormatters;
+  final TextCapitalization textCapitalization;
 
   @override
   Widget build(BuildContext context) {
@@ -50,6 +52,7 @@ class AppTextField extends StatelessWidget {
       enabled: enabled,
       maxLines: maxLines,
       inputFormatters: inputFormatters,
+      textCapitalization: textCapitalization,
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,

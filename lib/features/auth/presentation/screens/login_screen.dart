@@ -126,7 +126,15 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   loading: loading,
                   onPressed: _submit,
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => context.go(AppRoutes.acceptInvite),
+                    icon: const Icon(Icons.mark_email_read_outlined, size: 18),
+                    label: const Text('I was invited'),
+                  ),
+                ),
+                const SizedBox(height: 8),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [

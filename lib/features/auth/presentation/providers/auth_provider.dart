@@ -67,6 +67,42 @@ class AuthNotifier extends AsyncNotifier<void> {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() => _client.auth.signOut());
   }
+
+  /// Step 1 of accepting an invite: email a one-time code to an invited staff
+  /// member. `shouldCreateUser: false` means only emails that were actually
+  /// invited (their account already exists) can receive a code. Throws on
+  /// failure so the caller can show the reason.
+  Future<void> sendInviteCode(String email) async {
+    await _client.auth.signInWithOtp(
+      email: email.trim(),
+      shouldCreateUser: false,
+    );
+  }
+
+  /// Step 2: verify the code, then set the staff member's password and name.
+  /// On success they are signed in and the router routes them to their shop.
+  Future<void> claimInvite({
+    required String email,
+    required String code,
+    required String fullName,
+    required String password,
+  }) async {
+    await _client.auth.verifyOTP(
+      email: email.trim(),
+      token: code.trim(),
+      type: OtpType.email,
+    );
+    await _client.auth.updateUser(
+      UserAttributes(password: password, data: {'full_name': fullName.trim()}),
+    );
+    final userId = _client.auth.currentUser?.id;
+    if (userId != null) {
+      // profiles RLS allows a user to write their own row (auth.uid() = id).
+      await _client
+          .from('profiles')
+          .upsert({'id': userId, 'full_name': fullName.trim()});
+    }
+  }
 }
 
 final authNotifierProvider =

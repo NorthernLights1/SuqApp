@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../features/auth/presentation/screens/login_screen.dart';
 import '../../features/auth/presentation/screens/signup_screen.dart';
+import '../../features/auth/presentation/screens/accept_invite_screen.dart';
 import '../../features/onboarding/presentation/screens/onboarding_screen.dart';
 import '../../features/dashboard/presentation/screens/dashboard_screen.dart';
 import '../../features/sales/presentation/screens/sales_screen.dart';
@@ -35,9 +36,11 @@ GoRouter createRouter() {
         final session = client.auth.currentSession;
         final isLoggedIn = session != null;
         final loc = state.matchedLocation;
-        final isAuthRoute = loc == AppRoutes.login || loc == AppRoutes.signup;
+        final isAuthRoute = loc == AppRoutes.login ||
+            loc == AppRoutes.signup ||
+            loc == AppRoutes.acceptInvite;
 
-        // Not logged in → force to login
+        // Not logged in → force to login (but allow the invite-acceptance screen)
         if (!isLoggedIn) {
           return isAuthRoute ? null : AppRoutes.login;
         }
@@ -88,6 +91,10 @@ GoRouter createRouter() {
       GoRoute(
         path: AppRoutes.signup,
         builder: (context, state) => const SignupScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.acceptInvite,
+        builder: (context, state) => const AcceptInviteScreen(),
       ),
       GoRoute(
         path: AppRoutes.onboarding,

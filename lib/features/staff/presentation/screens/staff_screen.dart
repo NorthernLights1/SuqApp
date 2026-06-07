@@ -95,7 +95,8 @@ class _InviteSheetState extends ConsumerState<_InviteSheet> {
         Navigator.pop(context);
         final message = isExisting
             ? '$email already has an account — added to your shop directly'
-            : 'Invite email sent to $email';
+            : '$email added. Ask them to open the app, tap "I was invited", '
+                'and sign in with their email to set a password.';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
