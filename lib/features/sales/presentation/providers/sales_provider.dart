@@ -244,6 +244,13 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
       ref.invalidate(reportSummaryProvider);
       if (isCredit) ref.invalidate(outstandingCreditProvider);
       if (customerId != null) ref.invalidate(customerSalesProvider(customerId));
+      // Eagerly await the sales-list refetch so this sale is already present
+      // when the user returns to the Sales tab, rather than appearing only
+      // after the next sale. A refetch hiccup must not mask the successful
+      // sale, so swallow any error here.
+      try {
+        await ref.read(salesListProvider.future);
+      } catch (_) {}
       // Fire-and-forget low-stock check — must not throw into sale flow
       unawaited(_checkLowStock(shop.id));
       return sale;
