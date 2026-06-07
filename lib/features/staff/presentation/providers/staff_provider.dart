@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 
@@ -115,28 +116,37 @@ class InviteStaffNotifier extends AsyncNotifier<void> {
   Future<void> build() async {}
 
   /// Returns true if the invitee already had an account (added directly),
-  /// false if a new invite email was sent.
+  /// false if a new invite email was sent. Throws on failure so the caller
+  /// can surface the real error instead of reporting a false success.
   Future<bool> invite({required String email, required String roleId}) async {
     final shop = await ref.read(currentShopProvider.future);
     if (shop == null) throw Exception('No shop found');
 
-    bool isExisting = false;
     state = const AsyncLoading();
-    state = await AsyncValue.guard(() async {
+    try {
       final client = ref.read(supabaseClientProvider);
       final response = await client.functions.invoke(
         'invite-staff',
         body: {'email': email, 'shopId': shop.id, 'roleId': roleId},
       );
-      if (response.status != 200) {
-        final data = response.data as Map<String, dynamic>?;
-        throw Exception(data?['error'] ?? 'Invite failed (${response.status})');
-      }
       final data = response.data as Map<String, dynamic>?;
-      isExisting = data?['existing'] == true;
+      final isExisting = data?['existing'] == true;
       ref.invalidate(staffListProvider);
-    });
-    return isExisting;
+      state = const AsyncData(null);
+      return isExisting;
+    } on FunctionException catch (e, st) {
+      // invoke() throws on non-2xx; pull the function's error message out of
+      // the response body so the UI shows the real reason (e.g. the 403).
+      state = AsyncError(e, st);
+      final details = e.details;
+      final msg = (details is Map && details['error'] != null)
+          ? details['error'].toString()
+          : 'Invite failed (status ${e.status})';
+      throw Exception(msg);
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      rethrow;
+    }
   }
 }
 
