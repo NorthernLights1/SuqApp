@@ -81,16 +81,17 @@ class Sale extends Equatable {
       voidReason: json['void_reason'] as String?,
       voidedBy: json['voided_by'] as String?,
       voidedAt: json['voided_at'] != null
-          ? DateTime.parse(json['voided_at'] as String)
+          ? DateTime.parse(json['voided_at'] as String).toLocal()
           : null,
       isCredit: json['is_credit'] as bool,
       creditSettledAt: json['credit_settled_at'] != null
-          ? DateTime.parse(json['credit_settled_at'] as String)
+          ? DateTime.parse(json['credit_settled_at'] as String).toLocal()
           : null,
       creditSettlementMethod: json['credit_settlement_method'] as String?,
       creditSettlementNotes: json['credit_settlement_notes'] as String?,
       notes: json['notes'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
+      // Supabase returns UTC timestamptz; convert to local for display.
+      createdAt: DateTime.parse(json['created_at'] as String).toLocal(),
       items: (json['sale_items'] as List? ?? [])
           .map((e) => SaleItem.fromJson(e as Map<String, dynamic>))
           .toList(),

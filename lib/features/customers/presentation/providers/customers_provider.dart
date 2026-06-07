@@ -27,7 +27,7 @@ class CreditSaleWithCustomer extends Equatable {
     return CreditSaleWithCustomer(
       id: j['id'] as String,
       total: Decimal.parse(j['total'].toString()),
-      createdAt: DateTime.parse(j['created_at'] as String),
+      createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
       customerId: j['customer_id'] as String,
       customerName: customer['name'] as String? ?? 'Unknown',
     );
@@ -52,7 +52,7 @@ class CreditSale extends Equatable {
   factory CreditSale.fromJson(Map<String, dynamic> j) => CreditSale(
         id: j['id'] as String,
         total: Decimal.parse(j['total'].toString()),
-        createdAt: DateTime.parse(j['created_at'] as String),
+        createdAt: DateTime.parse(j['created_at'] as String).toLocal(),
       );
 
   @override

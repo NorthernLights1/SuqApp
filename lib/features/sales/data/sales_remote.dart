@@ -110,8 +110,40 @@ class SalesRemote {
         items.fold(Decimal.zero, (sum, i) => sum + i.discountAmount);
     final total = subtotal - totalDiscount;
 
-    // Insert sale with client-generated id so offline and online paths share the same UUID
-    final saleResult = await _client.from('sales').insert({
+    // ── Validate stock for ALL tracked items BEFORE writing anything ─────────
+    // Insert-then-rollback is fragile: a later item failing the check would
+    // strand the inventory already deducted for earlier items. Pre-check the
+    // whole cart first. Aggregate quantities per product so two cart lines for
+    // the same product are checked against their combined total.
+    final neededQty = <String, Decimal>{};
+    final productNames = <String, String>{};
+    final unitAbbrs = <String, String?>{};
+    for (final item in items) {
+      if (item.productId == null) continue;
+      neededQty[item.productId!] =
+          (neededQty[item.productId!] ?? Decimal.zero) + item.quantity;
+      productNames.putIfAbsent(item.productId!, () => item.productName);
+      unitAbbrs.putIfAbsent(item.productId!, () => item.measurementUnitAbbr);
+    }
+    final stockByProduct = <String, Decimal>{};
+    for (final entry in neededQty.entries) {
+      final stock = await getStockLevel(branchId, entry.key);
+      final name = productNames[entry.key]!;
+      if (stock == null) {
+        throw Exception(
+            '"$name" is not in inventory. Add stock before selling.');
+      }
+      if (stock < entry.value) {
+        final abbr = unitAbbrs[entry.key];
+        throw Exception(
+            'Not enough stock for "$name". Available: $stock${abbr != null ? ' $abbr' : ''}');
+      }
+      stockByProduct[entry.key] = stock;
+    }
+
+    // ── All items valid — insert the sale (client-generated id shared with the
+    // offline path) ─────────────────────────────────────────────────────────
+    await _client.from('sales').insert({
       'id': id,
       'branch_id': branchId,
       'customer_id': customerId,
@@ -123,32 +155,15 @@ class SalesRemote {
       'status': 'completed',
       'is_credit': isCredit,
       'notes': notes,
-    }).select('*').single();
+    });
 
-    final saleId = saleResult['id'] as String;
-
-    // Insert sale items + inventory adjustments
+    // ── Insert items + discounts + inventory adjustments ────────────────────
+    // Track running stock per product so repeated lines deduct cumulatively.
+    final runningStock = Map<String, Decimal>.from(stockByProduct);
     for (final item in items) {
-      InventoryStatus invStatus = InventoryStatus.untracked;
-
-      if (item.productId != null) {
-        final stock = await getStockLevel(branchId, item.productId!);
-
-        if (stock == null) {
-          await _client.from('sales').delete().eq('id', saleId);
-          throw Exception(
-              '"${item.productName}" is not in inventory. Add stock before selling.');
-        } else if (stock < item.quantity) {
-          await _client.from('sales').delete().eq('id', saleId);
-          throw Exception(
-              'Not enough stock for "${item.productName}". Available: $stock ${item.measurementUnitAbbr ?? ''}');
-        } else {
-          invStatus = InventoryStatus.tracked;
-        }
-      }
-
+      final isTracked = item.productId != null;
       final itemResult = await _client.from('sale_items').insert({
-        'sale_id': saleId,
+        'sale_id': id,
         'product_id': item.productId,
         'product_name_snapshot': item.productName,
         'measurement_unit_id': item.measurementUnitId,
@@ -156,14 +171,16 @@ class SalesRemote {
         'unit_price': item.unitPrice.toString(),
         'discount_amount': item.discountAmount.toString(),
         'total': item.lineTotal.toString(),
-        'inventory_status': invStatus.name,
+        'inventory_status':
+            (isTracked ? InventoryStatus.tracked : InventoryStatus.untracked)
+                .name,
         'cost_price_snapshot': item.costPrice?.toString(),
       }).select('id').single();
 
       // Record discount if any
       if (item.discountAmount > Decimal.zero && discountReason != null) {
         await _client.from('discounts').insert({
-          'sale_id': saleId,
+          'sale_id': id,
           'sale_item_id': itemResult['id'],
           'given_by': cashierId,
           'type': 'fixed',
@@ -172,36 +189,32 @@ class SalesRemote {
         });
       }
 
-      // Create inventory adjustment only for fully-tracked items (stock was sufficient).
-      // Flagged items are allowed through in flexible mode but we do not write
-      // a negative quantity — the flagged status on the sale item records the discrepancy.
-      if (item.productId != null && invStatus == InventoryStatus.tracked) {
-        final stock = await getStockLevel(branchId, item.productId!) ??
-            Decimal.zero;
-        final newQty = stock - item.quantity;
+      if (isTracked) {
+        final before = runningStock[item.productId!]!;
+        final after = before - item.quantity;
+        runningStock[item.productId!] = after;
 
         await _client.from('inventory_adjustments').insert({
           'branch_id': branchId,
           'product_id': item.productId,
           'adjusted_by': cashierId,
           'type': 'sale',
-          'quantity_before': stock.toString(),
-          'quantity_after': newQty.toString(),
-          'reference_id': saleId,
+          'quantity_before': before.toString(),
+          'quantity_after': after.toString(),
+          'reference_id': id,
           'reference_type': 'sale',
         });
 
-        // Update inventory quantity
         await _client
             .from('inventory')
-            .update({'quantity': newQty.toString(), 'updated_at': DateTime.now().toIso8601String()})
+            .update({'quantity': after.toString(), 'updated_at': DateTime.now().toIso8601String()})
             .eq('branch_id', branchId)
             .eq('product_id', item.productId!);
       }
     }
 
     // Fetch completed sale with items
-    return getSale(saleId);
+    return getSale(id);
   }
 
   // ─── Void sale ─────────────────────────────────────────────────────────────
