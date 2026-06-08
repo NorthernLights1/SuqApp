@@ -21,11 +21,33 @@ Last updated: 2026-06-06 (session 15)
 
 ## Notifications Phase (branch: `feat/notifications`)
 
-- [x] Email + Telegram notifications for low stock — done (session 13, dispatch-notifications Edge Function)
-- [x] Email + Telegram notifications for overdue credits — done (session 13, manual trigger in Settings)
-- [x] Settings screen: notification config (email, Telegram bot token/chat ID, overdue days) — done (session 13)
-- [ ] One-time setup: add `RESEND_API_KEY` as Supabase secret (supabase.com → Edge Functions → Secrets); optionally verify own domain in Resend and update `from` in dispatch-notifications Edge Function
-- [ ] Telegram notifications — deferred (was abandoned this session; revisit later)
+- [x] Email notifications for low stock — done (session 13, dispatch-notifications Edge Function)
+- [x] Email notifications for overdue credits — done (session 13, manual trigger in Settings)
+- [x] Settings screen: notification config (email, overdue days) — done (session 13)
+- [x] `RESEND_API_KEY` set as Supabase secret (verified present, 36 chars) — done
+- [x] Resend custom domain `massivedynamic.dev` wired into dispatch-notifications `from` — done
+- [ ] Telegram notifications — deferred (revisit later)
+
+### NEXT TASK — Scheduled low-stock notifications (NOT YET BUILT)
+Per-sale low-stock alerts are spammy and require a notification email to be set;
+replace with a server-side scheduled sweep. Design agreed, implementation pending
+(was blocked on the Supabase MCP connection dropping — reconnect via `/mcp`).
+Steps to implement once Supabase tools are available:
+1. Enable extensions: `create extension pg_cron; create extension pg_net;`
+   (both confirmed AVAILABLE, not yet installed; `supabase_vault` already installed).
+2. New Edge Function `cron-notifications` (verify_jwt:false, gated by checking the
+   incoming bearer == SUPABASE_SERVICE_ROLE_KEY): loops ALL shops; for each,
+   recipients = owner's auth email (DEFAULT) + optional `notification_email`
+   shop_setting (dedup); runs the low-stock query (inventory JOIN products where
+   quantity <= low_stock_threshold) and emails via Resend. Reuse logic from
+   `dispatch-notifications`. Owner email removes the old "no notification email" 400.
+3. Schedule 2 cron jobs via pg_cron + pg_net: `0 6 * * *` and `0 18 * * *` (UTC)
+   = 9 AM & 9 PM EAT. Store service_role key in Vault for the http_post auth header.
+4. App: remove per-sale `_checkLowStock` call in `sales_provider.dart` `submit()`;
+   relabel Settings "Notification email" → "Additional email (optional)" + note the
+   owner is always notified.
+- [ ] Resume prompt after reconnect: "Supabase MCP is back — build the scheduled
+  low-stock job per OPEN_TASKS.md (steps 1-4)."
 
 ---
 
