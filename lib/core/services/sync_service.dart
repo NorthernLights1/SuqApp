@@ -15,11 +15,19 @@ class SyncService implements ISyncService {
   final _statusController = StreamController<SyncStatus>.broadcast();
   SyncStatus _status = SyncStatus.idle;
 
+  /// Last time we wrote the sync_logs heartbeat (in-memory, per session).
+  DateTime? _lastLogAt;
+
+  /// How stale the heartbeat must be before an empty sync re-writes it.
+  /// Bursts of triggers (connectivity flaps, resumes) inside this window are
+  /// collapsed to a single write so frequent syncs don't spam the backend.
+  static const _logHeartbeatInterval = Duration(minutes: 10);
+
   @override
   Stream<SyncStatus> get statusStream => _statusController.stream;
 
   @override
-  Future<void> sync() async {
+  Future<void> sync({bool force = false}) async {
     if (_status == SyncStatus.syncing) return;
     _emit(SyncStatus.syncing);
 
@@ -36,24 +44,41 @@ class SyncService implements ISyncService {
         return;
       }
 
-      if (_db != null) await _pushPendingSales();
-      await _upsertSyncLog(userId);
+      var pushed = 0;
+      if (_db != null) pushed = await _pushPendingSales();
+
+      // The sync_logs heartbeat records "this device reached the server" for
+      // overdue detection. We skip the write when nothing was pushed and we
+      // logged recently — that's what keeps frequent triggers cheap on the
+      // backend. `force` (manual sync) and actual pushes always write.
+      final now = DateTime.now();
+      if (force ||
+          pushed > 0 ||
+          _lastLogAt == null ||
+          now.difference(_lastLogAt!) >= _logHeartbeatInterval) {
+        await _upsertSyncLog(userId);
+        _lastLogAt = now;
+      }
       _emit(SyncStatus.success);
     } catch (_) {
       _emit(SyncStatus.failed);
     }
   }
 
-  Future<void> _pushPendingSales() async {
+  /// Pushes all pending local sales. Returns how many reached the server.
+  Future<int> _pushPendingSales() async {
     final db = _db!;
     final pending = await db.getPendingSales();
+    var pushed = 0;
     for (final sale in pending) {
       try {
         await _pushSale(sale, db);
+        pushed++;
       } catch (_) {
         // Leave isSynced=false; next sync will retry
       }
     }
+    return pushed;
   }
 
   Future<void> _pushSale(SaleRow sale, AppDatabase db) async {

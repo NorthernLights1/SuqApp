@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/services/sync_providers.dart';
+import '../../../../domain/interfaces/sync_service_interface.dart';
 import '../../../../domain/models/shop.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../shared/theme/app_colors.dart';
@@ -69,6 +71,11 @@ class SettingsScreen extends ConsumerWidget {
               ),
           const Divider(),
 
+          // ── Sync ─────────────────────────────────────────────────────────
+          _SectionHeader(label: 'Sync'),
+          const _SyncCard(),
+          const Divider(),
+
           // ── About ─────────────────────────────────────────────────────────
           _SectionHeader(label: 'About'),
           ListTile(
@@ -121,6 +128,91 @@ class _SectionHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+// ── Sync card ──────────────────────────────────────────────────────────────
+
+class _SyncCard extends ConsumerStatefulWidget {
+  const _SyncCard();
+
+  @override
+  ConsumerState<_SyncCard> createState() => _SyncCardState();
+}
+
+class _SyncCardState extends ConsumerState<_SyncCard> {
+  Future<void> _syncNow() async {
+    await ref.read(syncSchedulerProvider).syncNow(force: true);
+    if (!mounted) return;
+    final status = ref.read(syncStatusProvider).asData?.value;
+    final failed = status == SyncStatus.failed;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(failed
+          ? 'Sync failed — check your connection'
+          : 'Everything is up to date'),
+      backgroundColor: failed ? AppColors.error : AppColors.success,
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final status =
+        ref.watch(syncStatusProvider).asData?.value ?? SyncStatus.idle;
+    final lastSynced = ref.watch(lastSyncedAtProvider);
+    final syncing = status == SyncStatus.syncing;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.cloud_sync_outlined,
+                color: AppColors.textSecondary),
+            title: Text('Sync to cloud', style: AppTextStyles.body),
+            subtitle: Text(
+              lastSynced.when(
+                data: (t) => t == null
+                    ? 'Not synced yet'
+                    : 'Last synced ${_relativeTime(t)}',
+                loading: () => 'Checking…',
+                error: (_, _) => 'Last sync time unavailable',
+              ),
+              style: AppTextStyles.bodySmall,
+            ),
+          ),
+          const SizedBox(height: 4),
+          FilledButton.icon(
+            onPressed: syncing ? null : _syncNow,
+            icon: syncing
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.sync),
+            label: Text(syncing ? 'Syncing…' : 'Sync now'),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+String _relativeTime(DateTime t) {
+  final diff = DateTime.now().difference(t);
+  if (diff.inSeconds < 60) return 'just now';
+  if (diff.inMinutes < 60) {
+    final m = diff.inMinutes;
+    return '$m minute${m == 1 ? '' : 's'} ago';
+  }
+  if (diff.inHours < 24) {
+    final h = diff.inHours;
+    return '$h hour${h == 1 ? '' : 's'} ago';
+  }
+  final d = diff.inDays;
+  return '$d day${d == 1 ? '' : 's'} ago';
 }
 
 // ── Notifications card ─────────────────────────────────────────────────────

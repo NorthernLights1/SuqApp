@@ -1,6 +1,9 @@
 abstract interface class ISyncService {
   /// Triggers a full sync for the current user's branch.
-  Future<void> sync();
+  ///
+  /// [force] bypasses the sync-log heartbeat throttle so the "last synced"
+  /// timestamp updates immediately (used by the manual "Sync now" button).
+  Future<void> sync({bool force = false});
 
   /// Returns the last successful sync time, or null if never synced.
   Future<DateTime?> lastSyncedAt();
