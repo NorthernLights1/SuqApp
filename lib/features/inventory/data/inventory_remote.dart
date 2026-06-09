@@ -245,13 +245,17 @@ class InventoryRemote {
       serverAfter = serverBefore + (quantityAfter - quantityBefore); // delta
     }
 
+    // Map to a type the inventory_adjustments CHECK constraint accepts. Legacy
+    // queued rows may carry 'restock', which is not permitted.
+    final dbType = type == 'restock' ? 'supply_received' : type;
+
     // Ledger first (carries the idempotency id), then the quantity.
     await _client.from('inventory_adjustments').insert({
       'id': id,
       'branch_id': branchId,
       'product_id': productId,
       'adjusted_by': adjustedBy,
-      'type': type,
+      'type': dbType,
       'quantity_before': serverBefore.toString(),
       'quantity_after': serverAfter.toString(),
       'notes': ?notes,

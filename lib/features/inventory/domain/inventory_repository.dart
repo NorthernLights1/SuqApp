@@ -187,7 +187,9 @@ class InventoryRepository {
   }) async {
     final before = await _currentQty(branchId, productId);
     await _queueAdjustment(
-      type: 'restock',
+      // 'supply_received' is the DB-allowed type for additive restocks
+      // (inventory_adjustments CHECK constraint excludes 'restock').
+      type: 'supply_received',
       branchId: branchId,
       productId: productId,
       before: before,

@@ -101,7 +101,7 @@ void main() {
       expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('15'));
       final pending = await db.getPendingInventoryAdjustments();
       expect(pending.length, 1);
-      expect(pending.first.type, 'restock');
+      expect(pending.first.type, 'supply_received');
       expect(pending.first.quantityBefore, Decimal.parse('10'));
       expect(pending.first.quantityAfter, Decimal.parse('15'));
     });
