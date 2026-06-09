@@ -2,6 +2,50 @@
 
 ---
 
+## Session 16 (2026-06-09)
+
+**ROOT CAUSE — staff invites & notifications all 403'd: `service_role` lost table grants.**
+A blanket REVOKE had stripped `SELECT/INSERT/UPDATE/DELETE` from `service_role` on all 32
+public tables. Hidden until the project moved to new API keys (`sb_secret`), which made
+Edge Functions actually authenticate as `service_role` → every admin query "permission
+denied for table ..." → owner-check returned nothing → 403. Fix: migration 013 re-grants
+service_role full DML + default privileges (server-only role, RLS unaffected). Diagnosed
+via a temp `test-email` function running the exact owner-check query (got 42501).
+
+**Staff-invite UI reported false success.** `InviteStaffNotifier.invite` wrapped the call
+in `AsyncValue.guard` and returned without rethrowing → 403s showed the green "Invite email
+sent" snackbar. Fix: await `invoke()` directly, extract `FunctionException.details['error']`,
+rethrow (commit 1336761).
+
+**Times shown 3h off (UTC).** `Sale.fromJson`/`CreditSale` parsed UTC timestamps without
+`.toLocal()`. Fix: `.toLocal()` in fromJson (c9b8cb7).
+
+**Sales/reports filtered wrong near day boundary.** `salesListProvider` etc. built the
+"today" range as local DateTime and serialized with `toIso8601String()` (no offset) → Postgres
+read it as UTC. Fix: `.toUtc().toIso8601String()` in remote date-range queries (8487b87).
+
+**Sales list one-behind.** submit() invalidated `salesListProvider` but returned before the
+refetch. Fix: `await ref.read(salesListProvider.future)` after invalidating (2241b8e).
+
+**Multi-item sale could half-deduct stock.** `SalesRemote.createSale` inserted then validated
+per-item, rolling back via delete. Fix: validate the whole cart's stock BEFORE any write (c9b8cb7).
+
+**Low-stock email never arrived (per-sale model).** Function 400'd: no `notification_email`
+configured. Resolved by the scheduled model using owner email as default recipient.
+
+**Staff "invited" never flipped to "active".** Router updated shop_users as the staff member,
+but `shop_users_write` is owner-only → silent fail. Fix: `activate_my_membership()` SECURITY
+DEFINER RPC (migration 015, commit 72f2f22).
+
+**Staff names showed "Unknown".** `profiles_select` RLS was `auth.uid()=id` only. Fix:
+`private.shares_shop_with()` + widened policy (migration 014, commit 8c77f42). Chose this over
+denormalizing name onto shop_users (which is owner-write-only).
+
+**Stray conda GitHub Action emailing failures.** Deleted `python-package-conda.yml` template
+from `feat/phase-0-bootstrap`.
+
+---
+
 ## Bug: Signup fails with 500 "Database error saving new user"
 Status: Fixed
 

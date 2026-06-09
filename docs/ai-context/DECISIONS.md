@@ -2,6 +2,40 @@
 
 ---
 
+## Decision: Staff invites use an email CODE, not a magic link
+Date: 2026-06-09 | Status: Active
+
+Magic-link/invite emails on mobile need a hosted landing page + platform deep links
+(Android intent filters, iOS Universal Links). Chose an in-app email-code (OTP) flow that
+works identically on web and mobile with zero hosting/deep-link setup. Owner pre-creates the
+account (createUser, no email) so only invited emails can request a code. Requires the Supabase
+Magic Link email template to include `{{ .Token }}`.
+
+## Decision: Low-stock/overdue notifications are SCHEDULED, not per-sale
+Date: 2026-06-09 | Status: Active
+
+Per-sale low-stock alerts were spammy and needed a notification email set. Moved to a
+server-side `pg_cron` sweep (9 AM & 9 PM EAT) calling the `cron-notifications` Edge Function,
+which sends one combined digest (low stock + overdue) per shop. Runs app-closed. Recipient
+defaults to the OWNER's auth email (+ optional second), which also removed the "no notification
+email" failure. Cron→function auth via a Vault secret verified by a SECURITY DEFINER RPC (no
+secret in code; service-role key isn't readable via MCP and edge env secrets can't be set via MCP).
+
+## Decision: service_role keeps full table grants (server-only)
+Date: 2026-06-09 | Status: Active
+
+Restored `service_role` DML on all public tables after a blanket REVOKE broke all Edge Function
+admin queries. service_role is used only server-side with the secret key (never exposed to
+clients), so full grants do NOT weaken RLS, which governs anon/authenticated. Standard Supabase
+config.
+
+## Decision: Display names read cross-shop via SECURITY DEFINER helper (not denormalized)
+Date: 2026-06-09 | Status: Active
+
+To show staff names, widened `profiles` SELECT to shopmates via `private.shares_shop_with()`
+rather than copying names onto `shop_users` (which is owner-write-only, so staff couldn't
+populate it). Keeps `profiles` the single source of truth; no sync/staleness.
+
 ## Decision: Flutter + Supabase as core stack
 Date: 2026-05-29 | Status: Active
 

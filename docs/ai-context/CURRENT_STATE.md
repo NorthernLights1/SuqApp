@@ -1,6 +1,6 @@
 # Current State — Suq ERP
 
-Last updated: 2026-06-06 (session 15)
+Last updated: 2026-06-09 (session 16)
 
 ---
 
@@ -39,12 +39,13 @@ Push: `git push origin feat/notifications`
 | Session 13 — Notifications phase: low-stock + overdue-credit alerts via email (Resend) and Telegram | ✅ Done |
 | Session 14 — CodeRabbit review: null-safety fix + explicit branch_id in settings upsert | ✅ Done |
 | Session 15 — Code review: 9 findings fixed (atomic upsert, CHECK constraint, false-success snackbar, unsafe cast, INotificationService wiring, Telegram flag, stale controllers, regex, raw error) | ✅ Done |
+| Session 16 — service_role grant fix, UTC date fix, code-based staff invite, profiles shopmate read, scheduled 9am/9pm notifications (low-stock + overdue) | ✅ Done |
 
 ---
 
 ## What Works Right Now
 
-- `flutter analyze` — 0 issues ✅ (last run 2026-06-06, session 15)
+- `flutter analyze` — 0 issues ✅ (last run 2026-06-09, session 16)
 - `flutter test` — 96 tests passing ✅ (last run 2026-06-03)
 - Auth (signup/login/logout) ✅
 - Onboarding: shop + branch creation + default settings ✅
@@ -135,50 +136,45 @@ Bottom nav: Home / Sales / Inventory / **Credits** / More. Customers moved to Mo
 
 ---
 
-## Notifications (Session 13)
+## Notifications — SCHEDULED model (Session 16, replaces per-sale)
 
-**Edge Function**: `dispatch-notifications` (ACTIVE, v2) — handles both notification types in one function.
+**Edge Function `cron-notifications`** (ACTIVE, v2, `verify_jwt:false`) — the live path.
+- Runs on a **server-side schedule** (pg_cron), NOT triggered by the app. Works app-closed.
+- **Two pg_cron jobs**: `low-stock-am` (`0 6 * * *`) + `low-stock-pm` (`0 18 * * *`) UTC = **9 AM & 9 PM EAT**. They `net.http_post` the function, passing the Vault `cron_secret`.
+- Auth: function is public but gated — reads `x-cron-secret` header, verifies via `public.verify_cron_secret(text)` (SECURITY DEFINER, reads Vault). Secret stored in `vault` as `cron_secret`.
+- Loops **all shops**; recipients = **owner's auth email (DEFAULT)** + optional `notification_email` shop setting. Owner-default removed the old "no notification email" 400.
+- Sends **one combined digest** per shop: LOW STOCK section (`inventory JOIN products` where `quantity <= low_stock_threshold`) + OVERDUE CREDITS section (`sales` is_credit, unsettled, completed, older than `overdue_credit_days`, default 7). Each section only if non-empty; no email if both empty.
+- Email via **Resend** from `notifications@massivedynamic.dev` (verified domain). `RESEND_API_KEY` secret is SET. Logged to `notification_logs`.
 
-**Low-stock alerts**:
-- Triggered automatically after every completed sale (fire-and-forget in `CreateSaleNotifier._checkLowStock`)
-- Queries `inventory JOIN products` for all shop branches, filters where `quantity <= low_stock_threshold`
-- Skips silently if no products are below threshold or if no channels configured
+**Old per-sale path REMOVED**: `CreateSaleNotifier._checkLowStock` deleted from `sales_provider.dart` (was spammy). `dispatch-notifications` (v3) still deployed and powers the manual "Send Overdue Reminders Now" button in Settings only.
 
-**Overdue credit alerts**:
-- Triggered manually via "Send Overdue Credit Reminders Now" button in Settings screen
-- Queries `sales` where `is_credit=true AND credit_settled_at IS NULL AND created_at < now() - overdue_days`
-- `overdue_credit_days` is a shop setting (default 7)
+**Settings**: notification email field relabeled "Additional notification email (optional)" (owner always notified).
 
-**Delivery channel**: Email via **Resend** API (Telegram deferred, seeded as `is_active=false`).
-- Requires `RESEND_API_KEY` Supabase secret + `notification_email` in shop_settings
-- Owner's domain can be used as sender by verifying it in Resend + adding DNS records in Cloudflare
-- Dispatch goes through `notificationServiceProvider` → `NotificationService.dispatch()` → Edge Function (session 15: direct Supabase calls removed from features)
-
-**Shop settings keys added** (`SettingKeys`):
-- `notification_email` — destination email address
-- `overdue_credit_days` — integer, days before credit is overdue (default 7)
-
-**Setup required** (one-time):
-- Sign up at resend.com → get API key → add as Supabase secret `RESEND_API_KEY`
-- Optionally verify own domain in Resend → update `from` address in Edge Function
-
-All notifications logged to `notification_logs` table with `sent`/`failed` status.
+**Migration 016** holds the portable DB pieces (extensions + `verify_cron_secret`); Vault secret + cron jobs + function are env-specific (documented in 016 comments).
 
 ---
 
-## Staff Invite Flow (Edge Function v4 — session 12)
+## Staff Invite Flow — CODE-BASED (Session 16, no link/hosting/deep-link)
 
-1. Owner taps "Invite Staff" FAB → enters email + role
-2. App calls `invite-staff` Edge Function v4 (deployed, ACTIVE)
-3. Function verifies caller via `shop_users` (role_id = owner UUID, status = active)
-4. Checks `listUsers` for existing email:
-   - Already in this shop → returns 400 with clear message
-   - Exists but not in shop → inserts `shop_users` with `status='active'` (no email sent), returns `existing: true`
-   - New email → `auth.admin.inviteUserByEmail` + inserts `shop_users` with `status='invited'`, returns `existing: false`
-5. Flutter shows: "Invite email sent to X" or "X already has an account — added to your shop directly"
-6. Staff receives invite email → sets password → opens app
-7. Router routes non-owner with `shop_users` record to dashboard (not onboarding)
-8. `shop_users.status` updated `invited` → `active` on first login
+Why changed: email magic-links require a hosted landing page + mobile deep links.
+Replaced with an in-app email-code (OTP) flow that works identically on web & mobile.
+
+1. Owner taps "Invite Staff" → email + role → `invite-staff` v10.
+2. v10 verifies caller is active owner (shop_users + owner role). For a NEW email it
+   `admin.auth.admin.createUser({email, email_confirm:true})` (NO email sent) +
+   inserts `shop_users` status='invited'. Existing user not in shop → added active.
+   (So only invited emails have an account → only they can request a code.)
+3. Staff opens app → **"I was invited"** button (login screen) → `AcceptInviteScreen`
+   (`/accept-invite`, allowed logged-out): enter email → **Send code**
+   (`auth.signInWithOtp(shouldCreateUser:false)`) → enter code + full name + password
+   + confirm → **Create account** (`verifyOTP` → `updateUser(password, full_name)` +
+   `profiles` upsert).
+4. Router: on first sign-in, invited→active via `rpc('activate_my_membership')`
+   (SECURITY DEFINER; shop_users is owner-write-only so staff can't self-update).
+5. **ONE-TIME SETUP REQUIRED**: Supabase → Auth → Email Templates → **Magic Link** must
+   include `{{ .Token }}` so the code (not a link) is emailed.
+
+Auth methods live in `AuthNotifier`: `sendInviteCode()`, `claimInvite()`.
 
 ---
 
@@ -192,16 +188,22 @@ All notifications logged to `notification_logs` table with `sent`/`failed` statu
 
 ## Supabase Architecture
 
-**RLS**: Two-layer — PostgreSQL grants + RLS policies (both required).
-- `is_shop_member(shop_id)` — most tables
-- `shop_id_from_branch(branch_id)` — branch-scoped tables
-- `anon` revoked from all 4 internal functions; `authenticated` revoked from `handle_new_user` and `rls_auto_enable`
+**API keys**: project migrated to NEW key system — `sb_publishable_...` (anon) + `sb_secret_...` (service_role). Legacy JWT keys not used. Edge functions get `sb_secret` as `SUPABASE_SERVICE_ROLE_KEY`.
 
-**shop_users schema**: id, shop_id, branch_id (nullable), user_id, role_id (FK→roles), status ('active'/'invited'/'suspended'), invited_by, created_at
+**service_role grants**: migration 013 RESTORED `SELECT/INSERT/UPDATE/DELETE` to `service_role` on ALL public tables (+ default privileges). A prior blanket REVOKE had stripped them, which (once the sb_secret key exposed it) made every Edge Function admin query fail "permission denied" → invite-staff & dispatch-notifications returned 403 on the owner-check. service_role is server-only so this doesn't weaken RLS.
+
+**RLS**: Two-layer — PostgreSQL grants + RLS policies (both required).
+- `private.is_shop_member(shop_id)`, `private.shop_id_from_branch(branch_id)` — SECURITY DEFINER helpers
+- `private.shares_shop_with(user_id)` (migration 014) — lets `profiles_select` policy expose name/phone to shopmates (staff list shows real names instead of "Unknown")
+- `public.activate_my_membership()` (015), `public.verify_cron_secret(text)` (016)
+
+**shop_users schema**: id, shop_id, branch_id (nullable), user_id, role_id (FK→roles), status ('active'/'invited'/'suspended'), invited_by, created_at. RLS: owner-write-only (`shop_users_write`), select = own row OR shop owner.
 
 **roles**: owner=`000...0001`, manager=`000...0002`, cashier=`000...0003`
 
-**Edge Functions**: `invite-staff` — deployed and ACTIVE
+**Edge Functions (ACTIVE)**: `invite-staff` (v10, createUser+OTP), `cron-notifications` (v2, scheduled digest), `dispatch-notifications` (v3, manual overdue button only), `test-email` (inert/410 diagnostic — deletable).
+
+**Extensions**: `pg_cron`, `pg_net`, `supabase_vault` enabled (for scheduled notifications).
 
 **shop_settings**: `inventory_mode` = `"strict"` (updated session 4 via SQL; onboarding default also changed to `"strict"`)
 
