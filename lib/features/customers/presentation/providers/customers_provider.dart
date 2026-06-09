@@ -1,10 +1,17 @@
 import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../data/local/database_provider.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../features/reports/presentation/providers/reports_provider.dart'
     show reportSummaryProvider;
+import '../../data/customers_remote.dart';
+import '../../domain/customer.dart';
+import '../../domain/customers_repository.dart';
+
+// Re-export so existing screen imports of Customer keep resolving.
+export '../../domain/customer.dart' show Customer;
 
 // Unsettled credit sale joined with its customer — used in the reconciliation screen.
 class CreditSaleWithCustomer extends Equatable {
@@ -59,50 +66,19 @@ class CreditSale extends Equatable {
   List<Object?> get props => [id];
 }
 
-class Customer extends Equatable {
-  const Customer({
-    required this.id,
-    required this.shopId,
-    required this.name,
-    this.phone,
-    required this.creditBalance,
-    required this.createdAt,
-  });
-
-  final String id;
-  final String shopId;
-  final String name;
-  final String? phone;
-  final Decimal creditBalance;
-  final DateTime createdAt;
-
-  bool get hasDebt => creditBalance > Decimal.zero;
-
-  factory Customer.fromJson(Map<String, dynamic> json) => Customer(
-        id: json['id'] as String,
-        shopId: json['shop_id'] as String,
-        name: json['name'] as String,
-        phone: json['phone'] as String?,
-        creditBalance: Decimal.parse(json['credit_balance'].toString()),
-        createdAt: DateTime.parse(json['created_at'] as String),
-      );
-
-  @override
-  List<Object?> get props => [id, name, creditBalance];
-}
-
 // ─── Providers ─────────────────────────────────────────────────────────────
+
+final customersRepositoryProvider = Provider<CustomersRepository>((ref) {
+  return CustomersRepository(
+    CustomersRemote(ref.read(supabaseClientProvider)),
+    ref.read(appDatabaseProvider),
+  );
+});
 
 final customersProvider = FutureProvider<List<Customer>>((ref) async {
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
-  final client = ref.read(supabaseClientProvider);
-  final data = await client
-      .from('customers')
-      .select('id, shop_id, name, phone, credit_balance, created_at')
-      .eq('shop_id', shop.id)
-      .order('name');
-  return (data as List).map((e) => Customer.fromJson(e)).toList();
+  return ref.read(customersRepositoryProvider).getCustomers(shop.id);
 });
 
 final customerSalesProvider =
@@ -163,23 +139,15 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
   }) async {
     final shop = await ref.read(currentShopProvider.future);
     if (shop == null) return false;
-    final client = ref.read(supabaseClientProvider);
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      if (customerId == null) {
-        await client.from('customers').insert({
-          'shop_id': shop.id,
-          'name': name.trim(),
-          'phone': phone?.trim().isEmpty == true ? null : phone?.trim(),
-          'credit_balance': '0',
-        });
-      } else {
-        await client.from('customers').update({
-          'name': name.trim(),
-          'phone': phone?.trim().isEmpty == true ? null : phone?.trim(),
-        }).eq('id', customerId);
-      }
+      await ref.read(customersRepositoryProvider).save(
+            customerId: customerId,
+            shopId: shop.id,
+            name: name,
+            phone: phone,
+          );
       ref.invalidate(customersProvider);
     });
     return !state.hasError;

@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_constants.dart';
 import '../../data/local/app_database.dart';
 import '../../domain/interfaces/sync_service_interface.dart';
+import '../../features/customers/data/customers_remote.dart';
 import '../../features/inventory/data/inventory_remote.dart';
 
 class SyncService implements ISyncService {
@@ -47,6 +48,7 @@ class SyncService implements ISyncService {
 
       var pushed = 0;
       if (_db != null) {
+        pushed += await _pushPendingCustomers();
         pushed += await _pushPendingSales();
         pushed += await _pushPendingExpenses();
         pushed += await _pushPendingAdjustments();
@@ -163,6 +165,32 @@ class SyncService implements ISyncService {
           });
         }
         await db.markExpenseSynced(e.id);
+        pushed++;
+      } catch (_) {
+        // Leave isSynced=false; next sync will retry
+      }
+    }
+    return pushed;
+  }
+
+  /// Pushes pending customer identity rows (offline-created or edited).
+  /// Pushed before sales so a credit sale's customer FK is satisfied. Only
+  /// identity fields go up — never the locally-mirrored credit balance.
+  Future<int> _pushPendingCustomers() async {
+    final db = _db!;
+    final pending = await db.getPendingCustomers();
+    if (pending.isEmpty) return 0;
+    final remote = CustomersRemote(_supabase);
+    var pushed = 0;
+    for (final c in pending) {
+      try {
+        await remote.upsertIdentity(
+          id: c.id,
+          shopId: c.shopId,
+          name: c.name,
+          phone: c.phone,
+        );
+        await db.markCustomerSynced(c.id);
         pushed++;
       } catch (_) {
         // Leave isSynced=false; next sync will retry

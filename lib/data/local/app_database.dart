@@ -307,6 +307,32 @@ class AppDatabase extends _$AppDatabase {
   Future<void> upsertCustomer(LocalCustomersCompanion row) =>
       into(localCustomers).insertOnConflictUpdate(row);
 
+  Future<List<CustomerRow>> getCustomersByShop(String shopId) =>
+      (select(localCustomers)
+            ..where((t) => t.shopId.equals(shopId))
+            ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+          .get();
+
+  Future<List<CustomerRow>> getPendingCustomers() =>
+      (select(localCustomers)..where((t) => t.isSynced.equals(false))).get();
+
+  /// Update identity fields offline and flag the row for re-push. Leaves the
+  /// locally-mirrored credit balance untouched.
+  Future<void> updateCustomerIdentity(
+          String id, String name, String? phone) =>
+      (update(localCustomers)..where((t) => t.id.equals(id))).write(
+        LocalCustomersCompanion(
+          name: Value(name),
+          phone: Value(phone),
+          updatedAt: Value(DateTime.now()),
+          isSynced: const Value(false),
+        ),
+      );
+
+  Future<void> markCustomerSynced(String id) =>
+      (update(localCustomers)..where((t) => t.id.equals(id)))
+          .write(const LocalCustomersCompanion(isSynced: Value(true)));
+
   Future<List<CustomerRow>> searchCustomers(String shopId, String query) =>
       (select(localCustomers)
             ..where((t) =>
