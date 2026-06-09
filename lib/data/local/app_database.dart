@@ -70,6 +70,7 @@ class LocalSales extends Table {
   BoolColumn get isCredit => boolean()();
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get creditSettledAt => dateTime().nullable()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
 
   @override
@@ -161,7 +162,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -171,6 +172,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 2) await m.createTable(localExpenses);
           // v2 -> v3: offline-first inventory adjustments queue.
           if (from < 3) await m.createTable(localInventoryAdjustments);
+          // v3 -> v4: credit settlement state on the local sales mirror.
+          if (from < 4) {
+            await m.addColumn(localSales, localSales.creditSettledAt);
+          }
         },
       );
 
@@ -268,6 +273,23 @@ class AppDatabase extends _$AppDatabase {
   Future<void> markSaleSynced(String saleId) =>
       (update(localSales)..where((t) => t.id.equals(saleId)))
           .write(const LocalSalesCompanion(isSynced: Value(true)));
+
+  /// Mark a single local credit sale settled (mirrors a server-side settlement
+  /// so the offline sales list stops showing it as outstanding).
+  Future<void> markSaleCreditSettled(String saleId) =>
+      (update(localSales)..where((t) => t.id.equals(saleId))).write(
+        LocalSalesCompanion(creditSettledAt: Value(DateTime.now())),
+      );
+
+  /// Mark all of a customer's unsettled local credit sales settled (used when a
+  /// payment clears the full balance).
+  Future<void> markCustomerCreditSettled(String customerId) =>
+      (update(localSales)
+            ..where((t) =>
+                t.customerId.equals(customerId) &
+                t.isCredit.equals(true) &
+                t.creditSettledAt.isNull()))
+          .write(LocalSalesCompanion(creditSettledAt: Value(DateTime.now())));
 
   Future<void> markSaleVoided(
           String saleId, String reason, String voidedBy) =>

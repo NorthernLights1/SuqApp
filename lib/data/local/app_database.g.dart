@@ -1227,6 +1227,18 @@ class $LocalSalesTable extends LocalSales
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _creditSettledAtMeta = const VerificationMeta(
+    'creditSettledAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> creditSettledAt =
+      GeneratedColumn<DateTime>(
+        'credit_settled_at',
+        aliasedName,
+        true,
+        type: DriftSqlType.dateTime,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _isSyncedMeta = const VerificationMeta(
     'isSynced',
   );
@@ -1259,6 +1271,7 @@ class $LocalSalesTable extends LocalSales
     isCredit,
     notes,
     createdAt,
+    creditSettledAt,
     isSynced,
   ];
   @override
@@ -1359,6 +1372,15 @@ class $LocalSalesTable extends LocalSales
     } else if (isInserting) {
       context.missing(_createdAtMeta);
     }
+    if (data.containsKey('credit_settled_at')) {
+      context.handle(
+        _creditSettledAtMeta,
+        creditSettledAt.isAcceptableOrUnknown(
+          data['credit_settled_at']!,
+          _creditSettledAtMeta,
+        ),
+      );
+    }
     if (data.containsKey('is_synced')) {
       context.handle(
         _isSyncedMeta,
@@ -1440,6 +1462,10 @@ class $LocalSalesTable extends LocalSales
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
       )!,
+      creditSettledAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}credit_settled_at'],
+      ),
       isSynced: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_synced'],
@@ -1473,6 +1499,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
   final bool isCredit;
   final String? notes;
   final DateTime createdAt;
+  final DateTime? creditSettledAt;
   final bool isSynced;
   const SaleRow({
     required this.id,
@@ -1490,6 +1517,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     required this.isCredit,
     this.notes,
     required this.createdAt,
+    this.creditSettledAt,
     required this.isSynced,
   });
   @override
@@ -1532,6 +1560,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       map['notes'] = Variable<String>(notes);
     }
     map['created_at'] = Variable<DateTime>(createdAt);
+    if (!nullToAbsent || creditSettledAt != null) {
+      map['credit_settled_at'] = Variable<DateTime>(creditSettledAt);
+    }
     map['is_synced'] = Variable<bool>(isSynced);
     return map;
   }
@@ -1563,6 +1594,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
           ? const Value.absent()
           : Value(notes),
       createdAt: Value(createdAt),
+      creditSettledAt: creditSettledAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(creditSettledAt),
       isSynced: Value(isSynced),
     );
   }
@@ -1588,6 +1622,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       isCredit: serializer.fromJson<bool>(json['isCredit']),
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      creditSettledAt: serializer.fromJson<DateTime?>(json['creditSettledAt']),
       isSynced: serializer.fromJson<bool>(json['isSynced']),
     );
   }
@@ -1610,6 +1645,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       'isCredit': serializer.toJson<bool>(isCredit),
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
+      'creditSettledAt': serializer.toJson<DateTime?>(creditSettledAt),
       'isSynced': serializer.toJson<bool>(isSynced),
     };
   }
@@ -1630,6 +1666,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     bool? isCredit,
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
+    Value<DateTime?> creditSettledAt = const Value.absent(),
     bool? isSynced,
   }) => SaleRow(
     id: id ?? this.id,
@@ -1647,6 +1684,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     isCredit: isCredit ?? this.isCredit,
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
+    creditSettledAt: creditSettledAt.present
+        ? creditSettledAt.value
+        : this.creditSettledAt,
     isSynced: isSynced ?? this.isSynced,
   );
   SaleRow copyWithCompanion(LocalSalesCompanion data) {
@@ -1674,6 +1714,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       isCredit: data.isCredit.present ? data.isCredit.value : this.isCredit,
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      creditSettledAt: data.creditSettledAt.present
+          ? data.creditSettledAt.value
+          : this.creditSettledAt,
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
     );
   }
@@ -1696,6 +1739,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
           ..write('isCredit: $isCredit, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
+          ..write('creditSettledAt: $creditSettledAt, ')
           ..write('isSynced: $isSynced')
           ..write(')'))
         .toString();
@@ -1718,6 +1762,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     isCredit,
     notes,
     createdAt,
+    creditSettledAt,
     isSynced,
   );
   @override
@@ -1739,6 +1784,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
           other.isCredit == this.isCredit &&
           other.notes == this.notes &&
           other.createdAt == this.createdAt &&
+          other.creditSettledAt == this.creditSettledAt &&
           other.isSynced == this.isSynced);
 }
 
@@ -1758,6 +1804,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
   final Value<bool> isCredit;
   final Value<String?> notes;
   final Value<DateTime> createdAt;
+  final Value<DateTime?> creditSettledAt;
   final Value<bool> isSynced;
   final Value<int> rowid;
   const LocalSalesCompanion({
@@ -1776,6 +1823,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     this.isCredit = const Value.absent(),
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
+    this.creditSettledAt = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1795,6 +1843,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     required bool isCredit,
     this.notes = const Value.absent(),
     required DateTime createdAt,
+    this.creditSettledAt = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -1823,6 +1872,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     Expression<bool>? isCredit,
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
+    Expression<DateTime>? creditSettledAt,
     Expression<bool>? isSynced,
     Expression<int>? rowid,
   }) {
@@ -1842,6 +1892,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
       if (isCredit != null) 'is_credit': isCredit,
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
+      if (creditSettledAt != null) 'credit_settled_at': creditSettledAt,
       if (isSynced != null) 'is_synced': isSynced,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1863,6 +1914,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     Value<bool>? isCredit,
     Value<String?>? notes,
     Value<DateTime>? createdAt,
+    Value<DateTime?>? creditSettledAt,
     Value<bool>? isSynced,
     Value<int>? rowid,
   }) {
@@ -1882,6 +1934,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
       isCredit: isCredit ?? this.isCredit,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
+      creditSettledAt: creditSettledAt ?? this.creditSettledAt,
       isSynced: isSynced ?? this.isSynced,
       rowid: rowid ?? this.rowid,
     );
@@ -1941,6 +1994,9 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
+    if (creditSettledAt.present) {
+      map['credit_settled_at'] = Variable<DateTime>(creditSettledAt.value);
+    }
     if (isSynced.present) {
       map['is_synced'] = Variable<bool>(isSynced.value);
     }
@@ -1968,6 +2024,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
           ..write('isCredit: $isCredit, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
+          ..write('creditSettledAt: $creditSettledAt, ')
           ..write('isSynced: $isSynced, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -4995,6 +5052,7 @@ typedef $$LocalSalesTableCreateCompanionBuilder =
       required bool isCredit,
       Value<String?> notes,
       required DateTime createdAt,
+      Value<DateTime?> creditSettledAt,
       Value<bool> isSynced,
       Value<int> rowid,
     });
@@ -5015,6 +5073,7 @@ typedef $$LocalSalesTableUpdateCompanionBuilder =
       Value<bool> isCredit,
       Value<String?> notes,
       Value<DateTime> createdAt,
+      Value<DateTime?> creditSettledAt,
       Value<bool> isSynced,
       Value<int> rowid,
     });
@@ -5103,6 +5162,11 @@ class $$LocalSalesTableFilterComposer
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get creditSettledAt => $composableBuilder(
+    column: $table.creditSettledAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -5196,6 +5260,11 @@ class $$LocalSalesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get creditSettledAt => $composableBuilder(
+    column: $table.creditSettledAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isSynced => $composableBuilder(
     column: $table.isSynced,
     builder: (column) => ColumnOrderings(column),
@@ -5265,6 +5334,11 @@ class $$LocalSalesTableAnnotationComposer
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
 
+  GeneratedColumn<DateTime> get creditSettledAt => $composableBuilder(
+    column: $table.creditSettledAt,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get isSynced =>
       $composableBuilder(column: $table.isSynced, builder: (column) => column);
 }
@@ -5312,6 +5386,7 @@ class $$LocalSalesTableTableManager
                 Value<bool> isCredit = const Value.absent(),
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime?> creditSettledAt = const Value.absent(),
                 Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalSalesCompanion(
@@ -5330,6 +5405,7 @@ class $$LocalSalesTableTableManager
                 isCredit: isCredit,
                 notes: notes,
                 createdAt: createdAt,
+                creditSettledAt: creditSettledAt,
                 isSynced: isSynced,
                 rowid: rowid,
               ),
@@ -5350,6 +5426,7 @@ class $$LocalSalesTableTableManager
                 required bool isCredit,
                 Value<String?> notes = const Value.absent(),
                 required DateTime createdAt,
+                Value<DateTime?> creditSettledAt = const Value.absent(),
                 Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalSalesCompanion.insert(
@@ -5368,6 +5445,7 @@ class $$LocalSalesTableTableManager
                 isCredit: isCredit,
                 notes: notes,
                 createdAt: createdAt,
+                creditSettledAt: creditSettledAt,
                 isSynced: isSynced,
                 rowid: rowid,
               ),

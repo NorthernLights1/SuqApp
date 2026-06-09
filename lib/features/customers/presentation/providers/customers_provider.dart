@@ -194,6 +194,8 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
           .from('customers')
           .update({'credit_balance': newBalance.toString()})
           .eq('id', customerId);
+      // Mirror the settlement locally so the offline sales list reflects it.
+      await ref.read(appDatabaseProvider)?.markSaleCreditSettled(saleId);
       ref.invalidate(customersProvider);
       ref.invalidate(customerCreditSalesProvider(customerId));
       ref.invalidate(outstandingCreditProvider);
@@ -227,6 +229,8 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
             .eq('is_credit', true)
             .eq('status', 'completed')
             .filter('credit_settled_at', 'is', null);
+        // Mirror locally so the offline sales list reflects the settlement.
+        await ref.read(appDatabaseProvider)?.markCustomerCreditSettled(customerId);
       }
       ref.invalidate(customersProvider);
       ref.invalidate(customerCreditSalesProvider(customerId));

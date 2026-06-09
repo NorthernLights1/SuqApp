@@ -333,6 +333,7 @@ class SalesRepository implements ISalesRepository {
         isCredit: r.isCredit,
         notes: r.notes,
         createdAt: r.createdAt,
+        creditSettledAt: r.creditSettledAt,
         items: items.map(_saleItemFromRow).toList(),
       );
 

@@ -120,7 +120,7 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   final salesData = await client
       .from('sales')
       .select(
-          'total, status, is_credit, sale_items(quantity, unit_price, discount_amount, cost_price_snapshot, products(category_id))')
+          'total, status, is_credit, credit_settled_at, sale_items(quantity, unit_price, discount_amount, cost_price_snapshot, products(category_id))')
       .eq('branch_id', branch.id)
       .gte('created_at', range.start.toUtc().toIso8601String())
       .lt('created_at', range.end.toUtc().toIso8601String());
@@ -135,6 +135,10 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   for (final row in salesData as List) {
     if (row['status'] != 'completed') continue;
     final items = (row['sale_items'] as List? ?? []);
+    // "On credit" means still outstanding — exclude settled credit sales so
+    // the figure matches the credits screen once debts are paid.
+    final isOutstandingCredit =
+        row['is_credit'] == true && row['credit_settled_at'] == null;
 
     if (categoryFilter != null) {
       // Category mode: sum only items from the selected category.
@@ -158,7 +162,7 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
       if (!hasCatItem) continue;
       salesTotal += catRevenue;
       salesCount++;
-      if (row['is_credit'] == true) {
+      if (isOutstandingCredit) {
         creditTotal += catRevenue;
         creditCount++;
       }
@@ -167,7 +171,7 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
       final amount = Decimal.parse(row['total'].toString());
       salesTotal += amount;
       salesCount++;
-      if (row['is_credit'] == true) {
+      if (isOutstandingCredit) {
         creditTotal += amount;
         creditCount++;
       }
