@@ -32,8 +32,12 @@ Last updated: 2026-06-06 (session 15)
 - [x] Enabled `pg_cron` + `pg_net` (migration 016).
 - [x] Edge Function `cron-notifications` (verify_jwt:false; gated by Vault `cron_secret`
   via `public.verify_cron_secret` RPC). Loops ALL shops; recipients = owner auth email
-  (DEFAULT) + optional `notification_email` shop_setting; low-stock query; sends via
-  Resend from `notifications@massivedynamic.dev`. Verified end-to-end (200, email sent).
+  (DEFAULT) + optional `notification_email` shop_setting; sends via Resend from
+  `notifications@massivedynamic.dev`. Verified end-to-end (200, email sent).
+  - v2: sends ONE combined daily digest per shop — LOW STOCK section
+    (inventory JOIN products where quantity <= low_stock_threshold) + OVERDUE CREDITS
+    section (sales is_credit, not settled, completed, older than `overdue_credit_days`
+    setting, default 7). Each section appears only if non-empty; no email if both empty.
 - [x] Two pg_cron jobs: `low-stock-am` (`0 6 * * *`) and `low-stock-pm` (`0 18 * * *`)
   UTC = 9 AM & 9 PM EAT. They call the function via `net.http_post`, reading the
   `cron_secret` from Vault at run time.
