@@ -337,16 +337,23 @@ class _AddStockDialog extends ConsumerStatefulWidget {
 
 class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
   final _qtyCtrl = TextEditingController();
+  final _sellPriceCtrl = TextEditingController();
+  final _costPriceCtrl = TextEditingController();
+  final _thresholdCtrl = TextEditingController();
   DateTime? _expiryDate;
   bool _loading = false;
 
   @override
   void dispose() {
     _qtyCtrl.dispose();
+    _sellPriceCtrl.dispose();
+    _costPriceCtrl.dispose();
+    _thresholdCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
+    final p = widget.product;
     final qty = Decimal.tryParse(_qtyCtrl.text.trim());
     if (qty == null || qty <= Decimal.zero) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -354,9 +361,51 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
       );
       return;
     }
+
+    // Optional fields — empty means "keep the current value".
+    final newSell = _sellPriceCtrl.text.trim().isEmpty
+        ? null
+        : Decimal.tryParse(_sellPriceCtrl.text.trim());
+    final newCost = _costPriceCtrl.text.trim().isEmpty
+        ? null
+        : Decimal.tryParse(_costPriceCtrl.text.trim());
+    final newThreshold = _thresholdCtrl.text.trim().isEmpty
+        ? null
+        : Decimal.tryParse(_thresholdCtrl.text.trim());
+
     setState(() => _loading = true);
+
+    // 1) If any price/threshold actually changed, update the product first.
+    final detailsChanged = (newSell != null && newSell != p.sellingPrice) ||
+        (newCost != null && newCost != p.costPrice) ||
+        (newThreshold != null && newThreshold != p.lowStockThreshold);
+    if (detailsChanged) {
+      final updated = await ref.read(productFormProvider.notifier).save(
+            productId: p.id,
+            name: p.name,
+            measurementUnitId: p.measurementUnitId,
+            lowStockThreshold: newThreshold ?? p.lowStockThreshold,
+            sellingPrice: newSell ?? p.sellingPrice,
+            costPrice: newCost ?? p.costPrice,
+            categoryId: p.categoryId,
+            description: p.description,
+          );
+      if (!updated) {
+        if (!mounted) return;
+        setState(() => _loading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to update product details'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+        return;
+      }
+    }
+
+    // 2) Add the received quantity.
     final ok = await ref.read(stockAdjustmentProvider.notifier).addStock(
-          productId: widget.product.id,
+          productId: p.id,
           quantityToAdd: qty,
           expiryDate: _expiryDate,
         );
@@ -374,12 +423,14 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
     }
   }
 
+  String _priceHint(Decimal? v) => v != null ? v.toStringAsFixed(2) : 'Not set';
+
   @override
   Widget build(BuildContext context) {
-    final unitAbbr =
-        widget.currentEntry?.unitAbbr ?? widget.product.measurementUnitAbbr;
+    final p = widget.product;
+    final unitAbbr = widget.currentEntry?.unitAbbr ?? p.measurementUnitAbbr;
     return AlertDialog(
-      title: Text('Add Stock: ${widget.product.name}'),
+      title: Text('Add Stock: ${p.name}'),
       content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -399,6 +450,45 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               inputFormatters: [_numericFormatter],
               decoration: InputDecoration(
                 labelText: 'Quantity received ($unitAbbr)',
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Optional: update sale price for this product (blank = keep current)
+            TextField(
+              controller: _sellPriceCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [_numericFormatter],
+              decoration: InputDecoration(
+                labelText: 'Sale price (optional)',
+                hintText: _priceHint(p.sellingPrice),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Optional: update purchase (cost) price
+            TextField(
+              controller: _costPriceCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [_numericFormatter],
+              decoration: InputDecoration(
+                labelText: 'Purchase price (optional)',
+                hintText: _priceHint(p.costPrice),
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Optional: update low-stock threshold
+            TextField(
+              controller: _thresholdCtrl,
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [_numericFormatter],
+              decoration: InputDecoration(
+                labelText: 'Low stock threshold (optional)',
+                hintText: _priceHint(p.lowStockThreshold),
                 isDense: true,
               ),
             ),
