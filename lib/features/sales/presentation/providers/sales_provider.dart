@@ -236,19 +236,17 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
       ref.read(cartProvider.notifier).clear();
       ref.read(selectedCustomerProvider.notifier).set(null);
       ref.read(customerSearchQueryProvider.notifier).set('');
+      // Invalidate the affected lists but do NOT await any refetch here —
+      // blocking the sale on a list reload is what made checkout feel slow.
+      // These providers refetch on their own when their screen is next shown
+      // (or in the background if it's already mounted, e.g. the Sales tab
+      // sitting under the New Sale screen), so the sale returns immediately.
       ref.invalidate(todaySalesTotalsProvider);
       ref.invalidate(salesListProvider);
       ref.invalidate(stockLevelsProvider);
       ref.invalidate(reportSummaryProvider);
       if (isCredit) ref.invalidate(outstandingCreditProvider);
       if (customerId != null) ref.invalidate(customerSalesProvider(customerId));
-      // Eagerly await the sales-list refetch so this sale is already present
-      // when the user returns to the Sales tab, rather than appearing only
-      // after the next sale. A refetch hiccup must not mask the successful
-      // sale, so swallow any error here.
-      try {
-        await ref.read(salesListProvider.future);
-      } catch (_) {}
       // Low-stock alerts are no longer fired per-sale (that was spammy). They
       // now run as a scheduled server-side sweep (Supabase cron, 9am & 9pm).
       return sale;
