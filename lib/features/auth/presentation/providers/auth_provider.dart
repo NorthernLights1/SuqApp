@@ -68,19 +68,9 @@ class AuthNotifier extends AsyncNotifier<void> {
     state = await AsyncValue.guard(() => _client.auth.signOut());
   }
 
-  /// Step 1 of accepting an invite: email a one-time code to an invited staff
-  /// member. `shouldCreateUser: false` means only emails that were actually
-  /// invited (their account already exists) can receive a code. Throws on
-  /// failure so the caller can show the reason.
-  Future<void> sendInviteCode(String email) async {
-    await _client.auth.signInWithOtp(
-      email: email.trim(),
-      shouldCreateUser: false,
-    );
-  }
-
-  /// Step 2: verify the code, then set the staff member's password and name.
-  /// On success they are signed in and the router routes them to their shop.
+  /// Accept an invite: verify the one-time code the owner's invite emailed,
+  /// then set the staff member's password and name. On success they are signed
+  /// in and the router routes them to their shop.
   Future<void> claimInvite({
     required String email,
     required String code,

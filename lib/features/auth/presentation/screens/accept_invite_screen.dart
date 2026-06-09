@@ -29,8 +29,6 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
   final _confirmCtrl = TextEditingController();
   final _codeCtrl = TextEditingController();
 
-  bool _codeSent = false;
-  bool _sending = false;
   bool _claiming = false;
   bool _obscure = true;
 
@@ -52,35 +50,8 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
     ));
   }
 
-  Future<void> _sendCode() async {
-    final email = _emailCtrl.text.trim();
-    if (email.isEmpty || !email.contains('@')) {
-      _snack('Enter the email your shop owner invited', error: true);
-      return;
-    }
-    setState(() => _sending = true);
-    try {
-      await ref.read(authNotifierProvider.notifier).sendInviteCode(email);
-      if (!mounted) return;
-      setState(() => _codeSent = true);
-      _snack('We emailed a 6-digit code to $email');
-    } on AuthException catch (e) {
-      _snack(e.message, error: true);
-    } catch (_) {
-      _snack('Could not send a code. Check the email and try again.',
-          error: true);
-    } finally {
-      if (mounted) setState(() => _sending = false);
-    }
-  }
-
   Future<void> _createAccount() async {
     if (!_formKey.currentState!.validate()) return;
-    if (!_codeSent) {
-      _snack('Tap "Send code" first, then enter the code from your email',
-          error: true);
-      return;
-    }
     setState(() => _claiming = true);
     try {
       await ref.read(authNotifierProvider.notifier).claimInvite(
@@ -122,13 +93,13 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
                 Text('Accept your invitation', style: AppTextStyles.headline1),
                 const SizedBox(height: 8),
                 Text(
-                  'Enter the email your shop owner invited, get a code, then set '
-                  'your name and password.',
+                  'Your shop owner emailed you a one-time code. Enter your email '
+                  'and that code, then set your name and password.',
                   style: AppTextStyles.bodySmall,
                 ),
                 const SizedBox(height: 32),
 
-                // Email + send code
+                // Email (the address your owner invited)
                 AppTextField(
                   controller: _emailCtrl,
                   label: 'Email',
@@ -141,39 +112,23 @@ class _AcceptInviteScreenState extends ConsumerState<AcceptInviteScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton.icon(
-                    onPressed: _sending ? null : _sendCode,
-                    icon: _sending
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.mail_outline),
-                    label: Text(_codeSent ? 'Resend code' : 'Send code'),
-                  ),
-                ),
+                const SizedBox(height: 16),
 
-                const SizedBox(height: 24),
-                const Divider(),
-                const SizedBox(height: 8),
-
-                // Code
+                // Code from the invitation email
                 AppTextField(
                   controller: _codeCtrl,
-                  label: '6-digit code',
+                  label: 'Code from email',
                   keyboardType: TextInputType.number,
                   textInputAction: TextInputAction.next,
                   prefixIcon: const Icon(Icons.pin_outlined),
                   inputFormatters: [
                     FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(6),
+                    LengthLimitingTextInputFormatter(10),
                   ],
                   validator: (v) {
-                    if (v == null || v.trim().length != 6) {
-                      return 'Enter the 6-digit code from your email';
+                    final code = v?.trim() ?? '';
+                    if (code.length < 6) {
+                      return 'Enter the code from your email';
                     }
                     return null;
                   },
