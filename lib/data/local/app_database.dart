@@ -108,6 +108,27 @@ class LocalCustomers extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Pending stock operations (add / opening / manual / correction) waiting to
+/// reach Supabase. Each row also carries the locally-computed before/after so
+/// the push can apply the right effect (additive delta vs absolute override).
+@DataClassName('InventoryAdjustmentRow')
+class LocalInventoryAdjustments extends Table {
+  TextColumn get id => text()();
+  TextColumn get branchId => text()();
+  TextColumn get productId => text()();
+  TextColumn get type => text()(); // opening_stock | restock | manual
+  TextColumn get quantityBefore => text().map(const _Dec())();
+  TextColumn get quantityAfter => text().map(const _Dec())();
+  TextColumn get adjustedBy => text()();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get expiryDate => dateTime().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('ExpenseRow')
 class LocalExpenses extends Table {
   TextColumn get id => text()();
@@ -134,12 +155,13 @@ class LocalExpenses extends Table {
   LocalSaleItems,
   LocalCustomers,
   LocalExpenses,
+  LocalInventoryAdjustments,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -147,6 +169,8 @@ class AppDatabase extends _$AppDatabase {
         onUpgrade: (m, from, to) async {
           // v1 -> v2: offline-first expenses queue.
           if (from < 2) await m.createTable(localExpenses);
+          // v2 -> v3: offline-first inventory adjustments queue.
+          if (from < 3) await m.createTable(localInventoryAdjustments);
         },
       );
 
@@ -193,6 +217,20 @@ class AppDatabase extends _$AppDatabase {
                 t.branchId.equals(branchId) & t.productId.equals(productId)))
           .write(LocalStockCompanion(
               quantity: Value(newQty), syncedAt: Value(DateTime.now())));
+
+  /// Upsert a single stock level (used by stock ops, which may target a
+  /// product that has no local row yet — e.g. opening stock).
+  Future<void> setStockLevel(
+          String branchId, String productId, Decimal newQty) =>
+      into(localStock).insertOnConflictUpdate(LocalStockCompanion(
+        productId: Value(productId),
+        branchId: Value(branchId),
+        quantity: Value(newQty),
+        syncedAt: Value(DateTime.now()),
+      ));
+
+  Future<List<ProductRow>> getProductsByIds(List<String> ids) =>
+      (select(localProducts)..where((t) => t.id.isIn(ids))).get();
 
   // ── Sales ──────────────────────────────────────────────────────────────────
 
@@ -307,4 +345,20 @@ class AppDatabase extends _$AppDatabase {
   Future<void> markExpenseSynced(String id) =>
       (update(localExpenses)..where((t) => t.id.equals(id)))
           .write(const LocalExpensesCompanion(isSynced: Value(true)));
+
+  // ── Inventory adjustments queue ──────────────────────────────────────────────
+
+  Future<void> insertInventoryAdjustment(
+          LocalInventoryAdjustmentsCompanion row) =>
+      into(localInventoryAdjustments).insert(row);
+
+  Future<List<InventoryAdjustmentRow>> getPendingInventoryAdjustments() =>
+      (select(localInventoryAdjustments)
+            ..where((t) => t.isSynced.equals(false))
+            ..orderBy([(t) => OrderingTerm.asc(t.createdAt)]))
+          .get();
+
+  Future<void> markInventoryAdjustmentSynced(String id) =>
+      (update(localInventoryAdjustments)..where((t) => t.id.equals(id)))
+          .write(const LocalInventoryAdjustmentsCompanion(isSynced: Value(true)));
 }

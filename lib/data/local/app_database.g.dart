@@ -3746,6 +3746,686 @@ class LocalExpensesCompanion extends UpdateCompanion<ExpenseRow> {
   }
 }
 
+class $LocalInventoryAdjustmentsTable extends LocalInventoryAdjustments
+    with TableInfo<$LocalInventoryAdjustmentsTable, InventoryAdjustmentRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalInventoryAdjustmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _branchIdMeta = const VerificationMeta(
+    'branchId',
+  );
+  @override
+  late final GeneratedColumn<String> branchId = GeneratedColumn<String>(
+    'branch_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _productIdMeta = const VerificationMeta(
+    'productId',
+  );
+  @override
+  late final GeneratedColumn<String> productId = GeneratedColumn<String>(
+    'product_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _typeMeta = const VerificationMeta('type');
+  @override
+  late final GeneratedColumn<String> type = GeneratedColumn<String>(
+    'type',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<Decimal, String> quantityBefore =
+      GeneratedColumn<String>(
+        'quantity_before',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<Decimal>(
+        $LocalInventoryAdjustmentsTable.$converterquantityBefore,
+      );
+  @override
+  late final GeneratedColumnWithTypeConverter<Decimal, String> quantityAfter =
+      GeneratedColumn<String>(
+        'quantity_after',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<Decimal>(
+        $LocalInventoryAdjustmentsTable.$converterquantityAfter,
+      );
+  static const VerificationMeta _adjustedByMeta = const VerificationMeta(
+    'adjustedBy',
+  );
+  @override
+  late final GeneratedColumn<String> adjustedBy = GeneratedColumn<String>(
+    'adjusted_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _notesMeta = const VerificationMeta('notes');
+  @override
+  late final GeneratedColumn<String> notes = GeneratedColumn<String>(
+    'notes',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _expiryDateMeta = const VerificationMeta(
+    'expiryDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> expiryDate = GeneratedColumn<DateTime>(
+    'expiry_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+    'is_synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    branchId,
+    productId,
+    type,
+    quantityBefore,
+    quantityAfter,
+    adjustedBy,
+    notes,
+    expiryDate,
+    createdAt,
+    isSynced,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_inventory_adjustments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<InventoryAdjustmentRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('branch_id')) {
+      context.handle(
+        _branchIdMeta,
+        branchId.isAcceptableOrUnknown(data['branch_id']!, _branchIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_branchIdMeta);
+    }
+    if (data.containsKey('product_id')) {
+      context.handle(
+        _productIdMeta,
+        productId.isAcceptableOrUnknown(data['product_id']!, _productIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_productIdMeta);
+    }
+    if (data.containsKey('type')) {
+      context.handle(
+        _typeMeta,
+        type.isAcceptableOrUnknown(data['type']!, _typeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_typeMeta);
+    }
+    if (data.containsKey('adjusted_by')) {
+      context.handle(
+        _adjustedByMeta,
+        adjustedBy.isAcceptableOrUnknown(data['adjusted_by']!, _adjustedByMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_adjustedByMeta);
+    }
+    if (data.containsKey('notes')) {
+      context.handle(
+        _notesMeta,
+        notes.isAcceptableOrUnknown(data['notes']!, _notesMeta),
+      );
+    }
+    if (data.containsKey('expiry_date')) {
+      context.handle(
+        _expiryDateMeta,
+        expiryDate.isAcceptableOrUnknown(data['expiry_date']!, _expiryDateMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('is_synced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  InventoryAdjustmentRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return InventoryAdjustmentRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      branchId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}branch_id'],
+      )!,
+      productId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_id'],
+      )!,
+      type: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}type'],
+      )!,
+      quantityBefore: $LocalInventoryAdjustmentsTable.$converterquantityBefore
+          .fromSql(
+            attachedDatabase.typeMapping.read(
+              DriftSqlType.string,
+              data['${effectivePrefix}quantity_before'],
+            )!,
+          ),
+      quantityAfter: $LocalInventoryAdjustmentsTable.$converterquantityAfter
+          .fromSql(
+            attachedDatabase.typeMapping.read(
+              DriftSqlType.string,
+              data['${effectivePrefix}quantity_after'],
+            )!,
+          ),
+      adjustedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}adjusted_by'],
+      )!,
+      notes: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}notes'],
+      ),
+      expiryDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}expiry_date'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_synced'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalInventoryAdjustmentsTable createAlias(String alias) {
+    return $LocalInventoryAdjustmentsTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<Decimal, String> $converterquantityBefore = const _Dec();
+  static TypeConverter<Decimal, String> $converterquantityAfter = const _Dec();
+}
+
+class InventoryAdjustmentRow extends DataClass
+    implements Insertable<InventoryAdjustmentRow> {
+  final String id;
+  final String branchId;
+  final String productId;
+  final String type;
+  final Decimal quantityBefore;
+  final Decimal quantityAfter;
+  final String adjustedBy;
+  final String? notes;
+  final DateTime? expiryDate;
+  final DateTime createdAt;
+  final bool isSynced;
+  const InventoryAdjustmentRow({
+    required this.id,
+    required this.branchId,
+    required this.productId,
+    required this.type,
+    required this.quantityBefore,
+    required this.quantityAfter,
+    required this.adjustedBy,
+    this.notes,
+    this.expiryDate,
+    required this.createdAt,
+    required this.isSynced,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['branch_id'] = Variable<String>(branchId);
+    map['product_id'] = Variable<String>(productId);
+    map['type'] = Variable<String>(type);
+    {
+      map['quantity_before'] = Variable<String>(
+        $LocalInventoryAdjustmentsTable.$converterquantityBefore.toSql(
+          quantityBefore,
+        ),
+      );
+    }
+    {
+      map['quantity_after'] = Variable<String>(
+        $LocalInventoryAdjustmentsTable.$converterquantityAfter.toSql(
+          quantityAfter,
+        ),
+      );
+    }
+    map['adjusted_by'] = Variable<String>(adjustedBy);
+    if (!nullToAbsent || notes != null) {
+      map['notes'] = Variable<String>(notes);
+    }
+    if (!nullToAbsent || expiryDate != null) {
+      map['expiry_date'] = Variable<DateTime>(expiryDate);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['is_synced'] = Variable<bool>(isSynced);
+    return map;
+  }
+
+  LocalInventoryAdjustmentsCompanion toCompanion(bool nullToAbsent) {
+    return LocalInventoryAdjustmentsCompanion(
+      id: Value(id),
+      branchId: Value(branchId),
+      productId: Value(productId),
+      type: Value(type),
+      quantityBefore: Value(quantityBefore),
+      quantityAfter: Value(quantityAfter),
+      adjustedBy: Value(adjustedBy),
+      notes: notes == null && nullToAbsent
+          ? const Value.absent()
+          : Value(notes),
+      expiryDate: expiryDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expiryDate),
+      createdAt: Value(createdAt),
+      isSynced: Value(isSynced),
+    );
+  }
+
+  factory InventoryAdjustmentRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return InventoryAdjustmentRow(
+      id: serializer.fromJson<String>(json['id']),
+      branchId: serializer.fromJson<String>(json['branchId']),
+      productId: serializer.fromJson<String>(json['productId']),
+      type: serializer.fromJson<String>(json['type']),
+      quantityBefore: serializer.fromJson<Decimal>(json['quantityBefore']),
+      quantityAfter: serializer.fromJson<Decimal>(json['quantityAfter']),
+      adjustedBy: serializer.fromJson<String>(json['adjustedBy']),
+      notes: serializer.fromJson<String?>(json['notes']),
+      expiryDate: serializer.fromJson<DateTime?>(json['expiryDate']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'branchId': serializer.toJson<String>(branchId),
+      'productId': serializer.toJson<String>(productId),
+      'type': serializer.toJson<String>(type),
+      'quantityBefore': serializer.toJson<Decimal>(quantityBefore),
+      'quantityAfter': serializer.toJson<Decimal>(quantityAfter),
+      'adjustedBy': serializer.toJson<String>(adjustedBy),
+      'notes': serializer.toJson<String?>(notes),
+      'expiryDate': serializer.toJson<DateTime?>(expiryDate),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'isSynced': serializer.toJson<bool>(isSynced),
+    };
+  }
+
+  InventoryAdjustmentRow copyWith({
+    String? id,
+    String? branchId,
+    String? productId,
+    String? type,
+    Decimal? quantityBefore,
+    Decimal? quantityAfter,
+    String? adjustedBy,
+    Value<String?> notes = const Value.absent(),
+    Value<DateTime?> expiryDate = const Value.absent(),
+    DateTime? createdAt,
+    bool? isSynced,
+  }) => InventoryAdjustmentRow(
+    id: id ?? this.id,
+    branchId: branchId ?? this.branchId,
+    productId: productId ?? this.productId,
+    type: type ?? this.type,
+    quantityBefore: quantityBefore ?? this.quantityBefore,
+    quantityAfter: quantityAfter ?? this.quantityAfter,
+    adjustedBy: adjustedBy ?? this.adjustedBy,
+    notes: notes.present ? notes.value : this.notes,
+    expiryDate: expiryDate.present ? expiryDate.value : this.expiryDate,
+    createdAt: createdAt ?? this.createdAt,
+    isSynced: isSynced ?? this.isSynced,
+  );
+  InventoryAdjustmentRow copyWithCompanion(
+    LocalInventoryAdjustmentsCompanion data,
+  ) {
+    return InventoryAdjustmentRow(
+      id: data.id.present ? data.id.value : this.id,
+      branchId: data.branchId.present ? data.branchId.value : this.branchId,
+      productId: data.productId.present ? data.productId.value : this.productId,
+      type: data.type.present ? data.type.value : this.type,
+      quantityBefore: data.quantityBefore.present
+          ? data.quantityBefore.value
+          : this.quantityBefore,
+      quantityAfter: data.quantityAfter.present
+          ? data.quantityAfter.value
+          : this.quantityAfter,
+      adjustedBy: data.adjustedBy.present
+          ? data.adjustedBy.value
+          : this.adjustedBy,
+      notes: data.notes.present ? data.notes.value : this.notes,
+      expiryDate: data.expiryDate.present
+          ? data.expiryDate.value
+          : this.expiryDate,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('InventoryAdjustmentRow(')
+          ..write('id: $id, ')
+          ..write('branchId: $branchId, ')
+          ..write('productId: $productId, ')
+          ..write('type: $type, ')
+          ..write('quantityBefore: $quantityBefore, ')
+          ..write('quantityAfter: $quantityAfter, ')
+          ..write('adjustedBy: $adjustedBy, ')
+          ..write('notes: $notes, ')
+          ..write('expiryDate: $expiryDate, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('isSynced: $isSynced')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    branchId,
+    productId,
+    type,
+    quantityBefore,
+    quantityAfter,
+    adjustedBy,
+    notes,
+    expiryDate,
+    createdAt,
+    isSynced,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is InventoryAdjustmentRow &&
+          other.id == this.id &&
+          other.branchId == this.branchId &&
+          other.productId == this.productId &&
+          other.type == this.type &&
+          other.quantityBefore == this.quantityBefore &&
+          other.quantityAfter == this.quantityAfter &&
+          other.adjustedBy == this.adjustedBy &&
+          other.notes == this.notes &&
+          other.expiryDate == this.expiryDate &&
+          other.createdAt == this.createdAt &&
+          other.isSynced == this.isSynced);
+}
+
+class LocalInventoryAdjustmentsCompanion
+    extends UpdateCompanion<InventoryAdjustmentRow> {
+  final Value<String> id;
+  final Value<String> branchId;
+  final Value<String> productId;
+  final Value<String> type;
+  final Value<Decimal> quantityBefore;
+  final Value<Decimal> quantityAfter;
+  final Value<String> adjustedBy;
+  final Value<String?> notes;
+  final Value<DateTime?> expiryDate;
+  final Value<DateTime> createdAt;
+  final Value<bool> isSynced;
+  final Value<int> rowid;
+  const LocalInventoryAdjustmentsCompanion({
+    this.id = const Value.absent(),
+    this.branchId = const Value.absent(),
+    this.productId = const Value.absent(),
+    this.type = const Value.absent(),
+    this.quantityBefore = const Value.absent(),
+    this.quantityAfter = const Value.absent(),
+    this.adjustedBy = const Value.absent(),
+    this.notes = const Value.absent(),
+    this.expiryDate = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalInventoryAdjustmentsCompanion.insert({
+    required String id,
+    required String branchId,
+    required String productId,
+    required String type,
+    required Decimal quantityBefore,
+    required Decimal quantityAfter,
+    required String adjustedBy,
+    this.notes = const Value.absent(),
+    this.expiryDate = const Value.absent(),
+    required DateTime createdAt,
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       branchId = Value(branchId),
+       productId = Value(productId),
+       type = Value(type),
+       quantityBefore = Value(quantityBefore),
+       quantityAfter = Value(quantityAfter),
+       adjustedBy = Value(adjustedBy),
+       createdAt = Value(createdAt);
+  static Insertable<InventoryAdjustmentRow> custom({
+    Expression<String>? id,
+    Expression<String>? branchId,
+    Expression<String>? productId,
+    Expression<String>? type,
+    Expression<String>? quantityBefore,
+    Expression<String>? quantityAfter,
+    Expression<String>? adjustedBy,
+    Expression<String>? notes,
+    Expression<DateTime>? expiryDate,
+    Expression<DateTime>? createdAt,
+    Expression<bool>? isSynced,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (branchId != null) 'branch_id': branchId,
+      if (productId != null) 'product_id': productId,
+      if (type != null) 'type': type,
+      if (quantityBefore != null) 'quantity_before': quantityBefore,
+      if (quantityAfter != null) 'quantity_after': quantityAfter,
+      if (adjustedBy != null) 'adjusted_by': adjustedBy,
+      if (notes != null) 'notes': notes,
+      if (expiryDate != null) 'expiry_date': expiryDate,
+      if (createdAt != null) 'created_at': createdAt,
+      if (isSynced != null) 'is_synced': isSynced,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalInventoryAdjustmentsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? branchId,
+    Value<String>? productId,
+    Value<String>? type,
+    Value<Decimal>? quantityBefore,
+    Value<Decimal>? quantityAfter,
+    Value<String>? adjustedBy,
+    Value<String?>? notes,
+    Value<DateTime?>? expiryDate,
+    Value<DateTime>? createdAt,
+    Value<bool>? isSynced,
+    Value<int>? rowid,
+  }) {
+    return LocalInventoryAdjustmentsCompanion(
+      id: id ?? this.id,
+      branchId: branchId ?? this.branchId,
+      productId: productId ?? this.productId,
+      type: type ?? this.type,
+      quantityBefore: quantityBefore ?? this.quantityBefore,
+      quantityAfter: quantityAfter ?? this.quantityAfter,
+      adjustedBy: adjustedBy ?? this.adjustedBy,
+      notes: notes ?? this.notes,
+      expiryDate: expiryDate ?? this.expiryDate,
+      createdAt: createdAt ?? this.createdAt,
+      isSynced: isSynced ?? this.isSynced,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (branchId.present) {
+      map['branch_id'] = Variable<String>(branchId.value);
+    }
+    if (productId.present) {
+      map['product_id'] = Variable<String>(productId.value);
+    }
+    if (type.present) {
+      map['type'] = Variable<String>(type.value);
+    }
+    if (quantityBefore.present) {
+      map['quantity_before'] = Variable<String>(
+        $LocalInventoryAdjustmentsTable.$converterquantityBefore.toSql(
+          quantityBefore.value,
+        ),
+      );
+    }
+    if (quantityAfter.present) {
+      map['quantity_after'] = Variable<String>(
+        $LocalInventoryAdjustmentsTable.$converterquantityAfter.toSql(
+          quantityAfter.value,
+        ),
+      );
+    }
+    if (adjustedBy.present) {
+      map['adjusted_by'] = Variable<String>(adjustedBy.value);
+    }
+    if (notes.present) {
+      map['notes'] = Variable<String>(notes.value);
+    }
+    if (expiryDate.present) {
+      map['expiry_date'] = Variable<DateTime>(expiryDate.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalInventoryAdjustmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('branchId: $branchId, ')
+          ..write('productId: $productId, ')
+          ..write('type: $type, ')
+          ..write('quantityBefore: $quantityBefore, ')
+          ..write('quantityAfter: $quantityAfter, ')
+          ..write('adjustedBy: $adjustedBy, ')
+          ..write('notes: $notes, ')
+          ..write('expiryDate: $expiryDate, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3755,6 +4435,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $LocalSaleItemsTable localSaleItems = $LocalSaleItemsTable(this);
   late final $LocalCustomersTable localCustomers = $LocalCustomersTable(this);
   late final $LocalExpensesTable localExpenses = $LocalExpensesTable(this);
+  late final $LocalInventoryAdjustmentsTable localInventoryAdjustments =
+      $LocalInventoryAdjustmentsTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3766,6 +4448,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localSaleItems,
     localCustomers,
     localExpenses,
+    localInventoryAdjustments,
   ];
 }
 
@@ -5591,6 +6274,351 @@ typedef $$LocalExpensesTableProcessedTableManager =
       ExpenseRow,
       PrefetchHooks Function()
     >;
+typedef $$LocalInventoryAdjustmentsTableCreateCompanionBuilder =
+    LocalInventoryAdjustmentsCompanion Function({
+      required String id,
+      required String branchId,
+      required String productId,
+      required String type,
+      required Decimal quantityBefore,
+      required Decimal quantityAfter,
+      required String adjustedBy,
+      Value<String?> notes,
+      Value<DateTime?> expiryDate,
+      required DateTime createdAt,
+      Value<bool> isSynced,
+      Value<int> rowid,
+    });
+typedef $$LocalInventoryAdjustmentsTableUpdateCompanionBuilder =
+    LocalInventoryAdjustmentsCompanion Function({
+      Value<String> id,
+      Value<String> branchId,
+      Value<String> productId,
+      Value<String> type,
+      Value<Decimal> quantityBefore,
+      Value<Decimal> quantityAfter,
+      Value<String> adjustedBy,
+      Value<String?> notes,
+      Value<DateTime?> expiryDate,
+      Value<DateTime> createdAt,
+      Value<bool> isSynced,
+      Value<int> rowid,
+    });
+
+class $$LocalInventoryAdjustmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalInventoryAdjustmentsTable> {
+  $$LocalInventoryAdjustmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productId => $composableBuilder(
+    column: $table.productId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<Decimal, Decimal, String> get quantityBefore =>
+      $composableBuilder(
+        column: $table.quantityBefore,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnWithTypeConverterFilters<Decimal, Decimal, String> get quantityAfter =>
+      $composableBuilder(
+        column: $table.quantityAfter,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<String> get adjustedBy => $composableBuilder(
+    column: $table.adjustedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get expiryDate => $composableBuilder(
+    column: $table.expiryDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalInventoryAdjustmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalInventoryAdjustmentsTable> {
+  $$LocalInventoryAdjustmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get productId => $composableBuilder(
+    column: $table.productId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get type => $composableBuilder(
+    column: $table.type,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get quantityBefore => $composableBuilder(
+    column: $table.quantityBefore,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get quantityAfter => $composableBuilder(
+    column: $table.quantityAfter,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get adjustedBy => $composableBuilder(
+    column: $table.adjustedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get notes => $composableBuilder(
+    column: $table.notes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get expiryDate => $composableBuilder(
+    column: $table.expiryDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalInventoryAdjustmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalInventoryAdjustmentsTable> {
+  $$LocalInventoryAdjustmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get branchId =>
+      $composableBuilder(column: $table.branchId, builder: (column) => column);
+
+  GeneratedColumn<String> get productId =>
+      $composableBuilder(column: $table.productId, builder: (column) => column);
+
+  GeneratedColumn<String> get type =>
+      $composableBuilder(column: $table.type, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<Decimal, String> get quantityBefore =>
+      $composableBuilder(
+        column: $table.quantityBefore,
+        builder: (column) => column,
+      );
+
+  GeneratedColumnWithTypeConverter<Decimal, String> get quantityAfter =>
+      $composableBuilder(
+        column: $table.quantityAfter,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<String> get adjustedBy => $composableBuilder(
+    column: $table.adjustedBy,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get notes =>
+      $composableBuilder(column: $table.notes, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get expiryDate => $composableBuilder(
+    column: $table.expiryDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+}
+
+class $$LocalInventoryAdjustmentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalInventoryAdjustmentsTable,
+          InventoryAdjustmentRow,
+          $$LocalInventoryAdjustmentsTableFilterComposer,
+          $$LocalInventoryAdjustmentsTableOrderingComposer,
+          $$LocalInventoryAdjustmentsTableAnnotationComposer,
+          $$LocalInventoryAdjustmentsTableCreateCompanionBuilder,
+          $$LocalInventoryAdjustmentsTableUpdateCompanionBuilder,
+          (
+            InventoryAdjustmentRow,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalInventoryAdjustmentsTable,
+              InventoryAdjustmentRow
+            >,
+          ),
+          InventoryAdjustmentRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalInventoryAdjustmentsTableTableManager(
+    _$AppDatabase db,
+    $LocalInventoryAdjustmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalInventoryAdjustmentsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LocalInventoryAdjustmentsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LocalInventoryAdjustmentsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> branchId = const Value.absent(),
+                Value<String> productId = const Value.absent(),
+                Value<String> type = const Value.absent(),
+                Value<Decimal> quantityBefore = const Value.absent(),
+                Value<Decimal> quantityAfter = const Value.absent(),
+                Value<String> adjustedBy = const Value.absent(),
+                Value<String?> notes = const Value.absent(),
+                Value<DateTime?> expiryDate = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<bool> isSynced = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalInventoryAdjustmentsCompanion(
+                id: id,
+                branchId: branchId,
+                productId: productId,
+                type: type,
+                quantityBefore: quantityBefore,
+                quantityAfter: quantityAfter,
+                adjustedBy: adjustedBy,
+                notes: notes,
+                expiryDate: expiryDate,
+                createdAt: createdAt,
+                isSynced: isSynced,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String branchId,
+                required String productId,
+                required String type,
+                required Decimal quantityBefore,
+                required Decimal quantityAfter,
+                required String adjustedBy,
+                Value<String?> notes = const Value.absent(),
+                Value<DateTime?> expiryDate = const Value.absent(),
+                required DateTime createdAt,
+                Value<bool> isSynced = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalInventoryAdjustmentsCompanion.insert(
+                id: id,
+                branchId: branchId,
+                productId: productId,
+                type: type,
+                quantityBefore: quantityBefore,
+                quantityAfter: quantityAfter,
+                adjustedBy: adjustedBy,
+                notes: notes,
+                expiryDate: expiryDate,
+                createdAt: createdAt,
+                isSynced: isSynced,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalInventoryAdjustmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalInventoryAdjustmentsTable,
+      InventoryAdjustmentRow,
+      $$LocalInventoryAdjustmentsTableFilterComposer,
+      $$LocalInventoryAdjustmentsTableOrderingComposer,
+      $$LocalInventoryAdjustmentsTableAnnotationComposer,
+      $$LocalInventoryAdjustmentsTableCreateCompanionBuilder,
+      $$LocalInventoryAdjustmentsTableUpdateCompanionBuilder,
+      (
+        InventoryAdjustmentRow,
+        BaseReferences<
+          _$AppDatabase,
+          $LocalInventoryAdjustmentsTable,
+          InventoryAdjustmentRow
+        >,
+      ),
+      InventoryAdjustmentRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -5607,4 +6635,9 @@ class $AppDatabaseManager {
       $$LocalCustomersTableTableManager(_db, _db.localCustomers);
   $$LocalExpensesTableTableManager get localExpenses =>
       $$LocalExpensesTableTableManager(_db, _db.localExpenses);
+  $$LocalInventoryAdjustmentsTableTableManager get localInventoryAdjustments =>
+      $$LocalInventoryAdjustmentsTableTableManager(
+        _db,
+        _db.localInventoryAdjustments,
+      );
 }

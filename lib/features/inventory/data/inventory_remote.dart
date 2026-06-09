@@ -202,6 +202,70 @@ class InventoryRemote {
     });
   }
 
+  // ─── Replay a queued adjustment ─────────────────────────────────────────────
+
+  /// Applies a single pending stock op to the server. Idempotent on [id]:
+  /// if a ledger row with that id already exists, it does nothing.
+  ///
+  /// Additive ops (opening_stock / restock) apply the locally-computed delta
+  /// on top of the authoritative server quantity, so concurrent restocks from
+  /// other devices compose. Absolute ops (manual / correction) override.
+  Future<void> applyAdjustment({
+    required String id,
+    required String type,
+    required String branchId,
+    required String productId,
+    required Decimal quantityBefore,
+    required Decimal quantityAfter,
+    required String adjustedBy,
+    String? notes,
+    DateTime? expiryDate,
+  }) async {
+    final already = await _client
+        .from('inventory_adjustments')
+        .select('id')
+        .eq('id', id)
+        .maybeSingle();
+    if (already != null) return;
+
+    final existing = await _client
+        .from('inventory')
+        .select('quantity')
+        .eq('branch_id', branchId)
+        .eq('product_id', productId)
+        .maybeSingle();
+    final serverBefore = existing != null
+        ? Decimal.parse(existing['quantity'].toString())
+        : Decimal.zero;
+
+    final Decimal serverAfter;
+    if (type == 'manual') {
+      serverAfter = quantityAfter; // absolute override
+    } else {
+      serverAfter = serverBefore + (quantityAfter - quantityBefore); // delta
+    }
+
+    // Ledger first (carries the idempotency id), then the quantity.
+    await _client.from('inventory_adjustments').insert({
+      'id': id,
+      'branch_id': branchId,
+      'product_id': productId,
+      'adjusted_by': adjustedBy,
+      'type': type,
+      'quantity_before': serverBefore.toString(),
+      'quantity_after': serverAfter.toString(),
+      'notes': ?notes,
+    });
+    await _client.from('inventory').upsert({
+      'branch_id': branchId,
+      'product_id': productId,
+      'quantity': serverAfter.toString(),
+      if (expiryDate != null)
+        'expiry_date': expiryDate.toIso8601String().substring(0, 10),
+      'updated_at': DateTime.now().toIso8601String(),
+    }, onConflict: 'branch_id,product_id');
+  }
+
   // ─── Measurement units ─────────────────────────────────────────────────────
 
   Future<List<MeasurementUnit>> getMeasurementUnits(String shopId) async {
@@ -261,6 +325,18 @@ class StockEntry {
   final String unitAbbr;
   final DateTime? expiryDate;
   final DateTime updatedAt;
+
+  StockEntry withQuantity(Decimal q) => StockEntry(
+        productId: productId,
+        productName: productName,
+        measurementUnitId: measurementUnitId,
+        quantity: q,
+        lowStockThreshold: lowStockThreshold,
+        sellingPrice: sellingPrice,
+        unitAbbr: unitAbbr,
+        expiryDate: expiryDate,
+        updatedAt: updatedAt,
+      );
 
   bool get isLowStock => quantity <= lowStockThreshold && lowStockThreshold > Decimal.zero;
 

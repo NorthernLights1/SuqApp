@@ -1,13 +1,22 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../data/local/database_provider.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../data/inventory_remote.dart';
+import '../../domain/inventory_repository.dart';
 
-// ─── Remote provider ───────────────────────────────────────────────────────
+// ─── Remote + repository providers ─────────────────────────────────────────
 
 final inventoryRemoteProvider = Provider<InventoryRemote>(
   (ref) => InventoryRemote(ref.read(supabaseClientProvider)),
+);
+
+final inventoryRepositoryProvider = Provider<InventoryRepository>(
+  (ref) => InventoryRepository(
+    ref.read(inventoryRemoteProvider),
+    ref.read(appDatabaseProvider),
+  ),
 );
 
 // ─── Measurement units ─────────────────────────────────────────────────────
@@ -16,7 +25,7 @@ final measurementUnitsProvider =
     FutureProvider<List<MeasurementUnit>>((ref) async {
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
-  return ref.read(inventoryRemoteProvider).getMeasurementUnits(shop.id);
+  return ref.read(inventoryRepositoryProvider).getMeasurementUnits(shop.id);
 });
 
 // ─── Product categories ────────────────────────────────────────────────────
@@ -24,7 +33,7 @@ final measurementUnitsProvider =
 final productCategoriesProvider = FutureProvider<List<ProductCategory>>((ref) async {
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
-  return ref.read(inventoryRemoteProvider).getProductCategories(shop.id);
+  return ref.read(inventoryRepositoryProvider).getProductCategories(shop.id);
 });
 
 // ─── Products list ─────────────────────────────────────────────────────────
@@ -32,7 +41,7 @@ final productCategoriesProvider = FutureProvider<List<ProductCategory>>((ref) as
 final productsProvider = FutureProvider((ref) async {
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
-  return ref.read(inventoryRemoteProvider).getProducts(shop.id);
+  return ref.read(inventoryRepositoryProvider).getProducts(shop.id);
 });
 
 // ─── Stock levels ──────────────────────────────────────────────────────────
@@ -42,7 +51,7 @@ final stockLevelsProvider = FutureProvider<List<StockEntry>>((ref) async {
   final branch = ref.watch(activeBranchProvider) ??
       (branches.isNotEmpty ? branches.first : null);
   if (branch == null) return [];
-  return ref.read(inventoryRemoteProvider).getStockLevels(branch.id);
+  return ref.read(inventoryRepositoryProvider).getStockLevels(branch.id);
 });
 
 final lowStockCountProvider = Provider<AsyncValue<int>>((ref) {
@@ -74,9 +83,9 @@ class ProductFormNotifier extends AsyncNotifier<void> {
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      final remote = ref.read(inventoryRemoteProvider);
+      final repo = ref.read(inventoryRepositoryProvider);
       if (productId == null) {
-        final product = await remote.createProduct(
+        final product = await repo.createProduct(
           shopId: shop.id,
           name: name,
           measurementUnitId: measurementUnitId,
@@ -92,7 +101,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
           final branch = ref.read(activeBranchProvider) ??
               (branches.isNotEmpty ? branches.first : null);
           if (userId != null && branch != null) {
-            await remote.setOpeningStock(
+            await repo.setOpeningStock(
               branchId: branch.id,
               productId: product.id,
               quantity: initialQuantity,
@@ -102,7 +111,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
           }
         }
       } else {
-        await remote.updateProduct(
+        await repo.updateProduct(
           productId: productId,
           name: name,
           measurementUnitId: measurementUnitId,
@@ -122,7 +131,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
   Future<bool> deactivate(String productId) async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      await ref.read(inventoryRemoteProvider).deactivateProduct(productId);
+      await ref.read(inventoryRepositoryProvider).deactivateProduct(productId);
       ref.invalidate(productsProvider);
       ref.invalidate(stockLevelsProvider);
     });
@@ -152,7 +161,7 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      await ref.read(inventoryRemoteProvider).setOpeningStock(
+      await ref.read(inventoryRepositoryProvider).setOpeningStock(
             branchId: branch.id,
             productId: productId,
             quantity: quantity,
@@ -179,7 +188,7 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      await ref.read(inventoryRemoteProvider).manualAdjustment(
+      await ref.read(inventoryRepositoryProvider).manualAdjustment(
             branchId: branch.id,
             productId: productId,
             newQuantity: newQuantity,
@@ -206,7 +215,7 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      await ref.read(inventoryRemoteProvider).addStock(
+      await ref.read(inventoryRepositoryProvider).addStock(
             branchId: branch.id,
             productId: productId,
             quantityToAdd: quantityToAdd,
@@ -233,7 +242,7 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      await ref.read(inventoryRemoteProvider).correctStock(
+      await ref.read(inventoryRepositoryProvider).correctStock(
             branchId: branch.id,
             productId: productId,
             newQuantity: newQuantity,

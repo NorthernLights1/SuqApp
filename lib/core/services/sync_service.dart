@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_constants.dart';
 import '../../data/local/app_database.dart';
 import '../../domain/interfaces/sync_service_interface.dart';
+import '../../features/inventory/data/inventory_remote.dart';
 
 class SyncService implements ISyncService {
   SyncService(this._supabase, this._connectivity, this._db);
@@ -48,6 +49,7 @@ class SyncService implements ISyncService {
       if (_db != null) {
         pushed += await _pushPendingSales();
         pushed += await _pushPendingExpenses();
+        pushed += await _pushPendingAdjustments();
       }
 
       // The sync_logs heartbeat records "this device reached the server" for
@@ -161,6 +163,36 @@ class SyncService implements ISyncService {
           });
         }
         await db.markExpenseSynced(e.id);
+        pushed++;
+      } catch (_) {
+        // Leave isSynced=false; next sync will retry
+      }
+    }
+    return pushed;
+  }
+
+  /// Pushes all pending stock adjustments (replayed in creation order via the
+  /// idempotent, delta-aware [InventoryRemote.applyAdjustment]).
+  Future<int> _pushPendingAdjustments() async {
+    final db = _db!;
+    final pending = await db.getPendingInventoryAdjustments();
+    if (pending.isEmpty) return 0;
+    final remote = InventoryRemote(_supabase);
+    var pushed = 0;
+    for (final a in pending) {
+      try {
+        await remote.applyAdjustment(
+          id: a.id,
+          type: a.type,
+          branchId: a.branchId,
+          productId: a.productId,
+          quantityBefore: a.quantityBefore,
+          quantityAfter: a.quantityAfter,
+          adjustedBy: a.adjustedBy,
+          notes: a.notes,
+          expiryDate: a.expiryDate,
+        );
+        await db.markInventoryAdjustmentSynced(a.id);
         pushed++;
       } catch (_) {
         // Leave isSynced=false; next sync will retry
