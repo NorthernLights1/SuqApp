@@ -1,73 +1,29 @@
 import 'package:decimal/decimal.dart';
-import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../data/local/database_provider.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
+import '../../data/expenses_remote.dart';
+import '../../domain/expense.dart';
+import '../../domain/expenses_repository.dart';
 
-class ExpenseCategory extends Equatable {
-  const ExpenseCategory({required this.id, required this.name});
-  final String id;
-  final String name;
-  factory ExpenseCategory.fromJson(Map<String, dynamic> json) =>
-      ExpenseCategory(id: json['id'] as String, name: json['name'] as String);
-  @override
-  List<Object?> get props => [id, name];
-}
-
-class Expense extends Equatable {
-  const Expense({
-    required this.id,
-    required this.branchId,
-    required this.categoryId,
-    required this.categoryName,
-    required this.amount,
-    this.description,
-    required this.recordedBy,
-    required this.date,
-    required this.createdAt,
-  });
-
-  final String id;
-  final String branchId;
-  final String categoryId;
-  final String categoryName;
-  final Decimal amount;
-  final String? description;
-  final String recordedBy;
-  final DateTime date;
-  final DateTime createdAt;
-
-  factory Expense.fromJson(Map<String, dynamic> json) => Expense(
-        id: json['id'] as String,
-        branchId: json['branch_id'] as String,
-        categoryId: json['category_id'] as String,
-        categoryName:
-            (json['expense_categories'] as Map<String, dynamic>?)?['name']
-                as String? ?? '',
-        amount: Decimal.parse(json['amount'].toString()),
-        description: json['description'] as String?,
-        recordedBy: json['recorded_by'] as String,
-        date: DateTime.parse(json['date'] as String),
-        createdAt: DateTime.parse(json['created_at'] as String),
-      );
-
-  @override
-  List<Object?> get props => [id, amount, date];
-}
+// Re-export the models so existing screen imports keep resolving.
+export '../../domain/expense.dart' show Expense, ExpenseCategory;
 
 // ─── Providers ─────────────────────────────────────────────────────────────
+
+final expensesRepositoryProvider = Provider<IExpensesRepository>((ref) {
+  return ExpensesRepository(
+    ExpensesRemote(ref.read(supabaseClientProvider)),
+    ref.read(appDatabaseProvider),
+  );
+});
 
 final expenseCategoriesProvider =
     FutureProvider<List<ExpenseCategory>>((ref) async {
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
-  final client = ref.read(supabaseClientProvider);
-  final data = await client
-      .from('expense_categories')
-      .select('id, name')
-      .or('shop_id.eq.${shop.id},shop_id.is.null')
-      .order('name');
-  return (data as List).map((e) => ExpenseCategory.fromJson(e)).toList();
+  return ref.read(expensesRepositoryProvider).getCategories(shop.id);
 });
 
 class _ExpenseDateNotifier extends Notifier<DateTime> {
@@ -85,20 +41,7 @@ final expensesProvider = FutureProvider<List<Expense>>((ref) async {
   final branch = ref.watch(activeBranchProvider) ??
       (branches.isNotEmpty ? branches.first : null);
   if (branch == null) return [];
-
-  final from = DateTime(date.year, date.month, date.day);
-  final to = from.add(const Duration(days: 1));
-  final client = ref.read(supabaseClientProvider);
-
-  final data = await client
-      .from('expenses')
-      .select('id, branch_id, category_id, amount, description, recorded_by, date, created_at, expense_categories(name)')
-      .eq('branch_id', branch.id)
-      .gte('date', from.toIso8601String().substring(0, 10))
-      .lt('date', to.toIso8601String().substring(0, 10))
-      .order('created_at', ascending: false);
-
-  return (data as List).map((e) => Expense.fromJson(e)).toList();
+  return ref.read(expensesRepositoryProvider).getExpenses(branch.id, date);
 });
 
 final todayExpensesTotalProvider = FutureProvider<Decimal>((ref) async {
@@ -128,16 +71,25 @@ class RecordExpenseNotifier extends AsyncNotifier<void> {
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      await ref.read(supabaseClientProvider).from('expenses').insert({
-        'branch_id': branch.id,
-        'category_id': categoryId,
-        'amount': amount.toString(),
-        'description': description?.trim().isEmpty == true
-            ? null
-            : description?.trim(),
-        'recorded_by': userId,
-        'date': date.toIso8601String().substring(0, 10),
-      });
+      // Resolve the category name for offline display (no join available
+      // when the row is created with no connection).
+      final categories = await ref.read(expenseCategoriesProvider.future);
+      final categoryName = categories
+          .firstWhere(
+            (c) => c.id == categoryId,
+            orElse: () => const ExpenseCategory(id: '', name: ''),
+          )
+          .name;
+
+      await ref.read(expensesRepositoryProvider).record(
+            branchId: branch.id,
+            categoryId: categoryId,
+            categoryName: categoryName,
+            amount: amount,
+            description: description,
+            recordedBy: userId,
+            date: date,
+          );
       ref.invalidate(expensesProvider);
       ref.invalidate(todayExpensesTotalProvider);
     });

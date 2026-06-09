@@ -3124,6 +3124,628 @@ class LocalCustomersCompanion extends UpdateCompanion<CustomerRow> {
   }
 }
 
+class $LocalExpensesTable extends LocalExpenses
+    with TableInfo<$LocalExpensesTable, ExpenseRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalExpensesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _branchIdMeta = const VerificationMeta(
+    'branchId',
+  );
+  @override
+  late final GeneratedColumn<String> branchId = GeneratedColumn<String>(
+    'branch_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _categoryIdMeta = const VerificationMeta(
+    'categoryId',
+  );
+  @override
+  late final GeneratedColumn<String> categoryId = GeneratedColumn<String>(
+    'category_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _categoryNameMeta = const VerificationMeta(
+    'categoryName',
+  );
+  @override
+  late final GeneratedColumn<String> categoryName = GeneratedColumn<String>(
+    'category_name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<Decimal, String> amount =
+      GeneratedColumn<String>(
+        'amount',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<Decimal>($LocalExpensesTable.$converteramount);
+  static const VerificationMeta _descriptionMeta = const VerificationMeta(
+    'description',
+  );
+  @override
+  late final GeneratedColumn<String> description = GeneratedColumn<String>(
+    'description',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _recordedByMeta = const VerificationMeta(
+    'recordedBy',
+  );
+  @override
+  late final GeneratedColumn<String> recordedBy = GeneratedColumn<String>(
+    'recorded_by',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dateMeta = const VerificationMeta('date');
+  @override
+  late final GeneratedColumn<DateTime> date = GeneratedColumn<DateTime>(
+    'date',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+    'is_synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    branchId,
+    categoryId,
+    categoryName,
+    amount,
+    description,
+    recordedBy,
+    date,
+    createdAt,
+    isSynced,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_expenses';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExpenseRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('branch_id')) {
+      context.handle(
+        _branchIdMeta,
+        branchId.isAcceptableOrUnknown(data['branch_id']!, _branchIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_branchIdMeta);
+    }
+    if (data.containsKey('category_id')) {
+      context.handle(
+        _categoryIdMeta,
+        categoryId.isAcceptableOrUnknown(data['category_id']!, _categoryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_categoryIdMeta);
+    }
+    if (data.containsKey('category_name')) {
+      context.handle(
+        _categoryNameMeta,
+        categoryName.isAcceptableOrUnknown(
+          data['category_name']!,
+          _categoryNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_categoryNameMeta);
+    }
+    if (data.containsKey('description')) {
+      context.handle(
+        _descriptionMeta,
+        description.isAcceptableOrUnknown(
+          data['description']!,
+          _descriptionMeta,
+        ),
+      );
+    }
+    if (data.containsKey('recorded_by')) {
+      context.handle(
+        _recordedByMeta,
+        recordedBy.isAcceptableOrUnknown(data['recorded_by']!, _recordedByMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_recordedByMeta);
+    }
+    if (data.containsKey('date')) {
+      context.handle(
+        _dateMeta,
+        date.isAcceptableOrUnknown(data['date']!, _dateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_dateMeta);
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('is_synced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExpenseRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExpenseRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      branchId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}branch_id'],
+      )!,
+      categoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category_id'],
+      )!,
+      categoryName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}category_name'],
+      )!,
+      amount: $LocalExpensesTable.$converteramount.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}amount'],
+        )!,
+      ),
+      description: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}description'],
+      ),
+      recordedBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}recorded_by'],
+      )!,
+      date: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}date'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_synced'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalExpensesTable createAlias(String alias) {
+    return $LocalExpensesTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<Decimal, String> $converteramount = const _Dec();
+}
+
+class ExpenseRow extends DataClass implements Insertable<ExpenseRow> {
+  final String id;
+  final String branchId;
+  final String categoryId;
+  final String categoryName;
+  final Decimal amount;
+  final String? description;
+  final String recordedBy;
+  final DateTime date;
+  final DateTime createdAt;
+  final bool isSynced;
+  const ExpenseRow({
+    required this.id,
+    required this.branchId,
+    required this.categoryId,
+    required this.categoryName,
+    required this.amount,
+    this.description,
+    required this.recordedBy,
+    required this.date,
+    required this.createdAt,
+    required this.isSynced,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['branch_id'] = Variable<String>(branchId);
+    map['category_id'] = Variable<String>(categoryId);
+    map['category_name'] = Variable<String>(categoryName);
+    {
+      map['amount'] = Variable<String>(
+        $LocalExpensesTable.$converteramount.toSql(amount),
+      );
+    }
+    if (!nullToAbsent || description != null) {
+      map['description'] = Variable<String>(description);
+    }
+    map['recorded_by'] = Variable<String>(recordedBy);
+    map['date'] = Variable<DateTime>(date);
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['is_synced'] = Variable<bool>(isSynced);
+    return map;
+  }
+
+  LocalExpensesCompanion toCompanion(bool nullToAbsent) {
+    return LocalExpensesCompanion(
+      id: Value(id),
+      branchId: Value(branchId),
+      categoryId: Value(categoryId),
+      categoryName: Value(categoryName),
+      amount: Value(amount),
+      description: description == null && nullToAbsent
+          ? const Value.absent()
+          : Value(description),
+      recordedBy: Value(recordedBy),
+      date: Value(date),
+      createdAt: Value(createdAt),
+      isSynced: Value(isSynced),
+    );
+  }
+
+  factory ExpenseRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExpenseRow(
+      id: serializer.fromJson<String>(json['id']),
+      branchId: serializer.fromJson<String>(json['branchId']),
+      categoryId: serializer.fromJson<String>(json['categoryId']),
+      categoryName: serializer.fromJson<String>(json['categoryName']),
+      amount: serializer.fromJson<Decimal>(json['amount']),
+      description: serializer.fromJson<String?>(json['description']),
+      recordedBy: serializer.fromJson<String>(json['recordedBy']),
+      date: serializer.fromJson<DateTime>(json['date']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'branchId': serializer.toJson<String>(branchId),
+      'categoryId': serializer.toJson<String>(categoryId),
+      'categoryName': serializer.toJson<String>(categoryName),
+      'amount': serializer.toJson<Decimal>(amount),
+      'description': serializer.toJson<String?>(description),
+      'recordedBy': serializer.toJson<String>(recordedBy),
+      'date': serializer.toJson<DateTime>(date),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'isSynced': serializer.toJson<bool>(isSynced),
+    };
+  }
+
+  ExpenseRow copyWith({
+    String? id,
+    String? branchId,
+    String? categoryId,
+    String? categoryName,
+    Decimal? amount,
+    Value<String?> description = const Value.absent(),
+    String? recordedBy,
+    DateTime? date,
+    DateTime? createdAt,
+    bool? isSynced,
+  }) => ExpenseRow(
+    id: id ?? this.id,
+    branchId: branchId ?? this.branchId,
+    categoryId: categoryId ?? this.categoryId,
+    categoryName: categoryName ?? this.categoryName,
+    amount: amount ?? this.amount,
+    description: description.present ? description.value : this.description,
+    recordedBy: recordedBy ?? this.recordedBy,
+    date: date ?? this.date,
+    createdAt: createdAt ?? this.createdAt,
+    isSynced: isSynced ?? this.isSynced,
+  );
+  ExpenseRow copyWithCompanion(LocalExpensesCompanion data) {
+    return ExpenseRow(
+      id: data.id.present ? data.id.value : this.id,
+      branchId: data.branchId.present ? data.branchId.value : this.branchId,
+      categoryId: data.categoryId.present
+          ? data.categoryId.value
+          : this.categoryId,
+      categoryName: data.categoryName.present
+          ? data.categoryName.value
+          : this.categoryName,
+      amount: data.amount.present ? data.amount.value : this.amount,
+      description: data.description.present
+          ? data.description.value
+          : this.description,
+      recordedBy: data.recordedBy.present
+          ? data.recordedBy.value
+          : this.recordedBy,
+      date: data.date.present ? data.date.value : this.date,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpenseRow(')
+          ..write('id: $id, ')
+          ..write('branchId: $branchId, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('categoryName: $categoryName, ')
+          ..write('amount: $amount, ')
+          ..write('description: $description, ')
+          ..write('recordedBy: $recordedBy, ')
+          ..write('date: $date, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('isSynced: $isSynced')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    branchId,
+    categoryId,
+    categoryName,
+    amount,
+    description,
+    recordedBy,
+    date,
+    createdAt,
+    isSynced,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExpenseRow &&
+          other.id == this.id &&
+          other.branchId == this.branchId &&
+          other.categoryId == this.categoryId &&
+          other.categoryName == this.categoryName &&
+          other.amount == this.amount &&
+          other.description == this.description &&
+          other.recordedBy == this.recordedBy &&
+          other.date == this.date &&
+          other.createdAt == this.createdAt &&
+          other.isSynced == this.isSynced);
+}
+
+class LocalExpensesCompanion extends UpdateCompanion<ExpenseRow> {
+  final Value<String> id;
+  final Value<String> branchId;
+  final Value<String> categoryId;
+  final Value<String> categoryName;
+  final Value<Decimal> amount;
+  final Value<String?> description;
+  final Value<String> recordedBy;
+  final Value<DateTime> date;
+  final Value<DateTime> createdAt;
+  final Value<bool> isSynced;
+  final Value<int> rowid;
+  const LocalExpensesCompanion({
+    this.id = const Value.absent(),
+    this.branchId = const Value.absent(),
+    this.categoryId = const Value.absent(),
+    this.categoryName = const Value.absent(),
+    this.amount = const Value.absent(),
+    this.description = const Value.absent(),
+    this.recordedBy = const Value.absent(),
+    this.date = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalExpensesCompanion.insert({
+    required String id,
+    required String branchId,
+    required String categoryId,
+    required String categoryName,
+    required Decimal amount,
+    this.description = const Value.absent(),
+    required String recordedBy,
+    required DateTime date,
+    required DateTime createdAt,
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       branchId = Value(branchId),
+       categoryId = Value(categoryId),
+       categoryName = Value(categoryName),
+       amount = Value(amount),
+       recordedBy = Value(recordedBy),
+       date = Value(date),
+       createdAt = Value(createdAt);
+  static Insertable<ExpenseRow> custom({
+    Expression<String>? id,
+    Expression<String>? branchId,
+    Expression<String>? categoryId,
+    Expression<String>? categoryName,
+    Expression<String>? amount,
+    Expression<String>? description,
+    Expression<String>? recordedBy,
+    Expression<DateTime>? date,
+    Expression<DateTime>? createdAt,
+    Expression<bool>? isSynced,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (branchId != null) 'branch_id': branchId,
+      if (categoryId != null) 'category_id': categoryId,
+      if (categoryName != null) 'category_name': categoryName,
+      if (amount != null) 'amount': amount,
+      if (description != null) 'description': description,
+      if (recordedBy != null) 'recorded_by': recordedBy,
+      if (date != null) 'date': date,
+      if (createdAt != null) 'created_at': createdAt,
+      if (isSynced != null) 'is_synced': isSynced,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalExpensesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? branchId,
+    Value<String>? categoryId,
+    Value<String>? categoryName,
+    Value<Decimal>? amount,
+    Value<String?>? description,
+    Value<String>? recordedBy,
+    Value<DateTime>? date,
+    Value<DateTime>? createdAt,
+    Value<bool>? isSynced,
+    Value<int>? rowid,
+  }) {
+    return LocalExpensesCompanion(
+      id: id ?? this.id,
+      branchId: branchId ?? this.branchId,
+      categoryId: categoryId ?? this.categoryId,
+      categoryName: categoryName ?? this.categoryName,
+      amount: amount ?? this.amount,
+      description: description ?? this.description,
+      recordedBy: recordedBy ?? this.recordedBy,
+      date: date ?? this.date,
+      createdAt: createdAt ?? this.createdAt,
+      isSynced: isSynced ?? this.isSynced,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (branchId.present) {
+      map['branch_id'] = Variable<String>(branchId.value);
+    }
+    if (categoryId.present) {
+      map['category_id'] = Variable<String>(categoryId.value);
+    }
+    if (categoryName.present) {
+      map['category_name'] = Variable<String>(categoryName.value);
+    }
+    if (amount.present) {
+      map['amount'] = Variable<String>(
+        $LocalExpensesTable.$converteramount.toSql(amount.value),
+      );
+    }
+    if (description.present) {
+      map['description'] = Variable<String>(description.value);
+    }
+    if (recordedBy.present) {
+      map['recorded_by'] = Variable<String>(recordedBy.value);
+    }
+    if (date.present) {
+      map['date'] = Variable<DateTime>(date.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalExpensesCompanion(')
+          ..write('id: $id, ')
+          ..write('branchId: $branchId, ')
+          ..write('categoryId: $categoryId, ')
+          ..write('categoryName: $categoryName, ')
+          ..write('amount: $amount, ')
+          ..write('description: $description, ')
+          ..write('recordedBy: $recordedBy, ')
+          ..write('date: $date, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -3132,6 +3754,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $LocalSalesTable localSales = $LocalSalesTable(this);
   late final $LocalSaleItemsTable localSaleItems = $LocalSaleItemsTable(this);
   late final $LocalCustomersTable localCustomers = $LocalCustomersTable(this);
+  late final $LocalExpensesTable localExpenses = $LocalExpensesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -3142,6 +3765,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localSales,
     localSaleItems,
     localCustomers,
+    localExpenses,
   ];
 }
 
@@ -4663,6 +5287,310 @@ typedef $$LocalCustomersTableProcessedTableManager =
       CustomerRow,
       PrefetchHooks Function()
     >;
+typedef $$LocalExpensesTableCreateCompanionBuilder =
+    LocalExpensesCompanion Function({
+      required String id,
+      required String branchId,
+      required String categoryId,
+      required String categoryName,
+      required Decimal amount,
+      Value<String?> description,
+      required String recordedBy,
+      required DateTime date,
+      required DateTime createdAt,
+      Value<bool> isSynced,
+      Value<int> rowid,
+    });
+typedef $$LocalExpensesTableUpdateCompanionBuilder =
+    LocalExpensesCompanion Function({
+      Value<String> id,
+      Value<String> branchId,
+      Value<String> categoryId,
+      Value<String> categoryName,
+      Value<Decimal> amount,
+      Value<String?> description,
+      Value<String> recordedBy,
+      Value<DateTime> date,
+      Value<DateTime> createdAt,
+      Value<bool> isSynced,
+      Value<int> rowid,
+    });
+
+class $$LocalExpensesTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalExpensesTable> {
+  $$LocalExpensesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get categoryName => $composableBuilder(
+    column: $table.categoryName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<Decimal, Decimal, String> get amount =>
+      $composableBuilder(
+        column: $table.amount,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get recordedBy => $composableBuilder(
+    column: $table.recordedBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalExpensesTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalExpensesTable> {
+  $$LocalExpensesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get categoryName => $composableBuilder(
+    column: $table.categoryName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get amount => $composableBuilder(
+    column: $table.amount,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get recordedBy => $composableBuilder(
+    column: $table.recordedBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get date => $composableBuilder(
+    column: $table.date,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalExpensesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalExpensesTable> {
+  $$LocalExpensesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get branchId =>
+      $composableBuilder(column: $table.branchId, builder: (column) => column);
+
+  GeneratedColumn<String> get categoryId => $composableBuilder(
+    column: $table.categoryId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get categoryName => $composableBuilder(
+    column: $table.categoryName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<Decimal, String> get amount =>
+      $composableBuilder(column: $table.amount, builder: (column) => column);
+
+  GeneratedColumn<String> get description => $composableBuilder(
+    column: $table.description,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get recordedBy => $composableBuilder(
+    column: $table.recordedBy,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get date =>
+      $composableBuilder(column: $table.date, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+}
+
+class $$LocalExpensesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalExpensesTable,
+          ExpenseRow,
+          $$LocalExpensesTableFilterComposer,
+          $$LocalExpensesTableOrderingComposer,
+          $$LocalExpensesTableAnnotationComposer,
+          $$LocalExpensesTableCreateCompanionBuilder,
+          $$LocalExpensesTableUpdateCompanionBuilder,
+          (
+            ExpenseRow,
+            BaseReferences<_$AppDatabase, $LocalExpensesTable, ExpenseRow>,
+          ),
+          ExpenseRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalExpensesTableTableManager(_$AppDatabase db, $LocalExpensesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalExpensesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalExpensesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalExpensesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> branchId = const Value.absent(),
+                Value<String> categoryId = const Value.absent(),
+                Value<String> categoryName = const Value.absent(),
+                Value<Decimal> amount = const Value.absent(),
+                Value<String?> description = const Value.absent(),
+                Value<String> recordedBy = const Value.absent(),
+                Value<DateTime> date = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<bool> isSynced = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalExpensesCompanion(
+                id: id,
+                branchId: branchId,
+                categoryId: categoryId,
+                categoryName: categoryName,
+                amount: amount,
+                description: description,
+                recordedBy: recordedBy,
+                date: date,
+                createdAt: createdAt,
+                isSynced: isSynced,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String branchId,
+                required String categoryId,
+                required String categoryName,
+                required Decimal amount,
+                Value<String?> description = const Value.absent(),
+                required String recordedBy,
+                required DateTime date,
+                required DateTime createdAt,
+                Value<bool> isSynced = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalExpensesCompanion.insert(
+                id: id,
+                branchId: branchId,
+                categoryId: categoryId,
+                categoryName: categoryName,
+                amount: amount,
+                description: description,
+                recordedBy: recordedBy,
+                date: date,
+                createdAt: createdAt,
+                isSynced: isSynced,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalExpensesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalExpensesTable,
+      ExpenseRow,
+      $$LocalExpensesTableFilterComposer,
+      $$LocalExpensesTableOrderingComposer,
+      $$LocalExpensesTableAnnotationComposer,
+      $$LocalExpensesTableCreateCompanionBuilder,
+      $$LocalExpensesTableUpdateCompanionBuilder,
+      (
+        ExpenseRow,
+        BaseReferences<_$AppDatabase, $LocalExpensesTable, ExpenseRow>,
+      ),
+      ExpenseRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -4677,4 +5605,6 @@ class $AppDatabaseManager {
       $$LocalSaleItemsTableTableManager(_db, _db.localSaleItems);
   $$LocalCustomersTableTableManager get localCustomers =>
       $$LocalCustomersTableTableManager(_db, _db.localCustomers);
+  $$LocalExpensesTableTableManager get localExpenses =>
+      $$LocalExpensesTableTableManager(_db, _db.localExpenses);
 }

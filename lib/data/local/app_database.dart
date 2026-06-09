@@ -108,6 +108,23 @@ class LocalCustomers extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('ExpenseRow')
+class LocalExpenses extends Table {
+  TextColumn get id => text()();
+  TextColumn get branchId => text()();
+  TextColumn get categoryId => text()();
+  TextColumn get categoryName => text()(); // denormalized for offline display
+  TextColumn get amount => text().map(const _Dec())();
+  TextColumn get description => text().nullable()();
+  TextColumn get recordedBy => text()();
+  DateTimeColumn get date => dateTime()(); // calendar date (midnight)
+  DateTimeColumn get createdAt => dateTime()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // ─── Database ─────────────────────────────────────────────────────────────────
 
 @DriftDatabase(tables: [
@@ -116,12 +133,22 @@ class LocalCustomers extends Table {
   LocalSales,
   LocalSaleItems,
   LocalCustomers,
+  LocalExpenses,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (m) => m.createAll(),
+        onUpgrade: (m, from, to) async {
+          // v1 -> v2: offline-first expenses queue.
+          if (from < 2) await m.createTable(localExpenses);
+        },
+      );
 
   // ── Products ───────────────────────────────────────────────────────────────
 
@@ -249,4 +276,35 @@ class AppDatabase extends _$AppDatabase {
             ..orderBy([(t) => OrderingTerm.asc(t.name)])
             ..limit(10))
           .get();
+
+  // ── Expenses ────────────────────────────────────────────────────────────────
+
+  Future<void> insertExpense(LocalExpensesCompanion row) =>
+      into(localExpenses).insert(row);
+
+  Future<List<ExpenseRow>> getExpensesByBranch(
+          String branchId, DateTime day) =>
+      (select(localExpenses)
+            ..where((t) =>
+                t.branchId.equals(branchId) &
+                t.date.equals(DateTime(day.year, day.month, day.day)))
+            ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+          .get();
+
+  Future<List<ExpenseRow>> getPendingExpenses() =>
+      (select(localExpenses)..where((t) => t.isSynced.equals(false))).get();
+
+  Future<List<ExpenseRow>> getPendingExpensesByBranch(
+          String branchId, DateTime day) =>
+      (select(localExpenses)
+            ..where((t) =>
+                t.branchId.equals(branchId) &
+                t.isSynced.equals(false) &
+                t.date.equals(DateTime(day.year, day.month, day.day)))
+            ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+          .get();
+
+  Future<void> markExpenseSynced(String id) =>
+      (update(localExpenses)..where((t) => t.id.equals(id)))
+          .write(const LocalExpensesCompanion(isSynced: Value(true)));
 }

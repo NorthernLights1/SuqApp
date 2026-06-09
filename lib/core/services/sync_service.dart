@@ -45,7 +45,10 @@ class SyncService implements ISyncService {
       }
 
       var pushed = 0;
-      if (_db != null) pushed = await _pushPendingSales();
+      if (_db != null) {
+        pushed += await _pushPendingSales();
+        pushed += await _pushPendingExpenses();
+      }
 
       // The sync_logs heartbeat records "this device reached the server" for
       // overdue detection. We skip the write when nothing was pushed and we
@@ -130,6 +133,40 @@ class SyncService implements ISyncService {
     }
 
     await db.markSaleSynced(sale.id);
+  }
+
+  /// Pushes all pending local expenses. Returns how many reached the server.
+  Future<int> _pushPendingExpenses() async {
+    final db = _db!;
+    final pending = await db.getPendingExpenses();
+    var pushed = 0;
+    for (final e in pending) {
+      try {
+        // Idempotent: if it already reached the server, just flag it locally.
+        final existing = await _supabase
+            .from('expenses')
+            .select('id')
+            .eq('id', e.id)
+            .maybeSingle();
+        if (existing == null) {
+          await _supabase.from('expenses').insert({
+            'id': e.id,
+            'branch_id': e.branchId,
+            'category_id': e.categoryId,
+            'amount': e.amount.toString(),
+            'description': e.description,
+            'recorded_by': e.recordedBy,
+            'date': e.date.toIso8601String().substring(0, 10),
+            'created_at': e.createdAt.toIso8601String(),
+          });
+        }
+        await db.markExpenseSynced(e.id);
+        pushed++;
+      } catch (_) {
+        // Leave isSynced=false; next sync will retry
+      }
+    }
+    return pushed;
   }
 
   @override
