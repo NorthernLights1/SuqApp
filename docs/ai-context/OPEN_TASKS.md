@@ -28,26 +28,20 @@ Last updated: 2026-06-06 (session 15)
 - [x] Resend custom domain `massivedynamic.dev` wired into dispatch-notifications `from` — done
 - [ ] Telegram notifications — deferred (revisit later)
 
-### NEXT TASK — Scheduled low-stock notifications (NOT YET BUILT)
-Per-sale low-stock alerts are spammy and require a notification email to be set;
-replace with a server-side scheduled sweep. Design agreed, implementation pending
-(was blocked on the Supabase MCP connection dropping — reconnect via `/mcp`).
-Steps to implement once Supabase tools are available:
-1. Enable extensions: `create extension pg_cron; create extension pg_net;`
-   (both confirmed AVAILABLE, not yet installed; `supabase_vault` already installed).
-2. New Edge Function `cron-notifications` (verify_jwt:false, gated by checking the
-   incoming bearer == SUPABASE_SERVICE_ROLE_KEY): loops ALL shops; for each,
-   recipients = owner's auth email (DEFAULT) + optional `notification_email`
-   shop_setting (dedup); runs the low-stock query (inventory JOIN products where
-   quantity <= low_stock_threshold) and emails via Resend. Reuse logic from
-   `dispatch-notifications`. Owner email removes the old "no notification email" 400.
-3. Schedule 2 cron jobs via pg_cron + pg_net: `0 6 * * *` and `0 18 * * *` (UTC)
-   = 9 AM & 9 PM EAT. Store service_role key in Vault for the http_post auth header.
-4. App: remove per-sale `_checkLowStock` call in `sales_provider.dart` `submit()`;
-   relabel Settings "Notification email" → "Additional email (optional)" + note the
-   owner is always notified.
-- [ ] Resume prompt after reconnect: "Supabase MCP is back — build the scheduled
-  low-stock job per OPEN_TASKS.md (steps 1-4)."
+### Scheduled low-stock notifications — DONE (server-side cron, replaces per-sale)
+- [x] Enabled `pg_cron` + `pg_net` (migration 016).
+- [x] Edge Function `cron-notifications` (verify_jwt:false; gated by Vault `cron_secret`
+  via `public.verify_cron_secret` RPC). Loops ALL shops; recipients = owner auth email
+  (DEFAULT) + optional `notification_email` shop_setting; low-stock query; sends via
+  Resend from `notifications@massivedynamic.dev`. Verified end-to-end (200, email sent).
+- [x] Two pg_cron jobs: `low-stock-am` (`0 6 * * *`) and `low-stock-pm` (`0 18 * * *`)
+  UTC = 9 AM & 9 PM EAT. They call the function via `net.http_post`, reading the
+  `cron_secret` from Vault at run time.
+- [x] App: removed per-sale `_checkLowStock` from `sales_provider.dart`; relabeled the
+  Settings email field to "Additional notification email (optional)" (owner always notified).
+- Owner email as default recipient also removed the old "no notification email" 400.
+- Note: the old per-sale path (`dispatch-notifications` low_stock) is now unused but
+  still deployed; the manual "Send overdue reminders" button still uses it.
 
 ---
 

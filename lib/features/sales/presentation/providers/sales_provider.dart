@@ -1,11 +1,9 @@
-import 'dart:async';
 import 'package:decimal/decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../data/local/seed_service.dart';
 import '../../../../domain/models/product.dart';
 import '../../../../domain/models/sale.dart';
-import '../../../../domain/interfaces/notification_service_interface.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../features/customers/presentation/providers/customers_provider.dart'
@@ -251,22 +249,11 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
       try {
         await ref.read(salesListProvider.future);
       } catch (_) {}
-      // Fire-and-forget low-stock check — must not throw into sale flow
-      unawaited(_checkLowStock(shop.id));
+      // Low-stock alerts are no longer fired per-sale (that was spammy). They
+      // now run as a scheduled server-side sweep (Supabase cron, 9am & 9pm).
       return sale;
     });
     return state.asData?.value;
-  }
-
-  Future<void> _checkLowStock(String shopId) async {
-    try {
-      await ref.read(notificationServiceProvider).dispatch(
-        type: NotificationType.lowStock,
-        shopId: shopId,
-      );
-    } catch (_) {
-      // Notification failure must never surface to the user during a sale
-    }
   }
 }
 

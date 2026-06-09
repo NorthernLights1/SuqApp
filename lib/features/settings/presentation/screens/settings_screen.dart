@@ -223,12 +223,15 @@ class _NotificationsCardState extends ConsumerState<_NotificationsCard> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Email
+            // Email — owner is always notified; this is an optional 2nd recipient
             TextFormField(
               controller: _emailCtrl,
               decoration: const InputDecoration(
-                labelText: 'Notification email',
-                hintText: 'owner@gmail.com',
+                labelText: 'Additional notification email (optional)',
+                hintText: 'someone-else@gmail.com',
+                helperText:
+                    'You (the owner) always receive alerts. Add a second address here to copy someone.',
+                helperMaxLines: 3,
                 prefixIcon: Icon(Icons.email_outlined),
               ),
               keyboardType: TextInputType.emailAddress,
