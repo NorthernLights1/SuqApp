@@ -1,6 +1,5 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -73,15 +72,20 @@ class _CustomerTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Amount owed = sum of what's left on this customer's unsettled bills.
+    final owed = ref.watch(customerOutstandingMapProvider).asData?.value[
+            customer.id] ??
+        Decimal.zero;
+    final hasDebt = owed > Decimal.zero;
     return ListTile(
       leading: CircleAvatar(
-        backgroundColor: customer.hasDebt
+        backgroundColor: hasDebt
             ? AppColors.warning.withValues(alpha: 0.15)
             : AppColors.primaryLight,
         child: Text(
           customer.name[0].toUpperCase(),
           style: TextStyle(
-            color: customer.hasDebt ? AppColors.warning : AppColors.primary,
+            color: hasDebt ? AppColors.warning : AppColors.primary,
             fontWeight: FontWeight.w700,
           ),
         ),
@@ -90,13 +94,13 @@ class _CustomerTile extends ConsumerWidget {
       subtitle: customer.phone != null
           ? Text(customer.phone!, style: AppTextStyles.bodySmall)
           : null,
-      trailing: customer.hasDebt
+      trailing: hasDebt
           ? Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  'ETB ${customer.creditBalance.toStringAsFixed(2)}',
+                  'ETB ${owed.toStringAsFixed(2)}',
                   style: AppTextStyles.bodySmall
                       .copyWith(color: AppColors.warning, fontWeight: FontWeight.w600),
                 ),
@@ -129,6 +133,10 @@ class CustomerDetailScreen extends ConsumerWidget {
             (c) => c.id == customer.id,
             orElse: () => customer,
           );
+    // Total owed = sum of what's left on this customer's unsettled bills.
+    final outstanding = creditSales.asData?.value
+            .fold<Decimal>(Decimal.zero, (s, e) => s + e.remaining) ??
+        Decimal.zero;
 
     return Scaffold(
       appBar: AppBar(
@@ -146,8 +154,8 @@ class CustomerDetailScreen extends ConsumerWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // ── Credit balance summary ─────────────────────────────────────
-          if (freshCustomer.hasDebt)
+          // ── Outstanding summary ────────────────────────────────────────
+          if (outstanding > Decimal.zero)
             Card(
               color: AppColors.warning.withValues(alpha: 0.08),
               child: Padding(
@@ -163,21 +171,12 @@ class CustomerDetailScreen extends ConsumerWidget {
                         children: [
                           Text('Total Outstanding', style: AppTextStyles.label),
                           Text(
-                            'ETB ${freshCustomer.creditBalance.toStringAsFixed(2)}',
+                            'ETB ${outstanding.toStringAsFixed(2)}',
                             style: AppTextStyles.amount
                                 .copyWith(color: AppColors.warning),
                           ),
                         ],
                       ),
-                    ),
-                    TextButton(
-                      onPressed: () => showDialog(
-                        context: context,
-                        builder: (_) =>
-                            _ReceivePaymentDialog(customer: freshCustomer),
-                      ),
-                      child: const Text('Receive\nPayment',
-                          textAlign: TextAlign.center),
                     ),
                   ],
                 ),
@@ -347,12 +346,16 @@ class _CreditSaleTile extends ConsumerWidget {
         leading: const Icon(Icons.credit_card_outlined,
             color: AppColors.warning),
         title: Text(
-          'ETB ${creditSale.total.toStringAsFixed(2)}',
+          'ETB ${creditSale.remaining.toStringAsFixed(2)}',
           style: AppTextStyles.body
               .copyWith(fontWeight: FontWeight.w600, color: AppColors.warning),
         ),
-        subtitle:
-            Text(_fmtDate(creditSale.createdAt), style: AppTextStyles.bodySmall),
+        subtitle: Text(
+          creditSale.paid > Decimal.zero
+              ? '${_fmtDate(creditSale.createdAt)} · paid ETB ${creditSale.paid.toStringAsFixed(2)} of ${creditSale.total.toStringAsFixed(2)}'
+              : _fmtDate(creditSale.createdAt),
+          style: AppTextStyles.bodySmall,
+        ),
         trailing: loading
             ? const SizedBox(
                 width: 20,
@@ -376,6 +379,7 @@ class _CreditSaleTile extends ConsumerWidget {
       context,
       saleId: creditSale.id,
       saleTotal: creditSale.total,
+      salePaid: creditSale.paid,
       saleDate: creditSale.createdAt,
       customerId: customerId,
       customerName: customerName,
@@ -471,98 +475,3 @@ class _CustomerFormScreenState extends ConsumerState<CustomerFormScreen> {
   }
 }
 
-// ─── Receive Payment Dialog ───────────────────────────────────────────────────
-
-class _ReceivePaymentDialog extends ConsumerStatefulWidget {
-  const _ReceivePaymentDialog({required this.customer});
-  final Customer customer;
-
-  @override
-  ConsumerState<_ReceivePaymentDialog> createState() =>
-      _ReceivePaymentDialogState();
-}
-
-class _ReceivePaymentDialogState extends ConsumerState<_ReceivePaymentDialog> {
-  late final _amountCtrl = TextEditingController(
-      text: widget.customer.creditBalance.toStringAsFixed(2));
-
-  @override
-  void dispose() {
-    _amountCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _apply() async {
-    final amount = Decimal.tryParse(_amountCtrl.text.trim());
-    if (amount == null || amount <= Decimal.zero) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid amount')),
-      );
-      return;
-    }
-    final ok = await ref
-        .read(customerFormProvider.notifier)
-        .receivePayment(widget.customer.id, amount);
-    if (mounted && ok) Navigator.pop(context);
-    if (mounted && !ok) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Failed to record payment'),
-          backgroundColor: AppColors.error,
-        ),
-      );
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final loading = ref.watch(customerFormProvider).isLoading;
-    return AlertDialog(
-      title: const Text('Receive Payment'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Outstanding: ETB ${widget.customer.creditBalance.toStringAsFixed(2)}',
-            style: AppTextStyles.bodySmall,
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Pre-filled with full balance. Change to record a partial payment.',
-            style: AppTextStyles.label,
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _amountCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
-            ],
-            decoration: const InputDecoration(
-              labelText: 'Amount paid (ETB)',
-              isDense: true,
-            ),
-            autofocus: true,
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: loading ? null : () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        loading
-            ? const SizedBox(
-                width: 20,
-                height: 20,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : FilledButton(
-                onPressed: _apply,
-                child: const Text('Apply'),
-              ),
-      ],
-    );
-  }
-}

@@ -1,5 +1,6 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/sales/presentation/providers/sales_provider.dart';
 import '../../../../features/sales/presentation/screens/sales_screen.dart';
@@ -19,6 +20,7 @@ Future<void> showCreditSettleSheet(
   BuildContext context, {
   required String saleId,
   required Decimal saleTotal,
+  required Decimal salePaid,
   required DateTime saleDate,
   required String customerId,
   required String customerName,
@@ -26,6 +28,7 @@ Future<void> showCreditSettleSheet(
   final sale = CreditSaleWithCustomer(
     id: saleId,
     total: saleTotal,
+    paid: salePaid,
     createdAt: saleDate,
     customerId: customerId,
     customerName: customerName,
@@ -83,7 +86,7 @@ class CreditsScreen extends ConsumerWidget {
               groups[a]![0].customerName.compareTo(groups[b]![0].customerName));
 
         final grandTotal =
-            sales.fold(Decimal.zero, (sum, s) => sum + s.total);
+            sales.fold(Decimal.zero, (sum, s) => sum + s.remaining);
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
@@ -142,7 +145,7 @@ class _CustomerSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final name = sales[0].customerName;
-    final total = sales.fold(Decimal.zero, (s, e) => s + e.total);
+    final total = sales.fold(Decimal.zero, (s, e) => s + e.remaining);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -200,11 +203,16 @@ class _SaleBillCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'ETB ${sale.total.toStringAsFixed(2)}',
+                    'ETB ${sale.remaining.toStringAsFixed(2)}',
                     style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 2),
-                  Text(_fmt(sale.createdAt), style: AppTextStyles.bodySmall),
+                  Text(
+                    sale.paid > Decimal.zero
+                        ? '${_fmt(sale.createdAt)} · paid ETB ${sale.paid.toStringAsFixed(2)} of ${sale.total.toStringAsFixed(2)}'
+                        : _fmt(sale.createdAt),
+                    style: AppTextStyles.bodySmall,
+                  ),
                 ],
               ),
             ),
@@ -273,30 +281,44 @@ class _SettleSheet extends ConsumerStatefulWidget {
 class _SettleSheetState extends ConsumerState<_SettleSheet> {
   String? _method; // 'cash' | 'bank_transfer'
   final _notesCtrl = TextEditingController();
+  late final _amountCtrl =
+      TextEditingController(text: widget.sale.remaining.toStringAsFixed(2));
 
   @override
   void dispose() {
     _notesCtrl.dispose();
+    _amountCtrl.dispose();
     super.dispose();
   }
 
   Future<void> _confirm() async {
-    final ok = await ref
-        .read(customerFormProvider.notifier)
-        .settleCreditSale(
+    final amount = Decimal.tryParse(_amountCtrl.text.trim());
+    if (amount == null || amount <= Decimal.zero) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Enter a valid amount'),
+      ));
+      return;
+    }
+    if (amount > widget.sale.remaining) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            'Only ETB ${widget.sale.remaining.toStringAsFixed(2)} is left on this bill'),
+      ));
+      return;
+    }
+    final ok = await ref.read(customerFormProvider.notifier).recordCreditPayment(
           customerId: widget.customerId,
           saleId: widget.sale.id,
           saleTotal: widget.sale.total,
-          settlementMethod: _method!,
-          settlementNotes: _notesCtrl.text.trim().isEmpty
-              ? null
-              : _notesCtrl.text.trim(),
+          amount: amount,
+          method: _method!,
+          notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         );
     if (!mounted) return;
     Navigator.pop(context);
     if (!ok) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-        content: Text('Settlement failed. Try again.'),
+        content: Text('Could not record the payment. Try again.'),
         backgroundColor: AppColors.error,
       ));
     }
@@ -332,7 +354,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
           const SizedBox(height: 16),
 
           // Header
-          Text('Settle Bill', style: AppTextStyles.headline3),
+          Text('Record Payment', style: AppTextStyles.headline3),
           const SizedBox(height: 4),
           Row(
             children: [
@@ -346,13 +368,34 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
           ),
           const SizedBox(height: 4),
           Text(
-            'ETB ${widget.sale.total.toStringAsFixed(2)}',
+            'ETB ${widget.sale.remaining.toStringAsFixed(2)} remaining',
             style: AppTextStyles.amount.copyWith(color: AppColors.warning),
+          ),
+          if (widget.sale.paid > Decimal.zero)
+            Text(
+              'Paid ETB ${widget.sale.paid.toStringAsFixed(2)} of ${widget.sale.total.toStringAsFixed(2)}',
+              style: AppTextStyles.bodySmall,
+            ),
+          const SizedBox(height: 16),
+
+          // Amount — defaults to the full remaining; lower it for a partial payment.
+          TextField(
+            controller: _amountCtrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+            ],
+            decoration: const InputDecoration(
+              labelText: 'Amount paid (ETB)',
+              helperText: 'Lower this to record a partial payment',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
           ),
           const SizedBox(height: 20),
 
           // Method selection
-          Text('How was this settled?', style: AppTextStyles.label),
+          Text('How was this paid?', style: AppTextStyles.label),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -389,6 +432,9 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
             ),
           ],
 
+          // Payment history (the dispute trail)
+          _PaymentHistory(saleId: widget.sale.id),
+
           const SizedBox(height: 24),
 
           // Confirm button
@@ -408,8 +454,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                       height: 20,
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white))
-                  : const Text('Confirm Settlement',
-                      style: TextStyle(fontSize: 16)),
+                  : const Text('Record Payment', style: TextStyle(fontSize: 16)),
             ),
           ),
         ],
@@ -462,6 +507,62 @@ class _MethodButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+// ─── Payment history (timestamped audit trail) ───────────────────────────────
+
+String _fmtDateTime(DateTime dt) {
+  final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
+  final m = dt.minute.toString().padLeft(2, '0');
+  final ampm = dt.hour < 12 ? 'AM' : 'PM';
+  return '${_fmt(dt)} · $h:$m $ampm';
+}
+
+class _PaymentHistory extends ConsumerWidget {
+  const _PaymentHistory({required this.saleId});
+  final String saleId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final payments = ref.watch(creditPaymentsProvider(saleId));
+    return payments.maybeWhen(
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 20),
+            Text('Payment history', style: AppTextStyles.label),
+            const SizedBox(height: 6),
+            for (final p in list)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Icon(
+                      p.method == 'cash'
+                          ? Icons.payments_outlined
+                          : Icons.account_balance_outlined,
+                      size: 16,
+                      color: AppColors.textSecondary,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'ETB ${p.amount.toStringAsFixed(2)}',
+                      style: AppTextStyles.bodySmall
+                          .copyWith(fontWeight: FontWeight.w600),
+                    ),
+                    const Spacer(),
+                    Text(_fmtDateTime(p.createdAt), style: AppTextStyles.label),
+                  ],
+                ),
+              ),
+          ],
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
     );
   }
 }

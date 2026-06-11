@@ -281,16 +281,6 @@ class AppDatabase extends _$AppDatabase {
         LocalSalesCompanion(creditSettledAt: Value(DateTime.now())),
       );
 
-  /// Mark all of a customer's unsettled local credit sales settled (used when a
-  /// payment clears the full balance).
-  Future<void> markCustomerCreditSettled(String customerId) =>
-      (update(localSales)
-            ..where((t) =>
-                t.customerId.equals(customerId) &
-                t.isCredit.equals(true) &
-                t.creditSettledAt.isNull()))
-          .write(LocalSalesCompanion(creditSettledAt: Value(DateTime.now())));
-
   Future<void> markSaleVoided(
           String saleId, String reason, String voidedBy) =>
       (update(localSales)..where((t) => t.id.equals(saleId))).write(
