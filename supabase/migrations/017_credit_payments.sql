@@ -16,7 +16,7 @@ create table credit_payments (
   amount      numeric(15,4) not null check (amount > 0),
   method      text not null check (method in ('cash','bank_transfer')),
   notes       text,
-  recorded_by uuid references profiles(id),
+  recorded_by uuid references profiles(id) on delete set null,
   created_at  timestamptz not null default now()
 );
 

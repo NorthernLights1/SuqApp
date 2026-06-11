@@ -15,6 +15,15 @@ const _months = [
 
 String _fmt(DateTime dt) => '${_months[dt.month - 1]} ${dt.day}, ${dt.year}';
 
+// Accepts only a valid decimal: digits with at most one dot (rejects "1.2.3").
+final _decimalFormatter = TextInputFormatter.withFunction((oldValue, newValue) {
+  if (newValue.text.isEmpty ||
+      RegExp(r'^\d*\.?\d*$').hasMatch(newValue.text)) {
+    return newValue;
+  }
+  return oldValue;
+});
+
 // Public helper — opens the settle bottom sheet from any screen.
 Future<void> showCreditSettleSheet(
   BuildContext context, {
@@ -382,9 +391,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
           TextField(
             controller: _amountCtrl,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [
-              FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
-            ],
+            inputFormatters: [_decimalFormatter],
             decoration: const InputDecoration(
               labelText: 'Amount paid (ETB)',
               helperText: 'Lower this to record a partial payment',

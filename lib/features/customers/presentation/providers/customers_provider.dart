@@ -262,22 +262,25 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
       });
       // 2) Recompute total paid from the server to decide if the bill is
       //    cleared (avoids a stale client-side balance).
-      final rows = await client
+      final rows = (await client
           .from('credit_payments')
-          .select('amount')
-          .eq('sale_id', saleId);
-      final paid = (rows as List).fold<Decimal>(
+          .select('amount, method')
+          .eq('sale_id', saleId)) as List;
+      final paid = rows.fold<Decimal>(
         Decimal.zero,
         (s, r) => s + Decimal.parse((r['amount'] ?? '0').toString()),
       );
       // 3) Fully paid? stamp the sale settled and mirror it locally so the
-      //    offline sales list reflects it.
+      //    offline sales list reflects it. Per-payment method/notes live in
+      //    credit_payments (the audit trail); only stamp a single sale-level
+      //    method when every payment used the same one — otherwise leave it
+      //    unset rather than misrepresent a mixed settlement.
       if (paid >= saleTotal) {
+        final methods = rows.map((r) => r['method'] as String).toSet();
+        final unifiedMethod = methods.length == 1 ? methods.first : null;
         await client.from('sales').update({
           'credit_settled_at': DateTime.now().toIso8601String(),
-          'credit_settlement_method': method,
-          if (notes != null && notes.isNotEmpty)
-            'credit_settlement_notes': notes,
+          'credit_settlement_method': ?unifiedMethod,
         }).eq('id', saleId);
         await ref.read(appDatabaseProvider)?.markSaleCreditSettled(saleId);
       }
