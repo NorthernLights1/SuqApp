@@ -1,0 +1,55 @@
+name: Build APK
+
+# Builds a release APK on GitHub's servers (so a low-RAM PC isn't needed).
+# Trigger it manually from the Actions tab → "Build APK" → "Run workflow".
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      # AGP / Gradle for current Flutter needs JDK 17.
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.0"
+          channel: stable
+          cache: true
+
+      # config/env.json is gitignored; recreate it from repo secrets so the
+      # app gets its Supabase credentials at build time.
+      - name: Write env.json from secrets
+        run: |
+          mkdir -p config
+          cat > config/env.json <<EOF
+          {
+            "SUPABASE_URL": "${{ secrets.SUPABASE_URL }}",
+            "SUPABASE_ANON_KEY": "${{ secrets.SUPABASE_ANON_KEY }}"
+          }
+          EOF
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate localizations
+        run: flutter gen-l10n
+
+      - name: Build release APK
+        run: flutter build apk --release --dart-define-from-file=config/env.json
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: suq-release-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
