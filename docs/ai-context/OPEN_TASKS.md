@@ -76,6 +76,16 @@ Last updated: 2026-06-06 (session 15)
 
 ---
 
+## Security — Deferred (decide before wide rollout)
+
+- [ ] Encrypt the local on-device Drift/SQLite cache (SQLCipher). Supabase is
+  encrypted in transit (TLS) and at rest (AWS AES-256), but the offline copy
+  on each phone is currently plaintext — exposed if a device is lost/stolen.
+  Deferred for the initial debug-APK pilot; do before wider distribution.
+  (Raised session 16 while shipping the GitHub Actions APK build.)
+
+---
+
 ## Tech Debt (tracked, not urgent)
 
 - Hardcoded strings in screens violate l10n rule (`app_en.arb` unused)
