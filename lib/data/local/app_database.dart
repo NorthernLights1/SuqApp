@@ -300,13 +300,15 @@ class AppDatabase extends _$AppDatabase {
     final rows = await (select(localSales)
           ..where((t) =>
               t.branchId.equals(branchId) &
-              t.status.equals('completed') &
               t.createdAt.isBiggerOrEqualValue(from) &
               t.createdAt.isSmallerThanValue(to)))
         .get();
+    // Revenue excludes voided sales, but the transaction count keeps them:
+    // a voided sale still happened, so the day's transaction tally must not
+    // shrink when one is voided.
     Decimal total = Decimal.zero;
     for (final r in rows) {
-      total += r.total;
+      if (r.status == 'completed') total += r.total;
     }
     return {'total': total, 'count': Decimal.fromInt(rows.length)};
   }

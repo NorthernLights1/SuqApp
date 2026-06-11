@@ -6,6 +6,8 @@ import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../features/reports/presentation/providers/reports_provider.dart'
     show reportSummaryProvider;
+import '../../../../features/sales/presentation/providers/sales_provider.dart'
+    show salesListProvider;
 import '../../data/customers_remote.dart';
 import '../../domain/customer.dart';
 import '../../domain/customers_repository.dart';
@@ -289,9 +291,13 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
       }
       ref.invalidate(customersProvider);
       ref.invalidate(customerCreditSalesProvider(customerId));
+      ref.invalidate(customerSalesProvider(customerId));
       ref.invalidate(outstandingCreditProvider);
       ref.invalidate(creditPaymentsProvider(saleId));
       ref.invalidate(reportSummaryProvider);
+      // The Sales tab colors credit sales by settlement state — refresh it so
+      // a settled bill flips to "Paid" without an app restart.
+      ref.invalidate(salesListProvider);
     });
     return !state.hasError;
   }

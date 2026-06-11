@@ -305,12 +305,15 @@ class SalesRemote {
         .gte('created_at', start.toUtc().toIso8601String())
         .lt('created_at', end.toUtc().toIso8601String());
 
+    // Revenue excludes voided sales, but the transaction count keeps them:
+    // a voided sale still happened, so the day's transaction tally must not
+    // shrink when one is voided.
     Decimal salesTotal = Decimal.zero;
     int txCount = 0;
     for (final row in data as List) {
+      txCount++;
       if (row['status'] == 'completed') {
         salesTotal += Decimal.parse(row['total'].toString());
-        txCount++;
       }
     }
     return {

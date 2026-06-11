@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../domain/models/sale.dart';
+import '../../../../features/customers/presentation/widgets/payment_history.dart';
 import '../../../../shared/router/app_routes.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -410,6 +411,11 @@ class SaleDetailScreen extends ConsumerWidget {
               ),
             ),
           ],
+
+          // Payment history (credit sales) — every recorded installment with
+          // its timestamp, whether the bill is partially or fully settled.
+          // Collapses to nothing when no payments have been recorded yet.
+          if (sale.isCredit) PaymentHistory(saleId: sale.id, card: true),
 
           // Settlement notes (bank transfer)
           if (isSettledCredit &&

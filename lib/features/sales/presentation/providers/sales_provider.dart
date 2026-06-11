@@ -320,6 +320,12 @@ class VoidSaleNotifier extends AsyncNotifier<void> {
           );
       ref.invalidate(salesListProvider);
       ref.invalidate(todaySalesTotalsProvider);
+      // Voiding restores stock server-side and changes report/credit figures —
+      // refresh those screens too (refetching stock also refreshes the local
+      // mirror, keeping offline pre-sale checks consistent).
+      ref.invalidate(stockLevelsProvider);
+      ref.invalidate(reportSummaryProvider);
+      ref.invalidate(outstandingCreditProvider);
     });
   }
 }
