@@ -28,13 +28,13 @@ alter table credit_payments enable row level security;
 create policy "credit_payments_select" on credit_payments for select
   using (exists (
     select 1 from sales s
-    where s.id = sale_id and is_shop_member(shop_id_from_branch(s.branch_id))
+    where s.id = sale_id and private.is_shop_member(private.shop_id_from_branch(s.branch_id))
   ));
 
 create policy "credit_payments_insert" on credit_payments for insert
   with check (exists (
     select 1 from sales s
-    where s.id = sale_id and is_shop_member(shop_id_from_branch(s.branch_id))
+    where s.id = sale_id and private.is_shop_member(private.shop_id_from_branch(s.branch_id))
   ));
 
 -- service_role is server-only (Edge Functions); see migration 013.
