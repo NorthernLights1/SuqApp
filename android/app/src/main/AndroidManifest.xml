@@ -1,4 +1,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Required for the app to reach Supabase. Debug/profile manifests get
+         this automatically from Flutter, but release builds use only this
+         manifest -- without it, release APKs fail every network call with
+         "Failed host lookup". -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="suq"
         android:name="${applicationName}"
