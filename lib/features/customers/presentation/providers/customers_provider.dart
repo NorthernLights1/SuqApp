@@ -277,11 +277,14 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
       //    unset rather than misrepresent a mixed settlement.
       if (paid >= saleTotal) {
         final methods = rows.map((r) => r['method'] as String).toSet();
-        final unifiedMethod = methods.length == 1 ? methods.first : null;
-        await client.from('sales').update({
+        final saleUpdate = <String, dynamic>{
           'credit_settled_at': DateTime.now().toIso8601String(),
-          'credit_settlement_method': ?unifiedMethod,
-        }).eq('id', saleId);
+        };
+        // Only claim a single method when every payment used the same one.
+        if (methods.length == 1) {
+          saleUpdate['credit_settlement_method'] = methods.first;
+        }
+        await client.from('sales').update(saleUpdate).eq('id', saleId);
         await ref.read(appDatabaseProvider)?.markSaleCreditSettled(saleId);
       }
       ref.invalidate(customersProvider);

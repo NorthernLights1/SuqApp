@@ -280,10 +280,15 @@ class SaleDetailScreen extends ConsumerWidget {
       paymentLabel = 'Credit — Outstanding';
       paymentColor = AppColors.warning;
     } else if (isSettledCredit) {
-      final method = sale.creditSettlementMethod == 'bank_transfer'
-          ? 'Bank Transfer'
-          : 'Cash';
-      paymentLabel = 'Credit — Settled ($method)';
+      // A bill paid with mixed methods (or via the payment history) has no
+      // single method — don't claim one.
+      final method = switch (sale.creditSettlementMethod) {
+        'bank_transfer' => 'Bank Transfer',
+        'cash' => 'Cash',
+        _ => null,
+      };
+      paymentLabel =
+          method != null ? 'Credit — Settled ($method)' : 'Credit — Settled';
       paymentColor = AppColors.success;
     } else {
       paymentLabel = sale.paymentMethodName ?? 'Cash';
