@@ -425,6 +425,11 @@ class _SaleFooter extends ConsumerWidget {
   final bool loading;
   final VoidCallback onSubmit;
 
+  /// The checkout panel may use at most this fraction of the screen so the
+  /// cart above it stays visible. Payment/customer/notes scroll within the
+  /// cap; the Total + submit row is always pinned at the bottom.
+  static const _maxScreenFraction = 0.25;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final paymentMethods = ref.watch(paymentMethodsProvider);
@@ -432,6 +437,9 @@ class _SaleFooter extends ConsumerWidget {
     final isCredit = selectedMethod?.code == 'credit';
 
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.sizeOf(context).height * _maxScreenFraction,
+      ),
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -447,54 +455,66 @@ class _SaleFooter extends ConsumerWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Payment method picker
-          paymentMethods.when(
-            data: (methods) => methods.isEmpty
-                ? const Text('No payment methods configured')
-                : DropdownButton<PaymentMethod>(
-                    value: selectedMethod,
-                    hint: const Text('Payment method'),
-                    isExpanded: true,
-                    underline: const Divider(height: 1),
-                    items: methods
-                        .map((m) => DropdownMenuItem(
-                              value: m,
-                              child: Text(m.name),
-                            ))
-                        .toList(),
-                    onChanged: (m) =>
-                        ref.read(selectedPaymentMethodProvider.notifier).set(m),
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Payment method picker
+                  paymentMethods.when(
+                    data: (methods) => methods.isEmpty
+                        ? const Text('No payment methods configured')
+                        : DropdownButton<PaymentMethod>(
+                            value: selectedMethod,
+                            hint: const Text('Payment method'),
+                            isExpanded: true,
+                            underline: const Divider(height: 1),
+                            items: methods
+                                .map((m) => DropdownMenuItem(
+                                      value: m,
+                                      child: Text(m.name),
+                                    ))
+                                .toList(),
+                            onChanged: (m) => ref
+                                .read(selectedPaymentMethodProvider.notifier)
+                                .set(m),
+                          ),
+                    loading: () => const LinearProgressIndicator(),
+                    error: (e, _) =>
+                        const Text('Could not load payment methods'),
                   ),
-            loading: () => const LinearProgressIndicator(),
-            error: (e, _) => const Text('Could not load payment methods'),
-          ),
-          // Customer picker (credit only)
-          if (isCredit) ...[
-            const SizedBox(height: 12),
-            const Divider(height: 1),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.person_outline, size: 16, color: AppColors.textSecondary),
-                const SizedBox(width: 6),
-                Text('Customer', style: AppTextStyles.label),
-              ],
+                  // Customer picker (credit only)
+                  if (isCredit) ...[
+                    const SizedBox(height: 12),
+                    const Divider(height: 1),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        const Icon(Icons.person_outline,
+                            size: 16, color: AppColors.textSecondary),
+                        const SizedBox(width: 6),
+                        Text('Customer', style: AppTextStyles.label),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const _CustomerPickerSection(),
+                  ],
+                  const SizedBox(height: 12),
+                  // Notes
+                  TextField(
+                    controller: notesCtrl,
+                    decoration: const InputDecoration(
+                      hintText: 'Notes (optional)',
+                      isDense: true,
+                    ),
+                    maxLines: 1,
+                  ),
+                ],
+              ),
             ),
-            const SizedBox(height: 8),
-            const _CustomerPickerSection(),
-          ],
-          const SizedBox(height: 12),
-          // Notes
-          TextField(
-            controller: notesCtrl,
-            decoration: const InputDecoration(
-              hintText: 'Notes (optional)',
-              isDense: true,
-            ),
-            maxLines: 1,
           ),
           const SizedBox(height: 12),
-          // Total + submit
+          // Total + submit (always visible, never scrolled away)
           Row(
             children: [
               Column(
