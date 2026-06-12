@@ -202,9 +202,10 @@ class _SaleTile extends StatelessWidget {
       trailing = const Icon(Icons.chevron_right, color: AppColors.textSecondary);
     }
 
+    final who = sale.cashierName != null ? ' • ${sale.cashierName}' : '';
     final subtitle = isUnsettledCredit && sale.customerName != null
-        ? '${sale.customerName} • ${_formatTime(sale.createdAt)}'
-        : '${sale.items.length} item(s) • ${_formatTime(sale.createdAt)}';
+        ? '${sale.customerName} • ${_formatTime(sale.createdAt)}$who'
+        : '${sale.items.length} item(s) • ${_formatTime(sale.createdAt)}$who';
 
     return ListTile(
       leading: CircleAvatar(
@@ -361,6 +362,8 @@ class SaleDetailScreen extends ConsumerWidget {
                 children: [
                   _DetailRow(label: 'Ref', value: txRef),
                   _DetailRow(label: 'Date', value: _formatDateTime(sale.createdAt)),
+                  if (sale.cashierName != null)
+                    _DetailRow(label: 'Sold by', value: sale.cashierName!),
                   _DetailRow(
                     label: 'Payment',
                     value: paymentLabel,

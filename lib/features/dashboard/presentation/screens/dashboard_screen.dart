@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
+import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/customers/presentation/screens/credits_screen.dart';
@@ -131,7 +132,9 @@ class _HomeTab extends ConsumerWidget {
               _QuickAction(icon: Icons.inventory_2_outlined, label: 'Inventory', route: AppRoutes.inventory),
               _QuickAction(icon: Icons.people_outline, label: 'Customers', route: AppRoutes.customers),
               _QuickAction(icon: Icons.money_off_outlined, label: 'Expenses', route: AppRoutes.expenses),
-              _QuickAction(icon: Icons.bar_chart, label: 'Reports', route: AppRoutes.reports),
+              // Reports are owner/manager only (cashiers lack reports.view).
+              if (hasPermissionSync(ref, 'reports.view'))
+                _QuickAction(icon: Icons.bar_chart, label: 'Reports', route: AppRoutes.reports),
               _QuickAction(icon: Icons.settings_outlined, label: 'Settings', route: AppRoutes.settings),
             ],
           ),
@@ -427,7 +430,9 @@ class _MoreTab extends ConsumerWidget {
       children: [
         _MoreTile(icon: Icons.people_outline, label: 'Customers', route: AppRoutes.customers),
         _MoreTile(icon: Icons.money_off_outlined, label: 'Expenses', route: AppRoutes.expenses),
-        _MoreTile(icon: Icons.bar_chart, label: 'Reports', route: AppRoutes.reports),
+        // Reports are owner/manager only (cashiers lack reports.view).
+        if (hasPermissionSync(ref, 'reports.view'))
+          _MoreTile(icon: Icons.bar_chart, label: 'Reports', route: AppRoutes.reports),
         _MoreTile(icon: Icons.manage_accounts_outlined, label: 'Staff', route: AppRoutes.staff),
         _MoreTile(icon: Icons.settings_outlined, label: 'Settings', route: AppRoutes.settings),
         const Divider(),

@@ -48,12 +48,18 @@ GoRouter createRouter() {
         // Logged in, not on an auth screen → no redirect needed
         if (!isAuthRoute) return null;
 
-        // Logged in, on auth screen → check if shop exists (owner) or staff membership
+        // Logged in, on auth screen → check if shop exists (owner) or staff
+        // membership. Bound the network calls: offline these would otherwise
+        // hang with no UI, showing a black screen on cold start. On timeout
+        // the catch below sends an already-logged-in user to the dashboard.
+        const lookupTimeout = Duration(seconds: 5);
+
         final shopData = await client
             .from('shops')
             .select('id')
             .eq('owner_id', session.user.id)
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(lookupTimeout);
 
         if (shopData != null) return AppRoutes.dashboard;
 
@@ -63,7 +69,8 @@ GoRouter createRouter() {
             .select('id, status')
             .eq('user_id', session.user.id)
             .neq('status', 'suspended')
-            .maybeSingle();
+            .maybeSingle()
+            .timeout(lookupTimeout);
 
         if (memberData != null) {
           // Activate invited staff on first login. shop_users is

@@ -255,14 +255,20 @@ class SalesRepository implements ISalesRepository {
 
   @override
   Future<Sale> getSale(String saleId) async {
-    if (_db != null) {
-      final row = await _db.getSale(saleId);
+    // Server-first: the server row carries the customer, payment-method, and
+    // cashier names (via joins) that the local mirror doesn't store, and
+    // reflects settlement/void changes made on other devices. Fall back to the
+    // local copy only when offline.
+    try {
+      return await _remote.getSale(saleId);
+    } catch (_) {
+      final row = await _db?.getSale(saleId);
       if (row != null) {
-        final items = await _db.getSaleItems(saleId);
+        final items = await _db!.getSaleItems(saleId);
         return _saleFromRows(row, items);
       }
+      rethrow;
     }
-    return _remote.getSale(saleId);
   }
 
   @override
@@ -271,18 +277,23 @@ class SalesRepository implements ISalesRepository {
     required DateTime from,
     required DateTime to,
   }) async {
-    if (_db != null) {
+    // Server-first so the list shows the WHOLE shop's sales (every cashier),
+    // not just those created on this device, and includes the joined customer
+    // / cashier / payment names. Offline → fall back to the local mirror
+    // (this device's own sales).
+    try {
+      return await _remote.getSalesForBranch(
+          branchId: branchId, from: from, to: to);
+    } catch (_) {
+      if (_db == null) rethrow;
       final rows = await _db.getSalesByBranch(branchId, from, to);
-      if (rows.isNotEmpty) {
-        final result = <Sale>[];
-        for (final row in rows) {
-          final items = await _db.getSaleItems(row.id);
-          result.add(_saleFromRows(row, items));
-        }
-        return result;
+      final result = <Sale>[];
+      for (final row in rows) {
+        final items = await _db.getSaleItems(row.id);
+        result.add(_saleFromRows(row, items));
       }
+      return result;
     }
-    return _remote.getSalesForBranch(branchId: branchId, from: from, to: to);
   }
 
   @override

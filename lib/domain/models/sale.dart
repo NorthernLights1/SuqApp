@@ -19,6 +19,7 @@ class Sale extends Equatable {
     this.customerName,
     this.customerPhone,
     required this.cashierId,
+    this.cashierName,
     required this.paymentMethodId,
     this.paymentMethodName,
     required this.subtotal,
@@ -43,6 +44,7 @@ class Sale extends Equatable {
   final String? customerName;
   final String? customerPhone;
   final String cashierId;
+  final String? cashierName;
   final String paymentMethodId;
   final String? paymentMethodName;
   final Decimal subtotal;
@@ -65,6 +67,7 @@ class Sale extends Equatable {
   factory Sale.fromJson(Map<String, dynamic> json) {
     final customer = json['customers'] as Map<String, dynamic>?;
     final paymentMethod = json['payment_methods'] as Map<String, dynamic>?;
+    final cashier = json['cashier'] as Map<String, dynamic>?;
     return Sale(
       id: json['id'] as String,
       branchId: json['branch_id'] as String,
@@ -72,6 +75,7 @@ class Sale extends Equatable {
       customerName: customer?['name'] as String?,
       customerPhone: customer?['phone'] as String?,
       cashierId: json['cashier_id'] as String,
+      cashierName: cashier?['full_name'] as String?,
       paymentMethodId: json['payment_method_id'] as String,
       paymentMethodName: paymentMethod?['name'] as String?,
       subtotal: Decimal.parse(json['subtotal'].toString()),

@@ -1,6 +1,7 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -11,6 +12,33 @@ class ReportsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Defense-in-depth: even if the entry points are hidden, a cashier must
+    // not be able to view reports by any navigation path.
+    final perms = ref.watch(permissionsProvider);
+    if (perms.hasValue && !perms.requireValue.contains('reports.view')) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Reports')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.lock_outline,
+                    size: 56, color: AppColors.textDisabled),
+                const SizedBox(height: 12),
+                Text('Reports are restricted',
+                    style: AppTextStyles.headline3, textAlign: TextAlign.center),
+                const SizedBox(height: 4),
+                Text('Ask the shop owner or a manager for access.',
+                    style: AppTextStyles.bodySmall, textAlign: TextAlign.center),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     final period = ref.watch(reportPeriodProvider);
     final customRange = ref.watch(reportCustomRangeProvider);
     final categoryFilter = ref.watch(reportCategoryFilterProvider);
@@ -90,39 +118,35 @@ class ReportsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
 
-          // ── Category filter ────────────────────────────────────────────
+          // ── Category filter (combo box) ────────────────────────────────
           categories.when(
             data: (cats) {
               if (cats.isEmpty) return const SizedBox.shrink();
-              return SizedBox(
-                height: 36,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: const Text('All'),
-                        selected: categoryFilter == null,
-                        onSelected: (_) =>
-                            ref.read(reportCategoryFilterProvider.notifier).set(null),
-                        selectedColor: AppColors.primaryLight,
-                        checkmarkColor: AppColors.primary,
-                      ),
-                    ),
-                    ...cats.map((c) => Padding(
-                          padding: const EdgeInsets.only(right: 8),
-                          child: FilterChip(
-                            label: Text(c.name),
-                            selected: categoryFilter == c.id,
-                            onSelected: (_) => ref
-                                .read(reportCategoryFilterProvider.notifier)
-                                .set(categoryFilter == c.id ? null : c.id),
-                            selectedColor: AppColors.primaryLight,
-                            checkmarkColor: AppColors.primary,
-                          ),
-                        )),
-                  ],
+              return InputDecorator(
+                decoration: InputDecoration(
+                  labelText: 'Category',
+                  isDense: true,
+                  prefixIcon: const Icon(Icons.category_outlined, size: 18),
+                  border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String?>(
+                    value: categoryFilter,
+                    isExpanded: true,
+                    items: [
+                      const DropdownMenuItem<String?>(
+                          value: null, child: Text('All categories')),
+                      ...cats.map((c) => DropdownMenuItem<String?>(
+                            value: c.id,
+                            child: Text(c.name),
+                          )),
+                    ],
+                    onChanged: (id) =>
+                        ref.read(reportCategoryFilterProvider.notifier).set(id),
+                  ),
                 ),
               );
             },
