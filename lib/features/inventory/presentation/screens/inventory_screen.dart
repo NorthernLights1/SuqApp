@@ -138,12 +138,19 @@ class InventoryScreen extends ConsumerWidget {
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => const ProductFormScreen(),
-            fullscreenDialog: true,
-          ),
-        ),
+        onPressed: () async {
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const ProductFormScreen(),
+              fullscreenDialog: true,
+            ),
+          );
+          // Refresh on return so a newly added product/stock shows without an
+          // app restart (guaranteed even if the form's own invalidation is
+          // missed across the route boundary).
+          ref.invalidate(productsProvider);
+          ref.invalidate(stockLevelsProvider);
+        },
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
