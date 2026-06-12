@@ -323,9 +323,49 @@ class _StaffTile extends ConsumerWidget {
                       .setStatus(member.id, 'active');
                 },
               ),
+            if (member.status == 'invited')
+              ListTile(
+                leading: const Icon(Icons.person_remove_outlined,
+                    color: AppColors.error),
+                title: Text('Cancel Invite',
+                    style: TextStyle(color: AppColors.error)),
+                subtitle: Text(
+                    'Removes this pending invite; the emailed code stops working',
+                    style: AppTextStyles.bodySmall),
+                onTap: () {
+                  Navigator.pop(context);
+                  _confirmCancelInvite(context, ref);
+                },
+              ),
             const SizedBox(height: 8),
           ],
         ),
+      ),
+    );
+  }
+
+  void _confirmCancelInvite(BuildContext context, WidgetRef ref) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel this invite?'),
+        content: const Text(
+            'The pending invite will be deleted and the emailed code will no '
+            'longer work. You can always send a new invite.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Keep Invite'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              ref.read(staffStatusProvider.notifier).cancelInvite(member.id);
+            },
+            child: const Text('Cancel Invite',
+                style: TextStyle(color: AppColors.error)),
+          ),
+        ],
       ),
     );
   }
