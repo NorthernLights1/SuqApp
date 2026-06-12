@@ -2,6 +2,7 @@ import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../domain/models/sale.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 
@@ -91,6 +92,52 @@ class _ReportCategoryNotifier extends Notifier<String?> {
 
 final reportCategoryFilterProvider =
     NotifierProvider<_ReportCategoryNotifier, String?>(_ReportCategoryNotifier.new);
+
+/// The individual completed sales behind the report summary, honouring the
+/// same period + category filters. Drives the tappable Transactions/Credits
+/// drill-downs. Each row maps to a full [Sale] (with customer/cashier joins),
+/// so tapping opens the existing SaleDetailScreen.
+final reportSalesProvider = FutureProvider<List<Sale>>((ref) async {
+  final period = ref.watch(reportPeriodProvider);
+  final customRange = ref.watch(reportCustomRangeProvider);
+  final categoryFilter = ref.watch(reportCategoryFilterProvider);
+  final branches = await ref.watch(currentShopBranchesProvider.future);
+  final branch =
+      ref.watch(activeBranchProvider) ?? (branches.isNotEmpty ? branches.first : null);
+  if (branch == null) return const [];
+
+  final range = _rangeFor(period, customRange);
+  final client = ref.read(supabaseClientProvider);
+
+  final data = await client
+      .from('sales')
+      .select(
+          '*, sale_items(*, products(category_id)), customers(id, name, phone), payment_methods(id, name, code), cashier:profiles!sales_cashier_id_fkey(full_name)')
+      .eq('branch_id', branch.id)
+      .eq('status', 'completed')
+      .gte('created_at', range.start.toUtc().toIso8601String())
+      .lt('created_at', range.end.toUtc().toIso8601String())
+      .order('created_at', ascending: false);
+
+  final rows = (data as List).cast<Map<String, dynamic>>();
+  final filtered = categoryFilter == null
+      ? rows
+      : rows.where((row) {
+          final items = (row['sale_items'] as List? ?? []);
+          return items.any((item) =>
+              (item['products'] as Map<String, dynamic>?)?['category_id'] ==
+              categoryFilter);
+        }).toList();
+
+  return filtered.map((e) => Sale.fromJson(e)).toList();
+});
+
+/// Outstanding credit sales within the report filter (subset of
+/// [reportSalesProvider]).
+final reportCreditsProvider = FutureProvider<List<Sale>>((ref) async {
+  final sales = await ref.watch(reportSalesProvider.future);
+  return sales.where((s) => s.isCredit && !s.isCreditSettled).toList();
+});
 
 final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   final period = ref.watch(reportPeriodProvider);

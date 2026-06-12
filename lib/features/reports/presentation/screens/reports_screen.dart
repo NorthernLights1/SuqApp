@@ -6,6 +6,7 @@ import '../../../../features/inventory/presentation/providers/inventory_provider
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../providers/reports_provider.dart';
+import 'report_sales_list_screen.dart';
 
 class ReportsScreen extends ConsumerWidget {
   const ReportsScreen({super.key});
@@ -254,6 +255,12 @@ class _SummaryBody extends StatelessWidget {
   final ReportSummary summary;
   final bool isCategoryFiltered;
 
+  void _openDrillDown(BuildContext context, {required bool creditsOnly}) {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => ReportSalesListScreen(creditsOnly: creditsOnly),
+    ));
+  }
+
   @override
   Widget build(BuildContext context) {
     final netPositive = summary.net >= Decimal.zero;
@@ -276,6 +283,7 @@ class _SummaryBody extends StatelessWidget {
               value: '${summary.salesCount}',
               icon: Icons.receipt_outlined,
               color: AppColors.primary,
+              onTap: () => _openDrillDown(context, creditsOnly: false),
             ),
           ),
           const SizedBox(width: 8),
@@ -285,6 +293,7 @@ class _SummaryBody extends StatelessWidget {
               value: '${summary.creditCount}',
               icon: Icons.credit_card_outlined,
               color: AppColors.warning,
+              onTap: () => _openDrillDown(context, creditsOnly: true),
             ),
           ),
         ]),
@@ -381,15 +390,17 @@ class _StatRow extends StatelessWidget {
       {required this.label,
       required this.value,
       required this.icon,
-      required this.color});
+      required this.color,
+      this.onTap});
   final String label;
   final String value;
   final IconData icon;
   final Color color;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final content = Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -408,8 +419,19 @@ class _StatRow extends StatelessWidget {
           Text(value,
               style: AppTextStyles.body
                   .copyWith(fontWeight: FontWeight.w700, color: color)),
+          if (onTap != null) ...[
+            const SizedBox(width: 4),
+            const Icon(Icons.chevron_right,
+                size: 18, color: AppColors.textSecondary),
+          ],
         ],
       ),
+    );
+    if (onTap == null) return content;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: content,
     );
   }
 }
