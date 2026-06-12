@@ -97,8 +97,12 @@ class StaffStatusNotifier extends AsyncNotifier<void> {
   /// Delete a pending invite (wrong email, duplicate, etc.). The membership
   /// row is removed, so the emailed code can no longer activate anything.
   /// The status filter is a server-side safety net: an active or suspended
-  /// member can never be deleted through this path, only suspended.
-  Future<void> cancelInvite(String shopUserId) async {
+  /// member can never be deleted through this path, only suspended. The
+  /// shop_id filter mirrors the staff listing's scoping (defense-in-depth on
+  /// top of RLS). Returns false on failure so the UI can surface it.
+  Future<bool> cancelInvite(String shopUserId) async {
+    final shop = await ref.read(currentShopProvider.future);
+    if (shop == null) return false;
     final client = ref.read(supabaseClientProvider);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
@@ -106,9 +110,11 @@ class StaffStatusNotifier extends AsyncNotifier<void> {
           .from('shop_users')
           .delete()
           .eq('id', shopUserId)
+          .eq('shop_id', shop.id)
           .eq('status', 'invited');
       ref.invalidate(staffListProvider);
     });
+    return !state.hasError;
   }
 }
 

@@ -358,9 +358,20 @@ class _StaffTile extends ConsumerWidget {
             child: const Text('Keep Invite'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(ctx);
-              ref.read(staffStatusProvider.notifier).cancelInvite(member.id);
+              final ok = await ref
+                  .read(staffStatusProvider.notifier)
+                  .cancelInvite(member.id);
+              if (!ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content:
+                        Text('Could not cancel the invite — please try again'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
             },
             child: const Text('Cancel Invite',
                 style: TextStyle(color: AppColors.error)),
