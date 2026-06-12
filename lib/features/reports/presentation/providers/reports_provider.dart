@@ -117,7 +117,10 @@ final reportSalesProvider = FutureProvider<List<Sale>>((ref) async {
       .eq('status', 'completed')
       .gte('created_at', range.start.toUtc().toIso8601String())
       .lt('created_at', range.end.toUtc().toIso8601String())
-      .order('created_at', ascending: false);
+      .order('created_at', ascending: false)
+      // Cap the drill-down list; a shop won't review more than this at once
+      // and it keeps the query bounded for long periods (e.g. Year).
+      .limit(500);
 
   final rows = (data as List).cast<Map<String, dynamic>>();
   final filtered = categoryFilter == null

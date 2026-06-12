@@ -153,8 +153,9 @@ class _SaleRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final time = TimeOfDay.fromDateTime(sale.createdAt).format(context);
+    final d = sale.createdAt;
     final subtitleParts = <String>[
-      '${sale.createdAt.day}/${sale.createdAt.month} $time',
+      '${d.day}/${d.month}/${d.year} $time',
       if (sale.customerName != null) sale.customerName!,
       if (sale.cashierName != null) sale.cashierName!,
     ];

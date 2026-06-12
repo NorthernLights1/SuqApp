@@ -21,6 +21,11 @@ class DispatchResult {
   const DispatchResult({required this.sent, this.reason});
   final bool sent;
   final String? reason;
+
+  /// [reason] value the dispatch-notifications function returns when no credit
+  /// has passed the overdue window. Matched verbatim to show a friendly
+  /// message; keep in sync with the Edge Function.
+  static const noOverdueCreditsReason = 'No overdue credits found';
 }
 
 enum NotificationType {

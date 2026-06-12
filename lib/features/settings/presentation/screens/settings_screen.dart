@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/sync_providers.dart';
+import '../../../../domain/interfaces/notification_service_interface.dart'
+    show DispatchResult;
 import '../../../../domain/interfaces/sync_service_interface.dart';
 import '../../../../domain/models/shop.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
@@ -306,7 +308,7 @@ class _NotificationsCardState extends ConsumerState<_NotificationsCard> {
     } else {
       // Ran fine but nothing to send — tell the owner why instead of
       // implying an email went out.
-      message = result?.reason == 'No overdue credits found'
+      message = result?.reason == DispatchResult.noOverdueCreditsReason
           ? 'No credits are overdue yet — nothing to send'
           : (result?.reason ?? 'Nothing to send');
       color = AppColors.textSecondary;
