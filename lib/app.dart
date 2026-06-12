@@ -5,6 +5,8 @@ import 'shared/router/app_router.dart';
 import 'shared/theme/app_theme.dart';
 import 'core/constants/app_constants.dart';
 import 'core/services/sync_providers.dart';
+import 'features/licensing/presentation/providers/license_provider.dart';
+import 'features/licensing/presentation/screens/license_gate.dart';
 
 class SuqApp extends ConsumerStatefulWidget {
   const SuqApp({super.key});
@@ -33,9 +35,11 @@ class _SuqAppState extends ConsumerState<SuqApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Drain any pending writes whenever the app returns to the foreground.
+    // Drain any pending writes whenever the app returns to the foreground,
+    // and re-check the platform license/block verdict.
     if (state == AppLifecycleState.resumed) {
       ref.read(syncSchedulerProvider).syncNow();
+      ref.invalidate(licenseStatusProvider);
     }
   }
 
@@ -45,6 +49,10 @@ class _SuqAppState extends ConsumerState<SuqApp> with WidgetsBindingObserver {
       title: AppConstants.appName,
       theme: AppTheme.light,
       routerConfig: appRouter,
+      // Platform-operator lock: blocked shops and expired trials see a lock
+      // screen instead of the app, whatever route they're on.
+      builder: (context, child) =>
+          LicenseGate(child: child ?? const SizedBox.shrink()),
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
