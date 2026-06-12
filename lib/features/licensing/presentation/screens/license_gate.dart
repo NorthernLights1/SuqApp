@@ -136,9 +136,9 @@ class _ActivationScreenState extends ConsumerState<_ActivationScreen> {
                     textAlign: TextAlign.center),
                 const SizedBox(height: 8),
                 Text(
-                  'The trial period for this shop has ended. Enter the '
-                  '10-digit serial number from your service provider to '
-                  'continue using Suq.',
+                  'The trial or license period for this shop has ended. '
+                  'Enter the 10-digit serial number from your service '
+                  'provider to continue using Suq.',
                   style: AppTextStyles.body,
                   textAlign: TextAlign.center,
                 ),

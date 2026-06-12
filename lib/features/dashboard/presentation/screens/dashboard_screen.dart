@@ -6,6 +6,7 @@ import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/customers/presentation/screens/credits_screen.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
+import '../../../../features/licensing/presentation/widgets/license_banner.dart';
 import '../../../../features/sales/presentation/providers/sales_provider.dart';
 import '../../../../features/sales/presentation/screens/sales_screen.dart';
 import '../../../../shared/widgets/app_button.dart';
@@ -59,7 +60,13 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
           ),
         ],
       ),
-      body: _buildBody(),
+      body: Column(
+        children: [
+          // Trial/license countdown — appears in the last warning days.
+          const LicenseWarningBanner(),
+          Expanded(child: _buildBody()),
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (i) => setState(() => _selectedIndex = i),

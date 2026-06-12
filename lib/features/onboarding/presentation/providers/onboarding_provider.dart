@@ -69,6 +69,13 @@ class OnboardingNotifier extends Notifier<OnboardingState> {
         step: OnboardingStep.createBranch,
       );
       return true;
+    } on PostgrestException catch (e) {
+      // 23505 = unique violation (shops_name_unique_idx): the name is taken.
+      final msg = e.code == '23505'
+          ? 'That shop name is already taken — please choose another.'
+          : e.message;
+      state = state.copyWith(loading: false, error: msg);
+      return false;
     } catch (e) {
       state = state.copyWith(loading: false, error: e.toString());
       return false;

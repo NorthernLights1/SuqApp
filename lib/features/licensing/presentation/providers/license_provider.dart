@@ -6,10 +6,10 @@ import '../../../../features/auth/presentation/providers/shop_provider.dart';
 
 /// Platform-operator verdict on whether this shop may use the app.
 enum LicenseState {
-  /// Licensed, or still inside the trial window — app runs normally.
+  /// Inside the trial window or holding an unexpired license.
   ok,
 
-  /// Trial window has ended and no serial has been activated.
+  /// Trial window or license period has ended — a serial is required.
   expired,
 
   /// The operator blocked this shop remotely.
@@ -17,18 +17,32 @@ enum LicenseState {
 }
 
 class LicenseStatus extends Equatable {
-  const LicenseStatus(this.state, {this.trialDaysLeft, this.blockedReason});
+  const LicenseStatus(
+    this.state, {
+    this.daysLeft,
+    this.isTrial = false,
+    this.blockedReason,
+  });
 
   final LicenseState state;
 
-  /// Remaining trial days (only meaningful while unlicensed and not expired).
-  final int? trialDaysLeft;
+  /// Whole days until the trial/license runs out (only while [state] is ok).
+  final int? daysLeft;
+
+  /// True when [daysLeft] counts the free trial rather than an active license.
+  final bool isTrial;
   final String? blockedReason;
 
   static const ok = LicenseStatus(LicenseState.ok);
 
+  /// Countdown banner shown once the remaining time enters the warning window.
+  bool get showWarning =>
+      state == LicenseState.ok &&
+      daysLeft != null &&
+      daysLeft! <= AppConstants.licenseWarningDays;
+
   @override
-  List<Object?> get props => [state, trialDaysLeft, blockedReason];
+  List<Object?> get props => [state, daysLeft, isTrial, blockedReason];
 }
 
 /// Evaluates the shop's license/block state from shop_controls. Re-checked on
@@ -46,7 +60,7 @@ final licenseStatusProvider = FutureProvider<LicenseStatus>((ref) async {
   try {
     final row = await client
         .from('shop_controls')
-        .select('blocked, blocked_reason, licensed')
+        .select('blocked, blocked_reason, licensed_until')
         .eq('shop_id', shop.id)
         .maybeSingle();
 
@@ -56,21 +70,36 @@ final licenseStatusProvider = FutureProvider<LicenseStatus>((ref) async {
         blockedReason: row['blocked_reason'] as String?,
       );
     }
-    if (row != null && row['licensed'] == true) return LicenseStatus.ok;
 
-    // Unlicensed: still inside the trial window?
+    final now = DateTime.now();
+
+    // Active (or lapsed) license period.
+    final licensedUntilRaw = row?['licensed_until'] as String?;
+    if (licensedUntilRaw != null) {
+      final licensedUntil = DateTime.parse(licensedUntilRaw).toLocal();
+      if (licensedUntil.isAfter(now)) {
+        return LicenseStatus(LicenseState.ok,
+            daysLeft: licensedUntil.difference(now).inDays);
+      }
+      return const LicenseStatus(LicenseState.expired);
+    }
+
+    // Never licensed: still inside the trial window?
     final trialEnd =
         shop.createdAt.add(const Duration(days: AppConstants.licenseTrialDays));
-    final left = trialEnd.difference(DateTime.now()).inDays;
-    if (left < 0) return const LicenseStatus(LicenseState.expired);
-    return LicenseStatus(LicenseState.ok, trialDaysLeft: left);
+    if (trialEnd.isAfter(now)) {
+      return LicenseStatus(LicenseState.ok,
+          daysLeft: trialEnd.difference(now).inDays, isTrial: true);
+    }
+    return const LicenseStatus(LicenseState.expired);
   } catch (_) {
     return LicenseStatus.ok;
   }
 });
 
 /// Activates a 10-digit serial for the current shop via the activate_license
-/// RPC (owner-only, single-use keys, validated server-side).
+/// RPC (owner-only, single-use keys, validated server-side). The key's own
+/// duration determines how long the shop stays licensed, counted from today.
 class ActivateLicenseNotifier extends AsyncNotifier<void> {
   @override
   Future<void> build() async {}
