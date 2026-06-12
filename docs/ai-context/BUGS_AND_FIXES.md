@@ -2,6 +2,42 @@
 
 ---
 
+## Session 17 (2026-06-12) — test-feedback batch (12 items, all on `main`)
+
+**Manager/credit-detail saw only own-device sales (root cause for 3 reports).**
+`SalesRepository.getSalesForBranch`/`getSale` read local-Drift-first; the local
+mirror holds only sales made on that device and lacks join data. Fix: server-first
+reads (fall back to local only when offline). Added cashier join
+(`profiles!sales_cashier_id_fkey`) → `Sale.cashierName` ("Sold by").
+
+**Offline → black screen on cold start.** Router redirect awaited Supabase
+lookups with no timeout; offline they hung with no UI. Fix: `.timeout(5s)` on the
+shop/membership lookups → caught → logged-in user falls through to dashboard.
+
+**New inventory item needed app restart.** Add-product is a pushed route
+(`ProductFormScreen`); its in-form invalidation wasn't reflected on the list. Fix:
+FAB awaits the push and invalidates products/stock on return.
+
+**Reports accessible to cashiers.** `PermissionService` existed but was wired to
+nothing. Fix: new `permissionsProvider`; Reports entry points hidden + screen
+guarded for users without `reports.view`.
+
+**"Send overdue reminders" looked broken.** Function returns HTTP 200 even when
+nothing is overdue; app treated any 200 as "sent". Diagnosed live: 1 unpaid
+credit, 0 past the 7-day window. Fix: `dispatch()` returns `DispatchResult`
+(sent+reason); Settings shows "No credits are overdue yet". Also fn v5 now emails
+ALL `notification_email` rows (was last-one-wins).
+
+**Voided credit lingered in customer credit view.** `voidSale` invalidated the
+Credits tab but not the per-customer families. Fix: also invalidate
+`customerCreditSalesProvider` / `customerSalesProvider` / `customerOutstandingMapProvider`.
+
+**Other:** voided sale no longer decrements the transaction count (revenue still
+excludes it); reports category filter → combo box; new tappable Transactions/Credits
+drill-downs (date+category filter); payment history on sale detail.
+
+---
+
 ## Session 16 (2026-06-09)
 
 **ROOT CAUSE — staff invites & notifications all 403'd: `service_role` lost table grants.**

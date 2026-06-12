@@ -1,6 +1,6 @@
 # Current State — Suq ERP
 
-Last updated: 2026-06-09 (session 16)
+Last updated: 2026-06-12 (session 17)
 
 ---
 
@@ -9,8 +9,16 @@ Last updated: 2026-06-09 (session 16)
 **Suq** — mobile ERP for small shop owners. Flutter + Supabase.
 Package: `com.temesgen.suq` | Repo: `NorthernLights1/SuqApp`
 Flutter app root: `c:/Projects/SuqApp/`
-Active branch: `feat/notifications`
-Push: `git push origin feat/notifications`
+Active branch: `main` (sole working branch). `security` branch published but
+NOT merged — holds trial/serial licensing + remote shop-block.
+Push: `git push origin main`
+
+## Build & Distribution
+- APK built on GitHub Actions (`.github/workflows/build-apk.yml`, manual
+  workflow_dispatch). Needs repo secrets `SUPABASE_URL` + `SUPABASE_ANON_KEY`.
+  Release build is debug-signed (pilot sideloading, not Play Store).
+- Android main manifest carries the INTERNET permission (release APKs need it
+  declared there, not just debug/profile).
 
 ---
 
@@ -38,6 +46,9 @@ Push: `git push origin feat/notifications`
 | Session 12 — ListTile warnings, RenderFlex overflow, staff invite v4 (403 fix + duplicate check) | ✅ Done |
 | Session 13 — Notifications phase: low-stock + overdue-credit alerts via email (Resend) and Telegram | ✅ Done |
 | Session 14 — CodeRabbit review: null-safety fix + explicit branch_id in settings upsert | ✅ Done |
+| Session 15 — Auto-sync triggers, per-credit partial settlement + payment history (mig 017/018), add-stock fields | ✅ Done |
+| Session 16 — GitHub Actions APK build, APK debug-build fixes (env secrets, INTERNET perm), security branch (licensing) | ✅ Done |
+| Session 17 — Test-feedback batch (12 items): server-first sales reads, cashier name, reports RBAC + drill-downs, offline boot, inventory refresh, honest overdue-email, email-all recipients (fn v5) | ✅ Done (on main, pending push) |
 | Session 15 — Code review: 9 findings fixed (atomic upsert, CHECK constraint, false-success snackbar, unsafe cast, INotificationService wiring, Telegram flag, stale controllers, regex, raw error) | ✅ Done |
 | Session 16 — service_role grant fix, UTC date fix, code-based staff invite, profiles shopmate read, scheduled 9am/9pm notifications (low-stock + overdue) | ✅ Done |
 

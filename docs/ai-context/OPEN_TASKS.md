@@ -1,6 +1,21 @@
 # Open Tasks — Suq ERP
 
-Last updated: 2026-06-06 (session 15)
+Last updated: 2026-06-12 (session 17)
+
+---
+
+## Session 17 follow-ups
+
+- [ ] **`security` branch — merge when ready.** Published, NOT merged. Trial
+  (14 days) + 10-digit serial activation (per-key duration, no stacking, 7-day
+  countdown banner) + remote per-shop block. Migrations 019/020 already applied
+  live. Operator SQL for generating keys / blocking is in the session notes.
+- [ ] **Verify on device:** partial-settlement shows all payment logs; voided
+  credit drops out of all credit views (fixes are in but unverified on-device).
+- [ ] **Local Drift cache encryption (SQLCipher)** — Supabase is encrypted in
+  transit + at rest; on-device cache is plaintext. Defer past the pilot.
+- [x] Email overdue/low-stock reminders to ALL configured `notification_email`
+  rows — done (dispatch-notifications v5).
 
 ---
 
