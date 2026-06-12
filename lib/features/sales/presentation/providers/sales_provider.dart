@@ -7,7 +7,11 @@ import '../../../../domain/models/sale.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../features/customers/presentation/providers/customers_provider.dart'
-    show outstandingCreditProvider, customerSalesProvider;
+    show
+        outstandingCreditProvider,
+        customerSalesProvider,
+        customerCreditSalesProvider,
+        customerOutstandingMapProvider;
 import '../../../../features/reports/presentation/providers/reports_provider.dart'
     show reportSummaryProvider;
 import '../../../../features/inventory/data/inventory_remote.dart';
@@ -326,6 +330,12 @@ class VoidSaleNotifier extends AsyncNotifier<void> {
       ref.invalidate(stockLevelsProvider);
       ref.invalidate(reportSummaryProvider);
       ref.invalidate(outstandingCreditProvider);
+      // A voided credit sale must also drop out of the per-customer credit
+      // views (customer detail). Invalidate the whole families since the void
+      // path doesn't carry the customer id.
+      ref.invalidate(customerCreditSalesProvider);
+      ref.invalidate(customerSalesProvider);
+      ref.invalidate(customerOutstandingMapProvider);
     });
   }
 }

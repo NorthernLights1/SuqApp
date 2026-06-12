@@ -45,7 +45,7 @@ class NotificationService implements INotificationService {
   }
 
   @override
-  Future<void> dispatch({
+  Future<DispatchResult> dispatch({
     required NotificationType type,
     required String shopId,
   }) async {
@@ -54,11 +54,18 @@ class NotificationService implements INotificationService {
       'dispatch-notifications',
       body: {'shopId': shopId, 'type': typeCode},
     );
+    final data = response.data;
     if (response.status != 200) {
-      final data = response.data;
       final message =
           data is Map<String, dynamic> ? data['error'] as String? : null;
       throw Exception(message ?? 'Failed (${response.status})');
     }
+    // 200 can still mean "nothing to send" (e.g. no overdue credits). Report
+    // that honestly so the UI doesn't claim an email went out.
+    final map = data is Map<String, dynamic> ? data : const <String, dynamic>{};
+    return DispatchResult(
+      sent: map['sent'] == true,
+      reason: map['reason'] as String?,
+    );
   }
 }

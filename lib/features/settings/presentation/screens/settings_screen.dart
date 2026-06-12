@@ -291,16 +291,28 @@ class _NotificationsCardState extends ConsumerState<_NotificationsCard> {
     );
     if (confirmed != true || !mounted) return;
 
-    await ref.read(sendOverdueRemindersProvider.notifier).send();
+    final result = await ref.read(sendOverdueRemindersProvider.notifier).send();
     if (!mounted) return;
     final state = ref.read(sendOverdueRemindersProvider);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(state.hasError
-          ? 'Failed to send reminders'
-          : 'Overdue credit reminders sent'),
-      backgroundColor:
-          state.hasError ? AppColors.error : AppColors.success,
-    ));
+
+    final String message;
+    final Color color;
+    if (state.hasError) {
+      message = 'Failed to send reminders';
+      color = AppColors.error;
+    } else if (result?.sent == true) {
+      message = 'Overdue credit reminders sent';
+      color = AppColors.success;
+    } else {
+      // Ran fine but nothing to send — tell the owner why instead of
+      // implying an email went out.
+      message = result?.reason == 'No overdue credits found'
+          ? 'No credits are overdue yet — nothing to send'
+          : (result?.reason ?? 'Nothing to send');
+      color = AppColors.textSecondary;
+    }
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message), backgroundColor: color));
   }
 
   @override

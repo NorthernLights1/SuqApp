@@ -123,16 +123,19 @@ class SendOverdueRemindersNotifier extends AsyncNotifier<void> {
   @override
   Future<void> build() async {}
 
-  Future<void> send() async {
-    // Guard inside AsyncValue.guard so shop == null sets state to AsyncError.
+  /// Returns the dispatch outcome (whether an email actually went out and why
+  /// not), or null on error (state carries the error).
+  Future<DispatchResult?> send() async {
     state = const AsyncLoading();
+    DispatchResult? result;
     state = await AsyncValue.guard(() async {
       final shop = await ref.read(currentShopProvider.future);
       if (shop == null) throw StateError('No active shop');
-      await ref.read(notificationServiceProvider).dispatch(
-        type: NotificationType.overdueCredits,
-        shopId: shop.id,
-      );
+      result = await ref.read(notificationServiceProvider).dispatch(
+            type: NotificationType.overdueCredits,
+            shopId: shop.id,
+          );
     });
+    return state.hasError ? null : result;
   }
 }
