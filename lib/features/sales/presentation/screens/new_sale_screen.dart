@@ -548,32 +548,15 @@ class _SaleFooter extends ConsumerWidget {
 
 // ─── Customer Picker ─────────────────────────────────────────────────────────
 
-class _CustomerPickerSection extends ConsumerStatefulWidget {
+/// Compact footer row: shows the chosen customer, or a button that opens a
+/// tall bottom sheet to search/add one. The footer itself is capped at 25%
+/// of the screen — far too small to search in — so the picking happens in
+/// the sheet and only the result lives in the footer.
+class _CustomerPickerSection extends ConsumerWidget {
   const _CustomerPickerSection();
 
   @override
-  ConsumerState<_CustomerPickerSection> createState() =>
-      _CustomerPickerSectionState();
-}
-
-class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> {
-  final _searchCtrl = TextEditingController();
-  final _nameCtrl = TextEditingController();
-  final _phoneCtrl = TextEditingController();
-  bool _adding = false;
-  Timer? _searchDebounce;
-
-  @override
-  void dispose() {
-    _searchDebounce?.cancel();
-    _searchCtrl.dispose();
-    _nameCtrl.dispose();
-    _phoneCtrl.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final customer = ref.watch(selectedCustomerProvider);
 
     if (customer != null) {
@@ -594,72 +577,143 @@ class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> 
               : null,
           trailing: IconButton(
             icon: const Icon(Icons.close, size: 18, color: AppColors.textSecondary),
-            onPressed: () {
-              ref.read(selectedCustomerProvider.notifier).set(null);
-              setState(() => _adding = false);
-            },
+            onPressed: () =>
+                ref.read(selectedCustomerProvider.notifier).set(null),
           ),
         ),
       );
     }
 
-    if (_adding) {
-      return _AddCustomerForm(
-        nameCtrl: _nameCtrl,
-        phoneCtrl: _phoneCtrl,
-        onCancel: () => setState(() {
-          _adding = false;
-          _nameCtrl.clear();
-          _phoneCtrl.clear();
-        }),
-        onSave: _saveCustomer,
-        saving: ref.watch(createCustomerProvider).isLoading,
-      );
-    }
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _searchCtrl,
-                decoration: const InputDecoration(
-                  hintText: 'Search by name…',
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  isDense: true,
-                ),
-                onChanged: (v) {
-                    setState(() {});
-                    _searchDebounce?.cancel();
-                    _searchDebounce = Timer(
-                      const Duration(milliseconds: 350),
-                      () => ref.read(customerSearchQueryProvider.notifier).set(v),
-                    );
-                  },
-              ),
-            ),
-            TextButton(
-              onPressed: () => setState(() {
-                _adding = true;
-                _searchCtrl.clear();
-                ref.read(customerSearchQueryProvider.notifier).set('');
-              }),
-              child: const Text('+ New'),
-            ),
-          ],
-        ),
-        if (_searchCtrl.text.length >= 2)
-          _CustomerResults(
-            onSelect: (c) {
-              ref.read(selectedCustomerProvider.notifier).set(c);
-              _searchCtrl.clear();
-              ref.read(customerSearchQueryProvider.notifier).set('');
-            },
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        icon: const Icon(Icons.person_search_outlined, size: 18),
+        label: const Text('Select customer'),
+        onPressed: () => showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
           ),
-      ],
+          builder: (_) => const _CustomerPickerSheet(),
+        ).whenComplete(
+          // Reset the search whether a customer was picked or the sheet
+          // was dismissed.
+          () => ref.read(customerSearchQueryProvider.notifier).set(''),
+        ),
+      ),
     );
+  }
+}
+
+class _CustomerPickerSheet extends ConsumerStatefulWidget {
+  const _CustomerPickerSheet();
+
+  @override
+  ConsumerState<_CustomerPickerSheet> createState() =>
+      _CustomerPickerSheetState();
+}
+
+class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
+  final _searchCtrl = TextEditingController();
+  final _nameCtrl = TextEditingController();
+  final _phoneCtrl = TextEditingController();
+  bool _adding = false;
+  Timer? _searchDebounce;
+
+  /// Tall enough to search comfortably while keeping the sale visible behind.
+  static const _maxScreenFraction = 0.75;
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _searchCtrl.dispose();
+    _nameCtrl.dispose();
+    _phoneCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      // Keep the sheet above the keyboard while typing.
+      padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.sizeOf(context).height * _maxScreenFraction,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(_adding ? 'New customer' : 'Select customer',
+                  style: AppTextStyles.headline3),
+              const SizedBox(height: 12),
+              if (_adding)
+                _AddCustomerForm(
+                  nameCtrl: _nameCtrl,
+                  phoneCtrl: _phoneCtrl,
+                  onCancel: () => setState(() {
+                    _adding = false;
+                    _nameCtrl.clear();
+                    _phoneCtrl.clear();
+                  }),
+                  onSave: _saveCustomer,
+                  saving: ref.watch(createCustomerProvider).isLoading,
+                )
+              else ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchCtrl,
+                        autofocus: true,
+                        decoration: const InputDecoration(
+                          hintText: 'Search by name…',
+                          prefixIcon: Icon(Icons.search, size: 18),
+                          isDense: true,
+                        ),
+                        onChanged: (v) {
+                          setState(() {});
+                          _searchDebounce?.cancel();
+                          _searchDebounce = Timer(
+                            const Duration(milliseconds: 350),
+                            () => ref
+                                .read(customerSearchQueryProvider.notifier)
+                                .set(v),
+                          );
+                        },
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() {
+                        _adding = true;
+                        _searchCtrl.clear();
+                        ref.read(customerSearchQueryProvider.notifier).set('');
+                      }),
+                      child: const Text('+ New'),
+                    ),
+                  ],
+                ),
+                if (_searchCtrl.text.length >= 2)
+                  Flexible(
+                    child: SingleChildScrollView(
+                      child: _CustomerResults(onSelect: _select),
+                    ),
+                  ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _select(Customer c) {
+    ref.read(selectedCustomerProvider.notifier).set(c);
+    Navigator.pop(context);
   }
 
   Future<void> _saveCustomer() async {
@@ -670,11 +724,7 @@ class _CustomerPickerSectionState extends ConsumerState<_CustomerPickerSection> 
         );
     if (customer != null && mounted) {
       ref.read(selectedCustomerProvider.notifier).set(customer);
-      setState(() {
-        _adding = false;
-        _nameCtrl.clear();
-        _phoneCtrl.clear();
-      });
+      Navigator.pop(context);
     }
   }
 }
