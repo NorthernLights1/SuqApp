@@ -6,6 +6,7 @@ import '../../../../features/auth/presentation/providers/permissions_provider.da
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/customers/presentation/screens/credits_screen.dart';
+import '../../../../features/inventory/presentation/providers/conflicts_provider.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../../../features/licensing/presentation/widgets/license_banner.dart';
 import '../../../../features/sales/presentation/providers/sales_provider.dart';
@@ -65,6 +66,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         children: [
           // Trial/license countdown — appears in the last warning days.
           const LicenseWarningBanner(),
+          // Oversell conflicts needing the owner's attention.
+          const _ConflictBanner(),
           Expanded(child: _buildBody()),
         ],
       ),
@@ -424,6 +427,49 @@ class _InventoryQuickTab extends ConsumerWidget {
 }
 
 
+
+// ─── Conflict banner (owner only) ────────────────────────────────────────────
+
+class _ConflictBanner extends ConsumerWidget {
+  const _ConflictBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Only the owner resolves conflicts (settings.manage is owner-exclusive).
+    if (!hasPermissionSync(ref, 'settings.manage')) {
+      return const SizedBox.shrink();
+    }
+    final conflicts = ref.watch(stockConflictsProvider).asData?.value ?? const [];
+    if (conflicts.isEmpty) return const SizedBox.shrink();
+
+    return Material(
+      color: AppColors.warning.withValues(alpha: 0.15),
+      child: InkWell(
+        onTap: () => context.push(AppRoutes.stockConflicts),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              const Icon(Icons.warning_amber_outlined,
+                  size: 18, color: AppColors.warning),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${conflicts.length} stock conflict${conflicts.length > 1 ? 's' : ''} need attention',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Text('Review',
+                  style: AppTextStyles.bodySmall.copyWith(
+                      color: AppColors.primary, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 // ─── More Tab ───────────────────────────────────────────────────────────────
 
