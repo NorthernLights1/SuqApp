@@ -147,6 +147,109 @@ class LocalExpenses extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+// ─── Reference / read-cache tables (download-sync only, never queued) ─────────
+
+@DataClassName('ShopRow')
+class LocalShops extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get config => text().withDefault(const Constant('{}'))(); // json
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DataClassName('BranchRow')
+class LocalBranches extends Table {
+  TextColumn get id => text()();
+  TextColumn get shopId => text()();
+  TextColumn get name => text()();
+  TextColumn get address => text().nullable()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Shop-level settings (branch-level not used yet). Keyed by (shopId, key).
+@DataClassName('SettingRow')
+class LocalShopSettings extends Table {
+  TextColumn get shopId => text()();
+  TextColumn get key => text()();
+  TextColumn get value => text()(); // raw json-encoded value, as stored remotely
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {shopId, key};
+}
+
+@DataClassName('PaymentMethodRow')
+class LocalPaymentMethods extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get code => text()();
+  BoolColumn get isActive => boolean().withDefault(const Constant(true))();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DataClassName('ProductCategoryRow')
+class LocalProductCategories extends Table {
+  TextColumn get id => text()();
+  TextColumn get shopId => text()();
+  TextColumn get name => text()();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+@DataClassName('MeasurementUnitRow')
+class LocalMeasurementUnits extends Table {
+  TextColumn get id => text()();
+  TextColumn get name => text()();
+  TextColumn get abbreviation => text()();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Shop members' display names (for "Sold by" on sales). Downloaded only.
+@DataClassName('ProfileRow')
+class LocalProfiles extends Table {
+  TextColumn get id => text()();
+  TextColumn get fullName => text().nullable()();
+  TextColumn get phone => text().nullable()();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Recorded credit payments (the dispute audit trail), downloaded for offline
+/// display of payment history. Payment *recording* still goes through Supabase.
+@DataClassName('CreditPaymentRow')
+class LocalCreditPayments extends Table {
+  TextColumn get id => text()();
+  TextColumn get saleId => text()();
+  TextColumn get customerId => text().nullable()();
+  TextColumn get amount => text().map(const _Dec())();
+  TextColumn get method => text()();
+  TextColumn get notes => text().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 // ─── Database ─────────────────────────────────────────────────────────────────
 
 @DriftDatabase(tables: [
@@ -157,12 +260,20 @@ class LocalExpenses extends Table {
   LocalCustomers,
   LocalExpenses,
   LocalInventoryAdjustments,
+  LocalShops,
+  LocalBranches,
+  LocalShopSettings,
+  LocalPaymentMethods,
+  LocalProductCategories,
+  LocalMeasurementUnits,
+  LocalProfiles,
+  LocalCreditPayments,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -175,6 +286,18 @@ class AppDatabase extends _$AppDatabase {
           // v3 -> v4: credit settlement state on the local sales mirror.
           if (from < 4) {
             await m.addColumn(localSales, localSales.creditSettledAt);
+          }
+          // v4 -> v5: offline-first read caches (shop/branches/settings/payment
+          // methods/categories/units/profiles/credit payments).
+          if (from < 5) {
+            await m.createTable(localShops);
+            await m.createTable(localBranches);
+            await m.createTable(localShopSettings);
+            await m.createTable(localPaymentMethods);
+            await m.createTable(localProductCategories);
+            await m.createTable(localMeasurementUnits);
+            await m.createTable(localProfiles);
+            await m.createTable(localCreditPayments);
           }
         },
       );
@@ -401,4 +524,87 @@ class AppDatabase extends _$AppDatabase {
   Future<void> markInventoryAdjustmentSynced(String id) =>
       (update(localInventoryAdjustments)..where((t) => t.id.equals(id)))
           .write(const LocalInventoryAdjustmentsCompanion(isSynced: Value(true)));
+
+  // ── Shop / branches (download-sync read caches) ──────────────────────────────
+
+  Future<void> upsertShop(LocalShopsCompanion row) =>
+      into(localShops).insertOnConflictUpdate(row);
+
+  Future<ShopRow?> getShopById(String id) =>
+      (select(localShops)..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  Future<ShopRow?> getAnyShop() => (select(localShops)).getSingleOrNull();
+
+  Future<void> upsertBranches(List<LocalBranchesCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localBranches, rows));
+
+  Future<List<BranchRow>> getBranchesByShop(String shopId) =>
+      (select(localBranches)
+            ..where((t) => t.shopId.equals(shopId) & t.isActive.equals(true)))
+          .get();
+
+  // ── Shop settings ────────────────────────────────────────────────────────────
+
+  Future<void> upsertSettings(List<LocalShopSettingsCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localShopSettings, rows));
+
+  Future<List<SettingRow>> getSettings(String shopId) =>
+      (select(localShopSettings)..where((t) => t.shopId.equals(shopId))).get();
+
+  // ── Payment methods ──────────────────────────────────────────────────────────
+
+  Future<void> upsertPaymentMethods(List<LocalPaymentMethodsCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localPaymentMethods, rows));
+
+  Future<List<PaymentMethodRow>> getPaymentMethods() =>
+      (select(localPaymentMethods)..where((t) => t.isActive.equals(true))).get();
+
+  // ── Product categories ───────────────────────────────────────────────────────
+
+  Future<void> upsertCategories(List<LocalProductCategoriesCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localProductCategories, rows));
+
+  Future<List<ProductCategoryRow>> getCategories(String shopId) =>
+      (select(localProductCategories)..where((t) => t.shopId.equals(shopId)))
+          .get();
+
+  // ── Measurement units ────────────────────────────────────────────────────────
+
+  Future<void> upsertUnits(List<LocalMeasurementUnitsCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localMeasurementUnits, rows));
+
+  Future<List<MeasurementUnitRow>> getUnits() =>
+      (select(localMeasurementUnits)).get();
+
+  // ── Profiles (cashier names) ─────────────────────────────────────────────────
+
+  Future<void> upsertProfiles(List<LocalProfilesCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localProfiles, rows));
+
+  Future<List<ProfileRow>> getProfiles() => (select(localProfiles)).get();
+
+  // ── Credit payments (offline payment history) ────────────────────────────────
+
+  Future<void> upsertCreditPayments(List<LocalCreditPaymentsCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localCreditPayments, rows));
+
+  Future<List<CreditPaymentRow>> getCreditPaymentsForSale(String saleId) =>
+      (select(localCreditPayments)
+            ..where((t) => t.saleId.equals(saleId))
+            ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+          .get();
+
+  /// Sum of recorded payments per sale, across the given sale ids — used to
+  /// compute remaining balances offline.
+  Future<Map<String, Decimal>> getPaidBySale(List<String> saleIds) async {
+    if (saleIds.isEmpty) return {};
+    final rows = await (select(localCreditPayments)
+          ..where((t) => t.saleId.isIn(saleIds)))
+        .get();
+    final map = <String, Decimal>{};
+    for (final r in rows) {
+      map[r.saleId] = (map[r.saleId] ?? Decimal.zero) + r.amount;
+    }
+    return map;
+  }
 }

@@ -1,51 +1,87 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../data/local/database_provider.dart';
 import '../../../../domain/models/shop.dart';
 import 'auth_provider.dart';
 
-/// Fetches the shop owned by (or associated with) the current user.
-/// Returns null if the user has no shop yet → triggers onboarding.
+/// The shop owned by (or associated with) the current user.
+///
+/// Online-resilient: tries Supabase first, and on any network failure falls
+/// back to the locally-cached shop (seeded by SeedService) so the app keeps
+/// working offline. Returns null only when there's no shop anywhere → onboarding.
 final currentShopProvider = FutureProvider<Shop?>((ref) async {
   final userId = ref.watch(currentUserIdProvider);
   if (userId == null) return null;
 
   final client = ref.read(supabaseClientProvider);
+  final db = ref.read(appDatabaseProvider);
 
-  // Try owned shop first
-  final ownedData = await client
-      .from('shops')
-      .select('id, name, config, created_at')
-      .eq('owner_id', userId)
-      .maybeSingle();
+  try {
+    // Try owned shop first
+    final ownedData = await client
+        .from('shops')
+        .select('id, name, config, created_at')
+        .eq('owner_id', userId)
+        .maybeSingle();
 
-  if (ownedData != null) return Shop.fromJson(ownedData);
+    if (ownedData != null) return Shop.fromJson(ownedData);
 
-  // Fall back to staff membership — join to shops via FK
-  final memberData = await client
-      .from('shop_users')
-      .select('shops(id, name, config, created_at)')
-      .eq('user_id', userId)
-      .neq('status', 'suspended')
-      .maybeSingle();
+    // Fall back to staff membership — join to shops via FK
+    final memberData = await client
+        .from('shop_users')
+        .select('shops(id, name, config, created_at)')
+        .eq('user_id', userId)
+        .neq('status', 'suspended')
+        .maybeSingle();
 
-  if (memberData == null) return null;
-  final shopJson = memberData['shops'] as Map<String, dynamic>?;
-  if (shopJson == null) return null;
-  return Shop.fromJson(shopJson);
+    if (memberData != null) {
+      final shopJson = memberData['shops'] as Map<String, dynamic>?;
+      if (shopJson != null) return Shop.fromJson(shopJson);
+    }
+    // Reached the server and it says "no shop" — trust that (onboarding).
+    return null;
+  } catch (_) {
+    // Offline / transient: use the last-synced shop from the local cache.
+    if (db == null) return null;
+    final row = await db.getAnyShop();
+    if (row == null) return null;
+    return Shop(
+      id: row.id,
+      name: row.name,
+      config: const {},
+      createdAt: row.createdAt,
+    );
+  }
 });
 
-/// Fetches the branches for the current shop.
+/// The branches for the current shop. Online-resilient (local fallback).
 final currentShopBranchesProvider = FutureProvider<List<Branch>>((ref) async {
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
 
   final client = ref.read(supabaseClientProvider);
-  final data = await client
-      .from('branches')
-      .select('id, shop_id, name, address, is_active, created_at')
-      .eq('shop_id', shop.id)
-      .eq('is_active', true);
+  final db = ref.read(appDatabaseProvider);
 
-  return (data as List).map((e) => Branch.fromJson(e)).toList();
+  try {
+    final data = await client
+        .from('branches')
+        .select('id, shop_id, name, address, is_active, created_at')
+        .eq('shop_id', shop.id)
+        .eq('is_active', true);
+    return (data as List).map((e) => Branch.fromJson(e)).toList();
+  } catch (_) {
+    if (db == null) return [];
+    final rows = await db.getBranchesByShop(shop.id);
+    return rows
+        .map((r) => Branch(
+              id: r.id,
+              shopId: r.shopId,
+              name: r.name,
+              address: r.address,
+              isActive: r.isActive,
+              createdAt: r.createdAt,
+            ))
+        .toList();
+  }
 });
 
 /// The active branch for this session (first branch by default).

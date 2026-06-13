@@ -1,10 +1,21 @@
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../data/local/database_provider.dart';
+import '../../data/local/seed_service.dart';
 import '../../domain/interfaces/sync_service_interface.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
+import '../../features/auth/presentation/providers/shop_provider.dart';
+import '../../features/inventory/data/inventory_remote.dart';
 import 'sync_scheduler.dart';
 import 'sync_service.dart';
+
+/// The download/pull engine: refreshes the local read-caches from Supabase.
+final seedServiceProvider = Provider<SeedService?>((ref) {
+  final db = ref.read(appDatabaseProvider);
+  if (db == null) return null; // web — no local DB
+  final client = ref.read(supabaseClientProvider);
+  return SeedService(client, InventoryRemote(client), db);
+});
 
 /// Shared connectivity handle (one per app).
 final connectivityProvider = Provider<Connectivity>((ref) => Connectivity());
@@ -37,6 +48,18 @@ final syncSchedulerProvider = Provider<SyncScheduler>((ref) {
   final scheduler = SyncScheduler(
     ref.read(syncServiceProvider),
     ref.read(connectivityProvider),
+    // Pull half: after each push, download server state into the local caches
+    // so other devices' changes appear (resolves shop+branch each run).
+    onPull: () async {
+      final seed = ref.read(seedServiceProvider);
+      if (seed == null) return;
+      final shop = await ref.read(currentShopProvider.future);
+      if (shop == null) return;
+      final branches = await ref.read(currentShopBranchesProvider.future);
+      if (branches.isEmpty) return;
+      final branch = ref.read(activeBranchProvider) ?? branches.first;
+      await seed.seedAll(shopId: shop.id, branchId: branch.id);
+    },
   );
   scheduler.start();
 
