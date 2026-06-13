@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../domain/models/shop.dart';
@@ -44,10 +46,15 @@ final currentShopProvider = FutureProvider<Shop?>((ref) async {
     if (db == null) return null;
     final row = await db.getAnyShop();
     if (row == null) return null;
+    Map<String, dynamic> config = const {};
+    try {
+      final decoded = jsonDecode(row.config);
+      if (decoded is Map<String, dynamic>) config = decoded;
+    } catch (_) {/* keep empty on malformed cache */}
     return Shop(
       id: row.id,
       name: row.name,
-      config: const {},
+      config: config,
       createdAt: row.createdAt,
     );
   }

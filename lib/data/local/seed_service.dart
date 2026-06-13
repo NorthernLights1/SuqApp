@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -23,12 +25,15 @@ class SeedService {
   final InventoryRemote _inventoryRemote;
   final AppDatabase _db;
 
-  DateTime get _now => DateTime.now();
+  /// One timestamp shared by every row in a single pull (set at the start of
+  /// [seedAll]) so a pull is stamped atomically.
+  DateTime _now = DateTime.now();
 
   Future<void> seedAll({
     required String shopId,
     required String branchId,
   }) async {
+    _now = DateTime.now();
     // Independent pulls run together; each catches its own errors so one
     // failure (or being offline) doesn't abort the rest.
     await Future.wait([
@@ -64,7 +69,9 @@ class SeedService {
       await _db.upsertShop(LocalShopsCompanion(
         id: Value(shop['id'] as String),
         name: Value(shop['name'] as String),
-        config: Value((shop['config'] ?? {}).toString()),
+        // jsonEncode so the (possibly nested) config round-trips; Map.toString
+        // is not valid JSON and can't be parsed back.
+        config: Value(jsonEncode(shop['config'] ?? {})),
         createdAt: Value(DateTime.parse(shop['created_at'] as String)),
         syncedAt: Value(_now),
       ));
@@ -98,7 +105,10 @@ class SeedService {
         .map((s) => LocalShopSettingsCompanion(
               shopId: Value(shopId),
               key: Value(s['key'] as String),
-              value: Value((s['value'] ?? '').toString()),
+              // Store the JSON-encoded value so strings/numbers/bools/objects
+              // round-trip to exactly what PostgREST returns for this jsonb
+              // column (the local settings reader jsonDecodes it).
+              value: Value(jsonEncode(s['value'])),
               syncedAt: Value(_now),
             ))
         .toList());

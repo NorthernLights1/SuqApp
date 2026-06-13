@@ -533,7 +533,8 @@ class AppDatabase extends _$AppDatabase {
   Future<ShopRow?> getShopById(String id) =>
       (select(localShops)..where((t) => t.id.equals(id))).getSingleOrNull();
 
-  Future<ShopRow?> getAnyShop() => (select(localShops)).getSingleOrNull();
+  Future<ShopRow?> getAnyShop() =>
+      (select(localShops)..limit(1)).getSingleOrNull();
 
   Future<void> upsertBranches(List<LocalBranchesCompanion> rows) =>
       batch((b) => b.insertAllOnConflictUpdate(localBranches, rows));
