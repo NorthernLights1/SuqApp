@@ -2,6 +2,22 @@
 
 ---
 
+## Decision: Offline-first — local DB is the read source; Supabase is sync only
+Date: 2026-06-12 | Status: Active (branch `offline-first`, in progress)
+
+The app must be fully usable with no internet; Supabase exists only for
+multi-device sync. Every read screen reads the local Drift DB, and sync both
+pushes local writes AND pulls server state down (was push-only).
+- Pull cadence stays the existing 15-min backstop + reconnect/resume/cold-start
+  triggers. NO Supabase Realtime (Temesgen: keep Supabase idle). Offline reads
+  are "as of last sync" — a manager won't see another cashier's unsynced sales
+  until reconnect (accepted).
+- Conflict policy (two offline phones oversell same stock): both sales kept,
+  stock may go negative; detect on sync → email the owner → in-app resolution
+  screen explaining what happened (best-practice, edge case). [Phase 3]
+
+---
+
 ## Decision: Staff invites use an email CODE, not a magic link
 Date: 2026-06-09 | Status: Active
 

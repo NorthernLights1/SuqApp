@@ -4,6 +4,22 @@ Last updated: 2026-06-12 (session 17)
 
 ---
 
+## Offline-first (branch `offline-first`, in progress)
+
+- [x] **Phase 1** — local Drift schema v5 (shop/branches/settings/payment
+  methods/categories/units/profiles/credit_payments) + download/pull sync in
+  SeedService + SyncScheduler push-then-pull on triggers + local-first
+  shop/branch providers. (commits 54f5495, 77f4f46)
+- [ ] **Phase 2** — point every read screen at the local DB: Customers,
+  Expenses, Reports, Credits, Settings, Today's Summary. (sales detail/list +
+  payment history offline; settings reader jsonDecodes cached values.)
+- [ ] **Phase 3** — conflict detection (negative stock on sync) + owner email +
+  in-app resolution screen. Q2 decision: keep both sales, owner resolves.
+- [ ] Verify offline boot + every screen loads offline; keep 15-min pull.
+- [x] Q1 — overdue email = all unpaid credits regardless of age (fn v6).
+
+---
+
 ## Session 17 follow-ups
 
 - [ ] **`security` branch — merge when ready.** Published, NOT merged. Trial
