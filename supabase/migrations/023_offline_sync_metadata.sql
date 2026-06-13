@@ -76,14 +76,16 @@ begin
       'alter table public.%I add column if not exists deleted_at timestamptz', t);
 
     -- Server-authoritative updated_at on INSERT and UPDATE.
+    -- All identifiers (trigger name + table) quoted via %I.
     execute format(
-      'create or replace trigger trg_%1$s_set_updated_at
-         before insert or update on public.%1$I
-         for each row execute function public.set_updated_at()', t);
+      'create or replace trigger %I before insert or update on public.%I '
+      'for each row execute function public.set_updated_at()',
+      'trg_' || t || '_set_updated_at', t);
 
     -- Delta-pull index: "rows changed since cursor".
     execute format(
-      'create index if not exists idx_%1$s_updated_at on public.%1$I (updated_at)', t);
+      'create index if not exists %I on public.%I (updated_at)',
+      'idx_' || t || '_updated_at', t);
   end loop;
 end;
 $$;

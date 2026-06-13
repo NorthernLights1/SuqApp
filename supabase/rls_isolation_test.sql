@@ -66,10 +66,22 @@ begin
   select count(*) into leaked from public.shop_settings       where shop_id = shop_a;
   if leaked > 0 then raise exception 'LEAK: shop_settings (% rows)', leaked; end if;
 
+  select count(*) into leaked from public.branches            where shop_id = shop_a;
+  if leaked > 0 then raise exception 'LEAK: branches (% rows)', leaked; end if;
+
   -- Branch-scoped tables (joined back to shop A via branch)
   select count(*) into leaked from public.sales s
     join public.branches b on b.id = s.branch_id where b.shop_id = shop_a;
   if leaked > 0 then raise exception 'LEAK: sales (% rows)', leaked; end if;
+
+  select count(*) into leaked from public.inventory_adjustments ia
+    join public.branches b on b.id = ia.branch_id where b.shop_id = shop_a;
+  if leaked > 0 then raise exception 'LEAK: inventory_adjustments (% rows)', leaked; end if;
+
+  select count(*) into leaked from public.sale_items si
+    join public.sales s on s.id = si.sale_id
+    join public.branches b on b.id = s.branch_id where b.shop_id = shop_a;
+  if leaked > 0 then raise exception 'LEAK: sale_items (% rows)', leaked; end if;
 
   select count(*) into leaked from public.inventory i
     join public.branches b on b.id = i.branch_id where b.shop_id = shop_a;

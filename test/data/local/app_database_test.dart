@@ -364,7 +364,8 @@ void main() {
       expect(pending.length, 2);
     });
 
-    test('getTodayTotals excludes voided sales', () async {
+    test('getTodayTotals excludes voided sales from revenue but still counts them',
+        () async {
       // Completed sale
       await db.insertSaleWithItems(
         LocalSalesCompanion(
@@ -382,7 +383,8 @@ void main() {
         ),
         [],
       );
-      // Voided sale — should not count
+      // Voided sale — excluded from revenue, but a voided sale still happened
+      // so it stays in the day's transaction tally (see getTodayTotals).
       await db.insertSaleWithItems(
         LocalSalesCompanion(
           id: const Value('s-voided'),
@@ -400,8 +402,8 @@ void main() {
         [],
       );
       final totals = await db.getTodayTotals('b-1', DateTime.now());
-      expect(totals['total'], Decimal.parse('100'));
-      expect(totals['count'], Decimal.parse('1'));
+      expect(totals['total'], Decimal.parse('100')); // revenue excludes voided
+      expect(totals['count'], Decimal.parse('2')); // tally keeps voided
     });
   });
 }
