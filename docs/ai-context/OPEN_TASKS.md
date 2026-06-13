@@ -16,9 +16,17 @@ Last updated: 2026-06-12 (session 17)
   Settings. (commits 512bde8, 5e69eb9, 6509744)
   - Remaining polish: Sales tab offline list doesn't yet show customer/cashier
     names (Reports drill-down does).
-- [ ] **Phase 3** (in progress) — conflict detection (negative stock on sync) +
-  owner email + in-app resolution screen. Q2 decision: keep both sales, owner
-  resolves.
+- [x] **Phase 3** — oversell conflict system. Migration 021: `stock_conflicts`
+  table + `detect_stock_conflict` trigger (records a conflict when inventory
+  goes negative) + owner-only resolve RLS. Migration 022: product_id index.
+  cron-notifications v3 adds a STOCK CONFLICTS digest section. App:
+  conflicts_provider (stockConflictsProvider + ResolveConflictNotifier with a
+  conditional-claim guard against concurrent resolves), StockConflictsScreen,
+  owner-only dashboard banner (gated on owner-exclusive `settings.manage`),
+  `/stock-conflicts` route. (commits baa2055, f9d4d09, aa92b11)
+- [ ] **Verify offline end-to-end** on device: build APK from `offline-first`,
+  confirm every screen loads offline, and force a two-device oversell conflict.
+- [ ] Then merge `offline-first` -> `main`.
 - [ ] Verify offline boot + every screen loads offline; keep 15-min pull.
 - [x] Q1 — overdue email = all unpaid credits regardless of age (fn v6).
 

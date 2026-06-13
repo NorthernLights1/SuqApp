@@ -49,7 +49,7 @@ Push: `git push origin <branch>`
 | Session 15 — Auto-sync triggers, per-credit partial settlement + payment history (mig 017/018), add-stock fields | ✅ Done |
 | Session 16 — GitHub Actions APK build, APK debug-build fixes (env secrets, INTERNET perm), security branch (licensing) | ✅ Done |
 | Session 17 — Test-feedback batch (12 items): server-first sales reads, cashier name, reports RBAC + drill-downs, offline boot, inventory refresh, honest overdue-email, email-all recipients (fn v5) | ✅ Done (merged to main) |
-| Session 18 — Licensing merged to main; overdue-email = all unpaid (fn v6); offline-first Phase 1 (local schema v5, download/pull sync, local-first shop/branch) | 🚧 In progress (branch `offline-first`) |
+| Session 18 — Licensing merged to main; overdue-email = all unpaid (fn v6); offline-first Phases 1–3 (download/pull sync, all reads local-first, oversell conflict detection+resolution+email) | 🚧 Built, pending on-device verify + merge (branch `offline-first`) |
 | Session 15 — Code review: 9 findings fixed (atomic upsert, CHECK constraint, false-success snackbar, unsafe cast, INotificationService wiring, Telegram flag, stale controllers, regex, raw error) | ✅ Done |
 | Session 16 — service_role grant fix, UTC date fix, code-based staff invite, profiles shopmate read, scheduled 9am/9pm notifications (low-stock + overdue) | ✅ Done |
 
