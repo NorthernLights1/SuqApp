@@ -7,6 +7,24 @@ enum SaleStatus { completed, voided, refunded }
 
 enum InventoryStatus { tracked, untracked, flagged }
 
+/// Tolerant enum parsing for values read from the local cache / server: an
+/// unexpected string falls back to a sane default instead of throwing.
+SaleStatus saleStatusFromName(String s) {
+  try {
+    return SaleStatus.values.byName(s);
+  } catch (_) {
+    return SaleStatus.completed;
+  }
+}
+
+InventoryStatus inventoryStatusFromName(String s) {
+  try {
+    return InventoryStatus.values.byName(s);
+  } catch (_) {
+    return InventoryStatus.untracked;
+  }
+}
+
 enum DiscountType { percentage, fixed }
 
 // ─── Sale ───────────────────────────────────────────────────────────────────

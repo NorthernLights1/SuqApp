@@ -146,22 +146,6 @@ final reportSalesProvider = FutureProvider<List<Sale>>((ref) async {
   }
 });
 
-SaleStatus _safeSaleStatus(String s) {
-  try {
-    return SaleStatus.values.byName(s);
-  } catch (_) {
-    return SaleStatus.completed;
-  }
-}
-
-InventoryStatus _safeInventoryStatus(String s) {
-  try {
-    return InventoryStatus.values.byName(s);
-  } catch (_) {
-    return InventoryStatus.untracked;
-  }
-}
-
 Future<List<Sale>> _localReportSales(
   AppDatabase db,
   String? shopId,
@@ -208,7 +192,7 @@ Future<List<Sale>> _localReportSales(
       subtotal: r.subtotal,
       discountAmount: r.discountAmount,
       total: r.total,
-      status: _safeSaleStatus(r.status),
+      status: saleStatusFromName(r.status),
       voidReason: r.voidReason,
       voidedBy: r.voidedBy,
       voidedAt: r.voidedAt,
@@ -227,7 +211,7 @@ Future<List<Sale>> _localReportSales(
                 unitPrice: i.unitPrice,
                 discountAmount: i.discountAmount,
                 total: i.total,
-                inventoryStatus: _safeInventoryStatus(i.inventoryStatus),
+                inventoryStatus: inventoryStatusFromName(i.inventoryStatus),
               ))
           .toList(),
     ));

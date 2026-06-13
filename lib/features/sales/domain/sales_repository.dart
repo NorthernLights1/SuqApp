@@ -344,7 +344,7 @@ class SalesRepository implements ISalesRepository {
         subtotal: r.subtotal,
         discountAmount: r.discountAmount,
         total: r.total,
-        status: _safeSaleStatus(r.status),
+        status: saleStatusFromName(r.status),
         voidReason: r.voidReason,
         voidedBy: r.voidedBy,
         voidedAt: r.voidedAt,
@@ -354,22 +354,6 @@ class SalesRepository implements ISalesRepository {
         creditSettledAt: r.creditSettledAt,
         items: items.map(_saleItemFromRow).toList(),
       );
-
-  static SaleStatus _safeSaleStatus(String s) {
-    try {
-      return SaleStatus.values.byName(s);
-    } catch (_) {
-      return SaleStatus.completed;
-    }
-  }
-
-  static InventoryStatus _safeInventoryStatus(String s) {
-    try {
-      return InventoryStatus.values.byName(s);
-    } catch (_) {
-      return InventoryStatus.untracked;
-    }
-  }
 
   SaleItem _saleItemFromRow(SaleItemRow r) => SaleItem(
         id: r.id,
@@ -381,6 +365,6 @@ class SalesRepository implements ISalesRepository {
         unitPrice: r.unitPrice,
         discountAmount: r.discountAmount,
         total: r.total,
-        inventoryStatus: _safeInventoryStatus(r.inventoryStatus),
+        inventoryStatus: inventoryStatusFromName(r.inventoryStatus),
       );
 }

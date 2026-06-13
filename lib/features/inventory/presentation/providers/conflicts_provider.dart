@@ -76,7 +76,25 @@ class ResolveConflictNotifier extends AsyncNotifier<void> {
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      // 1) Correct the stock to the owner-confirmed count (absolute 'manual'
+      // 1) Claim the conflict by closing it *only if still open*. If another
+      //    owner/device resolved it first, this updates 0 rows and we stop
+      //    before correcting stock again (prevents a double correction).
+      final claimed = await client
+          .from('stock_conflicts')
+          .update({
+            'resolved_at': DateTime.now().toIso8601String(),
+            'resolved_by': userId,
+            if (note != null && note.isNotEmpty) 'resolution_note': note,
+          })
+          .eq('id', conflict.id)
+          .isFilter('resolved_at', null)
+          .select('id');
+      if ((claimed as List).isEmpty) {
+        ref.invalidate(stockConflictsProvider);
+        return; // already resolved elsewhere — nothing to correct.
+      }
+
+      // 2) Correct the stock to the owner-confirmed count (absolute 'manual'
       //    adjustment, which also pushes through the normal inventory path).
       await ref.read(inventoryRepositoryProvider).correctStock(
             branchId: conflict.branchId,
@@ -88,12 +106,6 @@ class ResolveConflictNotifier extends AsyncNotifier<void> {
                 ? 'Oversell resolved: $note'
                 : 'Oversell conflict resolved',
           );
-      // 2) Close the conflict.
-      await client.from('stock_conflicts').update({
-        'resolved_at': DateTime.now().toIso8601String(),
-        'resolved_by': userId,
-        if (note != null && note.isNotEmpty) 'resolution_note': note,
-      }).eq('id', conflict.id);
 
       ref.invalidate(stockConflictsProvider);
       ref.invalidate(stockLevelsProvider);
