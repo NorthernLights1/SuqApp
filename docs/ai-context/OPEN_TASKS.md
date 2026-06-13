@@ -61,17 +61,25 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
 - Pull is full `seedAll` re-download → make delta.
 
 **Phase A — Schema & boundary foundation (the non-negotiables)**
-- [x] Migration `023_offline_sync_metadata.sql` written: adds `updated_at` +
+- [x] Migration `023_offline_sync_metadata.sql`: adds `updated_at` +
   `deleted_at` to all 16 replica tables, a server-set `set_updated_at()` trigger
   (fires on INSERT *and* UPDATE — offline-created rows get server receive-time so
   delta pull can't miss them), and a per-table `updated_at` index. Admin tables
-  excluded. **MANUAL STEP: apply via Supabase SQL editor (not yet applied).**
+  excluded. **APPLIED LIVE 2026-06-14 via Supabase MCP (apply_migration); verified
+  all 16 tables have the columns/trigger/index.**
 - [x] RLS audit done (read all CREATE-TABLE migrations): all 16 replica tables
   already have shop-scoped RLS via `is_shop_member` / `shop_id_from_branch`. No
   gaps found in code. System rows (`shop_id IS NULL` units/payment methods/expense
   cats) and same-shop profile names are intended shared data, not leaks.
-  - [ ] **MANUAL STEP: run `supabase/rls_isolation_test.sql`** (Part 1 coverage +
-    Part 2 cross-shop isolation with two real accounts) to verify live.
+  - [x] Part 1 (coverage) run live via MCP: zero replica tables without RLS. ✅
+  - [ ] **MANUAL STEP (Temesgen): run Part 2 of `supabase/rls_isolation_test.sql`**
+    — cross-shop isolation with two real accounts from different shops (needs a
+    real authenticated session; MCP runs as postgres and bypasses RLS).
+  - Security advisor (post-migration) flagged only PRE-EXISTING items, none from
+    023: `detect_stock_conflict()` (trigger fn, SECURITY DEFINER) is RPC-exposed
+    to anon/authenticated → revoke EXECUTE in Phase D DEFINER audit; leaked-password
+    protection still off (already-tracked manual step); pg_net in public schema.
+    My `set_updated_at()` is NOT security-definer and was not flagged.
 - [x] UUID + idempotency confirmed already satisfied: writes use client-side
   `Uuid().v4()`; push is idempotent (select-before-insert). Converting to a single
   `upsert(onConflict:'id')` is folded into Phase B batching (removes the extra
