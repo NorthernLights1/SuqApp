@@ -139,13 +139,29 @@ final customersProvider = FutureProvider<List<Customer>>((ref) async {
 final customerSalesProvider =
     FutureProvider.family<List<Map<String, dynamic>>, String>((ref, customerId) async {
   final client = ref.read(supabaseClientProvider);
-  final data = await client
-      .from('sales')
-      .select('id, total, status, created_at, is_credit, credit_settled_at')
-      .eq('customer_id', customerId)
-      .order('created_at', ascending: false)
-      .limit(20);
-  return (data as List).cast<Map<String, dynamic>>();
+  try {
+    final data = await client
+        .from('sales')
+        .select('id, total, status, created_at, is_credit, credit_settled_at')
+        .eq('customer_id', customerId)
+        .order('created_at', ascending: false)
+        .limit(20);
+    return (data as List).cast<Map<String, dynamic>>();
+  } catch (_) {
+    final db = ref.read(appDatabaseProvider);
+    if (db == null) return [];
+    final rows = await db.getSalesByCustomer(customerId);
+    return rows
+        .map((r) => <String, dynamic>{
+              'id': r.id,
+              'total': r.total.toString(),
+              'status': r.status,
+              'created_at': r.createdAt.toIso8601String(),
+              'is_credit': r.isCredit,
+              'credit_settled_at': r.creditSettledAt?.toIso8601String(),
+            })
+        .toList();
+  }
 });
 
 // Unsettled credit sales for a customer — no date filter; only disappear when
@@ -153,15 +169,33 @@ final customerSalesProvider =
 final customerCreditSalesProvider =
     FutureProvider.family<List<CreditSale>, String>((ref, customerId) async {
   final client = ref.read(supabaseClientProvider);
-  final data = await client
-      .from('sales')
-      .select('id, total, created_at, credit_payments(amount)')
-      .eq('customer_id', customerId)
-      .eq('is_credit', true)
-      .eq('status', 'completed')
-      .filter('credit_settled_at', 'is', null)
-      .order('created_at', ascending: false);
-  return (data as List).map((e) => CreditSale.fromJson(e)).toList();
+  try {
+    final data = await client
+        .from('sales')
+        .select('id, total, created_at, credit_payments(amount)')
+        .eq('customer_id', customerId)
+        .eq('is_credit', true)
+        .eq('status', 'completed')
+        .filter('credit_settled_at', 'is', null)
+        .order('created_at', ascending: false);
+    return (data as List).map((e) => CreditSale.fromJson(e)).toList();
+  } catch (_) {
+    // Offline: read the unsettled credits + payments from the local cache.
+    final db = ref.read(appDatabaseProvider);
+    if (db == null) return [];
+    final rows = (await db.getUnsettledCreditSales())
+        .where((r) => r.customerId == customerId)
+        .toList();
+    final paid = await db.getPaidBySale(rows.map((r) => r.id).toList());
+    return rows
+        .map((r) => CreditSale(
+              id: r.id,
+              total: r.total,
+              paid: paid[r.id] ?? Decimal.zero,
+              createdAt: r.createdAt,
+            ))
+        .toList();
+  }
 });
 
 // All unsettled credit sales across every customer for the current shop.
@@ -170,19 +204,42 @@ final outstandingCreditProvider =
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
   final client = ref.read(supabaseClientProvider);
-  final data = await client
-      .from('sales')
-      .select(
-          'id, total, created_at, customer_id, customers(id, name), credit_payments(amount)')
-      .eq('is_credit', true)
-      .eq('status', 'completed')
-      .filter('credit_settled_at', 'is', null)
-      .not('customer_id', 'is', null)
-      .order('created_at', ascending: false);
-  return (data as List)
-      .where((e) => (e as Map<String, dynamic>)['customers'] != null)
-      .map((e) => CreditSaleWithCustomer.fromJson(e as Map<String, dynamic>))
-      .toList();
+  try {
+    final data = await client
+        .from('sales')
+        .select(
+            'id, total, created_at, customer_id, customers(id, name), credit_payments(amount)')
+        .eq('is_credit', true)
+        .eq('status', 'completed')
+        .filter('credit_settled_at', 'is', null)
+        .not('customer_id', 'is', null)
+        .order('created_at', ascending: false);
+    return (data as List)
+        .where((e) => (e as Map<String, dynamic>)['customers'] != null)
+        .map((e) => CreditSaleWithCustomer.fromJson(e as Map<String, dynamic>))
+        .toList();
+  } catch (_) {
+    // Offline: assemble from the local cache (sales + payments + customers).
+    final db = ref.read(appDatabaseProvider);
+    if (db == null) return [];
+    final rows = (await db.getUnsettledCreditSales())
+        .where((r) => r.customerId != null)
+        .toList();
+    final paid = await db.getPaidBySale(rows.map((r) => r.id).toList());
+    final names = {
+      for (final c in await db.getCustomersByShop(shop.id)) c.id: c.name,
+    };
+    return rows
+        .map((r) => CreditSaleWithCustomer(
+              id: r.id,
+              total: r.total,
+              paid: paid[r.id] ?? Decimal.zero,
+              createdAt: r.createdAt,
+              customerId: r.customerId!,
+              customerName: names[r.customerId] ?? 'Unknown',
+            ))
+        .toList();
+  }
 });
 
 // customerId -> total still owed (sum of remaining across their unsettled
@@ -201,14 +258,30 @@ final customerOutstandingMapProvider =
 final creditPaymentsProvider =
     FutureProvider.family<List<CreditPayment>, String>((ref, saleId) async {
   final client = ref.read(supabaseClientProvider);
-  final data = await client
-      .from('credit_payments')
-      .select('id, amount, method, notes, created_at')
-      .eq('sale_id', saleId)
-      .order('created_at', ascending: false);
-  return (data as List)
-      .map((e) => CreditPayment.fromJson(e as Map<String, dynamic>))
-      .toList();
+  try {
+    final data = await client
+        .from('credit_payments')
+        .select('id, amount, method, notes, created_at')
+        .eq('sale_id', saleId)
+        .order('created_at', ascending: false);
+    return (data as List)
+        .map((e) => CreditPayment.fromJson(e as Map<String, dynamic>))
+        .toList();
+  } catch (_) {
+    // Offline: read the downloaded payment history from the local cache.
+    final db = ref.read(appDatabaseProvider);
+    if (db == null) return [];
+    final rows = await db.getCreditPaymentsForSale(saleId);
+    return rows
+        .map((r) => CreditPayment(
+              id: r.id,
+              amount: r.amount,
+              method: r.method,
+              notes: r.notes,
+              createdAt: r.createdAt,
+            ))
+        .toList();
+  }
 });
 
 class CustomerFormNotifier extends AsyncNotifier<void> {

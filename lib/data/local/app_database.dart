@@ -233,6 +233,17 @@ class LocalProfiles extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('ExpenseCategoryRow')
+class LocalExpenseCategories extends Table {
+  TextColumn get id => text()();
+  TextColumn get shopId => text().nullable()();
+  TextColumn get name => text()();
+  DateTimeColumn get syncedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 /// Recorded credit payments (the dispute audit trail), downloaded for offline
 /// display of payment history. Payment *recording* still goes through Supabase.
 @DataClassName('CreditPaymentRow')
@@ -267,13 +278,14 @@ class LocalCreditPayments extends Table {
   LocalProductCategories,
   LocalMeasurementUnits,
   LocalProfiles,
+  LocalExpenseCategories,
   LocalCreditPayments,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -299,6 +311,8 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(localProfiles);
             await m.createTable(localCreditPayments);
           }
+          // v5 -> v6: expense categories read cache.
+          if (from < 6) await m.createTable(localExpenseCategories);
         },
       );
 
@@ -389,6 +403,14 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<SaleItemRow>> getSaleItems(String saleId) =>
       (select(localSaleItems)..where((t) => t.saleId.equals(saleId))).get();
+
+  Future<List<SaleRow>> getSalesByCustomer(String customerId,
+          {int limit = 20}) =>
+      (select(localSales)
+            ..where((t) => t.customerId.equals(customerId))
+            ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
+            ..limit(limit))
+          .get();
 
   Future<List<SaleRow>> getPendingSales() =>
       (select(localSales)..where((t) => t.isSynced.equals(false))).get();
@@ -482,6 +504,10 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> insertExpense(LocalExpensesCompanion row) =>
       into(localExpenses).insert(row);
+
+  /// Upsert a downloaded expense (pull path).
+  Future<void> insertOrReplaceExpense(LocalExpensesCompanion row) =>
+      into(localExpenses).insertOnConflictUpdate(row);
 
   Future<List<ExpenseRow>> getExpensesByBranch(
           String branchId, DateTime day) =>
@@ -584,10 +610,51 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<ProfileRow>> getProfiles() => (select(localProfiles)).get();
 
+  // ── Expense categories ───────────────────────────────────────────────────────
+
+  Future<void> upsertExpenseCategories(
+          List<LocalExpenseCategoriesCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localExpenseCategories, rows));
+
+  Future<List<ExpenseCategoryRow>> getExpenseCategories(String shopId) =>
+      (select(localExpenseCategories)
+            ..where((t) => t.shopId.equals(shopId) | t.shopId.isNull())
+            ..orderBy([(t) => OrderingTerm.asc(t.name)]))
+          .get();
+
+  // ── Downloaded sales (replace a synced sale + its items atomically) ──────────
+
+  /// Upsert a server sale and replace its items. Skips sales that have an
+  /// unsynced local version (those are owned by the push path).
+  Future<void> upsertDownloadedSale(
+    LocalSalesCompanion sale,
+    List<LocalSaleItemsCompanion> items,
+    String saleId,
+  ) =>
+      transaction(() async {
+        await into(localSales).insertOnConflictUpdate(sale);
+        await (delete(localSaleItems)..where((t) => t.saleId.equals(saleId)))
+            .go();
+        for (final item in items) {
+          await into(localSaleItems).insert(item);
+        }
+      });
+
   // ── Credit payments (offline payment history) ────────────────────────────────
 
   Future<void> upsertCreditPayments(List<LocalCreditPaymentsCompanion> rows) =>
       batch((b) => b.insertAllOnConflictUpdate(localCreditPayments, rows));
+
+  /// All unsettled credit sales (completed, not voided, not yet settled) in the
+  /// local DB (single-shop), newest first — drives the offline Credits views.
+  Future<List<SaleRow>> getUnsettledCreditSales() =>
+      (select(localSales)
+            ..where((t) =>
+                t.isCredit.equals(true) &
+                t.status.equals('completed') &
+                t.creditSettledAt.isNull())
+            ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+          .get();
 
   Future<List<CreditPaymentRow>> getCreditPaymentsForSale(String saleId) =>
       (select(localCreditPayments)

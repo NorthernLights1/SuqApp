@@ -31,8 +31,16 @@ class ExpensesRepository implements IExpensesRepository {
   final AppDatabase? _db;
 
   @override
-  Future<List<ExpenseCategory>> getCategories(String shopId) =>
-      _remote.getCategories(shopId);
+  Future<List<ExpenseCategory>> getCategories(String shopId) async {
+    if (_db == null) return _remote.getCategories(shopId);
+    try {
+      return await _remote.getCategories(shopId);
+    } catch (_) {
+      // Offline: serve the downloaded categories so the expense form still works.
+      final rows = await _db.getExpenseCategories(shopId);
+      return rows.map((r) => ExpenseCategory(id: r.id, name: r.name)).toList();
+    }
+  }
 
   @override
   Future<List<Expense>> getExpenses(String branchId, DateTime day) async {

@@ -301,6 +301,13 @@ class SalesRepository implements ISalesRepository {
     if (_db != null) {
       final local = await _db.getTodayTotals(branchId, DateTime.now());
       if (local['count']! > Decimal.zero) return local;
+      // No local sales today: the server may have some from other devices, but
+      // fall back to the (zero) local total when offline instead of throwing.
+      try {
+        return await _remote.getTodayTotals(branchId);
+      } catch (_) {
+        return local;
+      }
     }
     return _remote.getTodayTotals(branchId);
   }

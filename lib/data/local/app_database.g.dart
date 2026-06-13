@@ -6884,6 +6884,315 @@ class LocalProfilesCompanion extends UpdateCompanion<ProfileRow> {
   }
 }
 
+class $LocalExpenseCategoriesTable extends LocalExpenseCategories
+    with TableInfo<$LocalExpenseCategoriesTable, ExpenseCategoryRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalExpenseCategoriesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _shopIdMeta = const VerificationMeta('shopId');
+  @override
+  late final GeneratedColumn<String> shopId = GeneratedColumn<String>(
+    'shop_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+    'name',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+    'synced_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, shopId, name, syncedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_expense_categories';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ExpenseCategoryRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('shop_id')) {
+      context.handle(
+        _shopIdMeta,
+        shopId.isAcceptableOrUnknown(data['shop_id']!, _shopIdMeta),
+      );
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+        _nameMeta,
+        name.isAcceptableOrUnknown(data['name']!, _nameMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ExpenseCategoryRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ExpenseCategoryRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      shopId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}shop_id'],
+      ),
+      name: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}name'],
+      )!,
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}synced_at'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalExpenseCategoriesTable createAlias(String alias) {
+    return $LocalExpenseCategoriesTable(attachedDatabase, alias);
+  }
+}
+
+class ExpenseCategoryRow extends DataClass
+    implements Insertable<ExpenseCategoryRow> {
+  final String id;
+  final String? shopId;
+  final String name;
+  final DateTime syncedAt;
+  const ExpenseCategoryRow({
+    required this.id,
+    this.shopId,
+    required this.name,
+    required this.syncedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    if (!nullToAbsent || shopId != null) {
+      map['shop_id'] = Variable<String>(shopId);
+    }
+    map['name'] = Variable<String>(name);
+    map['synced_at'] = Variable<DateTime>(syncedAt);
+    return map;
+  }
+
+  LocalExpenseCategoriesCompanion toCompanion(bool nullToAbsent) {
+    return LocalExpenseCategoriesCompanion(
+      id: Value(id),
+      shopId: shopId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(shopId),
+      name: Value(name),
+      syncedAt: Value(syncedAt),
+    );
+  }
+
+  factory ExpenseCategoryRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ExpenseCategoryRow(
+      id: serializer.fromJson<String>(json['id']),
+      shopId: serializer.fromJson<String?>(json['shopId']),
+      name: serializer.fromJson<String>(json['name']),
+      syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'shopId': serializer.toJson<String?>(shopId),
+      'name': serializer.toJson<String>(name),
+      'syncedAt': serializer.toJson<DateTime>(syncedAt),
+    };
+  }
+
+  ExpenseCategoryRow copyWith({
+    String? id,
+    Value<String?> shopId = const Value.absent(),
+    String? name,
+    DateTime? syncedAt,
+  }) => ExpenseCategoryRow(
+    id: id ?? this.id,
+    shopId: shopId.present ? shopId.value : this.shopId,
+    name: name ?? this.name,
+    syncedAt: syncedAt ?? this.syncedAt,
+  );
+  ExpenseCategoryRow copyWithCompanion(LocalExpenseCategoriesCompanion data) {
+    return ExpenseCategoryRow(
+      id: data.id.present ? data.id.value : this.id,
+      shopId: data.shopId.present ? data.shopId.value : this.shopId,
+      name: data.name.present ? data.name.value : this.name,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ExpenseCategoryRow(')
+          ..write('id: $id, ')
+          ..write('shopId: $shopId, ')
+          ..write('name: $name, ')
+          ..write('syncedAt: $syncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(id, shopId, name, syncedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ExpenseCategoryRow &&
+          other.id == this.id &&
+          other.shopId == this.shopId &&
+          other.name == this.name &&
+          other.syncedAt == this.syncedAt);
+}
+
+class LocalExpenseCategoriesCompanion
+    extends UpdateCompanion<ExpenseCategoryRow> {
+  final Value<String> id;
+  final Value<String?> shopId;
+  final Value<String> name;
+  final Value<DateTime> syncedAt;
+  final Value<int> rowid;
+  const LocalExpenseCategoriesCompanion({
+    this.id = const Value.absent(),
+    this.shopId = const Value.absent(),
+    this.name = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalExpenseCategoriesCompanion.insert({
+    required String id,
+    this.shopId = const Value.absent(),
+    required String name,
+    required DateTime syncedAt,
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       name = Value(name),
+       syncedAt = Value(syncedAt);
+  static Insertable<ExpenseCategoryRow> custom({
+    Expression<String>? id,
+    Expression<String>? shopId,
+    Expression<String>? name,
+    Expression<DateTime>? syncedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (shopId != null) 'shop_id': shopId,
+      if (name != null) 'name': name,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalExpenseCategoriesCompanion copyWith({
+    Value<String>? id,
+    Value<String?>? shopId,
+    Value<String>? name,
+    Value<DateTime>? syncedAt,
+    Value<int>? rowid,
+  }) {
+    return LocalExpenseCategoriesCompanion(
+      id: id ?? this.id,
+      shopId: shopId ?? this.shopId,
+      name: name ?? this.name,
+      syncedAt: syncedAt ?? this.syncedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (shopId.present) {
+      map['shop_id'] = Variable<String>(shopId.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalExpenseCategoriesCompanion(')
+          ..write('id: $id, ')
+          ..write('shopId: $shopId, ')
+          ..write('name: $name, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $LocalCreditPaymentsTable extends LocalCreditPayments
     with TableInfo<$LocalCreditPaymentsTable, CreditPaymentRow> {
   @override
@@ -7417,6 +7726,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $LocalMeasurementUnitsTable localMeasurementUnits =
       $LocalMeasurementUnitsTable(this);
   late final $LocalProfilesTable localProfiles = $LocalProfilesTable(this);
+  late final $LocalExpenseCategoriesTable localExpenseCategories =
+      $LocalExpenseCategoriesTable(this);
   late final $LocalCreditPaymentsTable localCreditPayments =
       $LocalCreditPaymentsTable(this);
   @override
@@ -7438,6 +7749,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localProductCategories,
     localMeasurementUnits,
     localProfiles,
+    localExpenseCategories,
     localCreditPayments,
   ];
 }
@@ -11047,6 +11359,206 @@ typedef $$LocalProfilesTableProcessedTableManager =
       ProfileRow,
       PrefetchHooks Function()
     >;
+typedef $$LocalExpenseCategoriesTableCreateCompanionBuilder =
+    LocalExpenseCategoriesCompanion Function({
+      required String id,
+      Value<String?> shopId,
+      required String name,
+      required DateTime syncedAt,
+      Value<int> rowid,
+    });
+typedef $$LocalExpenseCategoriesTableUpdateCompanionBuilder =
+    LocalExpenseCategoriesCompanion Function({
+      Value<String> id,
+      Value<String?> shopId,
+      Value<String> name,
+      Value<DateTime> syncedAt,
+      Value<int> rowid,
+    });
+
+class $$LocalExpenseCategoriesTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalExpenseCategoriesTable> {
+  $$LocalExpenseCategoriesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get shopId => $composableBuilder(
+    column: $table.shopId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalExpenseCategoriesTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalExpenseCategoriesTable> {
+  $$LocalExpenseCategoriesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get shopId => $composableBuilder(
+    column: $table.shopId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get name => $composableBuilder(
+    column: $table.name,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalExpenseCategoriesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalExpenseCategoriesTable> {
+  $$LocalExpenseCategoriesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get shopId =>
+      $composableBuilder(column: $table.shopId, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+}
+
+class $$LocalExpenseCategoriesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalExpenseCategoriesTable,
+          ExpenseCategoryRow,
+          $$LocalExpenseCategoriesTableFilterComposer,
+          $$LocalExpenseCategoriesTableOrderingComposer,
+          $$LocalExpenseCategoriesTableAnnotationComposer,
+          $$LocalExpenseCategoriesTableCreateCompanionBuilder,
+          $$LocalExpenseCategoriesTableUpdateCompanionBuilder,
+          (
+            ExpenseCategoryRow,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalExpenseCategoriesTable,
+              ExpenseCategoryRow
+            >,
+          ),
+          ExpenseCategoryRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalExpenseCategoriesTableTableManager(
+    _$AppDatabase db,
+    $LocalExpenseCategoriesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalExpenseCategoriesTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LocalExpenseCategoriesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LocalExpenseCategoriesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String?> shopId = const Value.absent(),
+                Value<String> name = const Value.absent(),
+                Value<DateTime> syncedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalExpenseCategoriesCompanion(
+                id: id,
+                shopId: shopId,
+                name: name,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                Value<String?> shopId = const Value.absent(),
+                required String name,
+                required DateTime syncedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => LocalExpenseCategoriesCompanion.insert(
+                id: id,
+                shopId: shopId,
+                name: name,
+                syncedAt: syncedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalExpenseCategoriesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalExpenseCategoriesTable,
+      ExpenseCategoryRow,
+      $$LocalExpenseCategoriesTableFilterComposer,
+      $$LocalExpenseCategoriesTableOrderingComposer,
+      $$LocalExpenseCategoriesTableAnnotationComposer,
+      $$LocalExpenseCategoriesTableCreateCompanionBuilder,
+      $$LocalExpenseCategoriesTableUpdateCompanionBuilder,
+      (
+        ExpenseCategoryRow,
+        BaseReferences<
+          _$AppDatabase,
+          $LocalExpenseCategoriesTable,
+          ExpenseCategoryRow
+        >,
+      ),
+      ExpenseCategoryRow,
+      PrefetchHooks Function()
+    >;
 typedef $$LocalCreditPaymentsTableCreateCompanionBuilder =
     LocalCreditPaymentsCompanion Function({
       required String id,
@@ -11361,6 +11873,11 @@ class $AppDatabaseManager {
       $$LocalMeasurementUnitsTableTableManager(_db, _db.localMeasurementUnits);
   $$LocalProfilesTableTableManager get localProfiles =>
       $$LocalProfilesTableTableManager(_db, _db.localProfiles);
+  $$LocalExpenseCategoriesTableTableManager get localExpenseCategories =>
+      $$LocalExpenseCategoriesTableTableManager(
+        _db,
+        _db.localExpenseCategories,
+      );
   $$LocalCreditPaymentsTableTableManager get localCreditPayments =>
       $$LocalCreditPaymentsTableTableManager(_db, _db.localCreditPayments);
 }
