@@ -2,6 +2,8 @@ import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../data/local/app_database.dart';
+import '../../../../data/local/database_provider.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
@@ -109,31 +111,114 @@ final reportSalesProvider = FutureProvider<List<Sale>>((ref) async {
   final range = _rangeFor(period, customRange);
   final client = ref.read(supabaseClientProvider);
 
-  final data = await client
-      .from('sales')
-      .select(
-          '*, sale_items(*, products(category_id)), customers(id, name, phone), payment_methods(id, name, code), cashier:profiles!sales_cashier_id_fkey(full_name)')
-      .eq('branch_id', branch.id)
-      .eq('status', 'completed')
-      .gte('created_at', range.start.toUtc().toIso8601String())
-      .lt('created_at', range.end.toUtc().toIso8601String())
-      .order('created_at', ascending: false)
-      // Cap the drill-down list; a shop won't review more than this at once
-      // and it keeps the query bounded for long periods (e.g. Year).
-      .limit(500);
+  try {
+    final data = await client
+        .from('sales')
+        .select(
+            '*, sale_items(*, products(category_id)), customers(id, name, phone), payment_methods(id, name, code), cashier:profiles!sales_cashier_id_fkey(full_name)')
+        .eq('branch_id', branch.id)
+        .eq('status', 'completed')
+        .gte('created_at', range.start.toUtc().toIso8601String())
+        .lt('created_at', range.end.toUtc().toIso8601String())
+        .order('created_at', ascending: false)
+        // Cap the drill-down list; a shop won't review more than this at once
+        // and it keeps the query bounded for long periods (e.g. Year).
+        .limit(500);
 
-  final rows = (data as List).cast<Map<String, dynamic>>();
-  final filtered = categoryFilter == null
-      ? rows
-      : rows.where((row) {
-          final items = (row['sale_items'] as List? ?? []);
-          return items.any((item) =>
-              (item['products'] as Map<String, dynamic>?)?['category_id'] ==
-              categoryFilter);
-        }).toList();
+    final rows = (data as List).cast<Map<String, dynamic>>();
+    final filtered = categoryFilter == null
+        ? rows
+        : rows.where((row) {
+            final items = (row['sale_items'] as List? ?? []);
+            return items.any((item) =>
+                (item['products'] as Map<String, dynamic>?)?['category_id'] ==
+                categoryFilter);
+          }).toList();
 
-  return filtered.map((e) => Sale.fromJson(e)).toList();
+    return filtered.map((e) => Sale.fromJson(e)).toList();
+  } catch (_) {
+    // Offline: build the drill-down list from the local cache, enriching with
+    // local customer/cashier/payment names.
+    final db = ref.read(appDatabaseProvider);
+    if (db == null) rethrow;
+    final shop = await ref.read(currentShopProvider.future);
+    return _localReportSales(db, shop?.id, branch.id, range, categoryFilter);
+  }
 });
+
+Future<List<Sale>> _localReportSales(
+  AppDatabase db,
+  String? shopId,
+  String branchId,
+  ({DateTime start, DateTime end}) range,
+  String? categoryFilter,
+) async {
+  final rows = (await db.getSalesByBranch(branchId, range.start, range.end))
+      .where((r) => r.status == 'completed')
+      .toList();
+  final custNames = {
+    if (shopId != null)
+      for (final c in await db.getCustomersByShop(shopId)) c.id: c,
+  };
+  final cashierNames = {
+    for (final p in await db.getProfiles()) p.id: p.fullName,
+  };
+  final payNames = {
+    for (final m in await db.getPaymentMethods()) m.id: m.name,
+  };
+  final prodCat = <String, String?>{
+    if (shopId != null)
+      for (final p in await db.getProductsByShop(shopId)) p.id: p.categoryId,
+  };
+
+  final result = <Sale>[];
+  for (final r in rows) {
+    final items = await db.getSaleItems(r.id);
+    if (categoryFilter != null &&
+        !items.any((i) => prodCat[i.productId] == categoryFilter)) {
+      continue;
+    }
+    final cust = custNames[r.customerId];
+    result.add(Sale(
+      id: r.id,
+      branchId: r.branchId,
+      customerId: r.customerId,
+      customerName: cust?.name,
+      customerPhone: cust?.phone,
+      cashierId: r.cashierId,
+      cashierName: cashierNames[r.cashierId],
+      paymentMethodId: r.paymentMethodId,
+      paymentMethodName: payNames[r.paymentMethodId],
+      subtotal: r.subtotal,
+      discountAmount: r.discountAmount,
+      total: r.total,
+      status: SaleStatus.values.byName(r.status),
+      voidReason: r.voidReason,
+      voidedBy: r.voidedBy,
+      voidedAt: r.voidedAt,
+      isCredit: r.isCredit,
+      creditSettledAt: r.creditSettledAt,
+      notes: r.notes,
+      createdAt: r.createdAt,
+      items: items
+          .map((i) => SaleItem(
+                id: i.id,
+                saleId: i.saleId,
+                productId: i.productId,
+                productNameSnapshot: i.productNameSnapshot,
+                measurementUnitId: i.measurementUnitId,
+                quantity: i.quantity,
+                unitPrice: i.unitPrice,
+                discountAmount: i.discountAmount,
+                total: i.total,
+                inventoryStatus:
+                    InventoryStatus.values.byName(i.inventoryStatus),
+              ))
+          .toList(),
+    ));
+  }
+  return result;
+}
 
 /// Outstanding credit sales within the report filter (subset of
 /// [reportSalesProvider]).
@@ -164,8 +249,10 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   }
 
   final range = _rangeFor(period, customRange);
+  final shop = await ref.watch(currentShopProvider.future);
   final client = ref.read(supabaseClientProvider);
 
+  try {
   // Sales — include product category info for optional category filter
   final salesData = await client
       .from('sales')
@@ -270,4 +357,98 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
     grossProfit: grossProfit,
     profitItemCount: profitItemCount,
   );
+  } catch (_) {
+    // Offline: compute the same summary from the local cache.
+    final db = ref.read(appDatabaseProvider);
+    if (db == null) rethrow;
+    return _localReportSummary(db, branch.id, shop?.id, range, categoryFilter);
+  }
 });
+
+/// Recomputes [ReportSummary] from the local Drift cache (mirrors the remote
+/// aggregation) so Reports work offline.
+Future<ReportSummary> _localReportSummary(
+  AppDatabase db,
+  String branchId,
+  String? shopId,
+  ({DateTime start, DateTime end}) range,
+  String? categoryFilter,
+) async {
+  final sales = await db.getSalesByBranch(branchId, range.start, range.end);
+  final prodCat = <String, String?>{
+    if (shopId != null)
+      for (final p in await db.getProductsByShop(shopId)) p.id: p.categoryId,
+  };
+
+  Decimal salesTotal = Decimal.zero;
+  Decimal creditTotal = Decimal.zero;
+  Decimal grossProfit = Decimal.zero;
+  int salesCount = 0;
+  int creditCount = 0;
+  int profitItemCount = 0;
+
+  for (final s in sales) {
+    if (s.status != 'completed') continue;
+    final items = await db.getSaleItems(s.id);
+    final isOutstandingCredit = s.isCredit && s.creditSettledAt == null;
+
+    if (categoryFilter != null) {
+      Decimal catRevenue = Decimal.zero;
+      bool hasCatItem = false;
+      for (final item in items) {
+        if (prodCat[item.productId] != categoryFilter) continue;
+        hasCatItem = true;
+        catRevenue += (item.unitPrice * item.quantity) - item.discountAmount;
+        if (item.costPriceSnapshot != null) {
+          grossProfit +=
+              (item.unitPrice - item.costPriceSnapshot!) * item.quantity;
+          profitItemCount++;
+        }
+      }
+      if (!hasCatItem) continue;
+      salesTotal += catRevenue;
+      salesCount++;
+      if (isOutstandingCredit) {
+        creditTotal += catRevenue;
+        creditCount++;
+      }
+    } else {
+      salesTotal += s.total;
+      salesCount++;
+      if (isOutstandingCredit) {
+        creditTotal += s.total;
+        creditCount++;
+      }
+      for (final item in items) {
+        if (item.costPriceSnapshot == null) continue;
+        grossProfit +=
+            (item.unitPrice - item.costPriceSnapshot!) * item.quantity;
+        profitItemCount++;
+      }
+    }
+  }
+
+  final expenses =
+      await db.getExpensesByBranchRange(branchId, range.start, range.end);
+  Decimal expenseTotal = Decimal.zero;
+  final expByCategory = <String, Decimal>{};
+  for (final e in expenses) {
+    expenseTotal += e.amount;
+    expByCategory[e.categoryName] =
+        (expByCategory[e.categoryName] ?? Decimal.zero) + e.amount;
+  }
+  final sortedCategories = Map.fromEntries(
+    expByCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
+  );
+
+  return ReportSummary(
+    salesTotal: salesTotal,
+    salesCount: salesCount,
+    creditTotal: creditTotal,
+    creditCount: creditCount,
+    expenseTotal: expenseTotal,
+    expenseByCategory: sortedCategories,
+    grossProfit: grossProfit,
+    profitItemCount: profitItemCount,
+  );
+}

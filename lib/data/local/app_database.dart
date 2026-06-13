@@ -518,6 +518,15 @@ class AppDatabase extends _$AppDatabase {
             ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
           .get();
 
+  Future<List<ExpenseRow>> getExpensesByBranchRange(
+          String branchId, DateTime from, DateTime to) =>
+      (select(localExpenses)
+            ..where((t) =>
+                t.branchId.equals(branchId) &
+                t.date.isBiggerOrEqualValue(from) &
+                t.date.isSmallerThanValue(to)))
+          .get();
+
   Future<List<ExpenseRow>> getPendingExpenses() =>
       (select(localExpenses)..where((t) => t.isSynced.equals(false))).get();
 

@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/setting_keys.dart';
+import '../../../../data/local/database_provider.dart';
 import '../../../../domain/interfaces/notification_service_interface.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
@@ -44,25 +47,48 @@ final notificationSettingsProvider =
   if (shop == null) return const NotificationSettings();
 
   final client = ref.read(supabaseClientProvider);
-  final rows = await client
-      .from('shop_settings')
-      .select('key, value')
-      .eq('shop_id', shop.id)
-      .inFilter('key', [
-        SettingKeys.notificationEmail,
-        SettingKeys.overdueCreditDays,
-      ]);
+  try {
+    final rows = await client
+        .from('shop_settings')
+        .select('key, value')
+        .eq('shop_id', shop.id)
+        .inFilter('key', [
+          SettingKeys.notificationEmail,
+          SettingKeys.overdueCreditDays,
+        ]);
 
-  final map = {
-    for (final r in rows as List) r['key'] as String: r['value'],
-  };
+    final map = {
+      for (final r in rows as List) r['key'] as String: r['value'],
+    };
 
-  return NotificationSettings(
-    email: (map[SettingKeys.notificationEmail] as String?) ?? '',
-    overdueDays:
-        int.tryParse((map[SettingKeys.overdueCreditDays] as String?) ?? '') ??
-            7,
-  );
+    return NotificationSettings(
+      email: (map[SettingKeys.notificationEmail] as String?) ?? '',
+      overdueDays:
+          int.tryParse((map[SettingKeys.overdueCreditDays] as String?) ?? '') ??
+              7,
+    );
+  } catch (_) {
+    // Offline: read from the local settings cache (values are JSON-encoded).
+    final db = ref.read(appDatabaseProvider);
+    if (db == null) return const NotificationSettings();
+    final cached = {
+      for (final r in await db.getSettings(shop.id)) r.key: r.value,
+    };
+    String decode(String? raw) {
+      if (raw == null) return '';
+      try {
+        return jsonDecode(raw)?.toString() ?? '';
+      } catch (_) {
+        return raw;
+      }
+    }
+
+    return NotificationSettings(
+      email: decode(cached[SettingKeys.notificationEmail]),
+      overdueDays:
+          int.tryParse(decode(cached[SettingKeys.overdueCreditDays])) ?? 7,
+    );
+  }
 });
 
 final notificationSettingsNotifierProvider =
