@@ -30,6 +30,87 @@ Last updated: 2026-06-12 (session 17)
 - [ ] Verify offline boot + every screen loads offline; keep 15-min pull.
 - [x] Q1 — overdue email = all unpaid credits regardless of age (fn v6).
 
+### Observed offline bugs (motivate the v2 refactor below)
+- [ ] "Could not load payment methods" on sales screen offline (form lookup still
+  reads Supabase, not local).
+- [ ] "Could not load categories" on inventory add-item offline (same cause).
+- [ ] Cannot settle credit offline (write is Supabase-direct).
+- [ ] Credit detail shows no customer / cashier offline (join-derived fields are
+  null in local path — need denormalization).
+- [ ] All operations slower offline (local-fallback waits on network timeout
+  instead of reading local-first).
+
+---
+
+## Offline-first v2 — absolute boundary + replica sync engine
+See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
+
+**Code reality check (read 2026-06-14 — narrows scope; don't rebuild):**
+- Outbox push ALREADY covers customers→sales→expenses→adjustments, FK-ordered,
+  ALREADY idempotent (select-before-insert). `sync_service.dart`.
+- Connectivity auto-trigger ALREADY exists (offline→online edge + 15-min + cold
+  start). `sync_scheduler.dart`. (CURRENT_STATE tech-debt note was stale; fixed.)
+- Observability infra partly exists: `sync_logs` heartbeat, `lastSyncedAt()`,
+  `isSyncOverdue()`. Phase-D debug view just needs a screen.
+- Confirmed broken: `getPaymentMethods` has NO local path (sales_repository.dart
+  :64). `getSale`/`getSalesForBranch` are server-FIRST not local-first (:256-297)
+  — same root cause as missing names (local rows lack customer/cashier/payment).
+  `voidSale` (:248) + `createCustomer` (:80) are remote-first. Inline push in
+  `createSale` (:217-233) duplicates SyncService — remove.
+- Push is row-by-row w/ a SELECT per row (2N round trips) → batch into bulk upsert.
+- Pull is full `seedAll` re-download → make delta.
+
+**Phase A — Schema & boundary foundation (the non-negotiables)**
+- [x] Migration `023_offline_sync_metadata.sql` written: adds `updated_at` +
+  `deleted_at` to all 16 replica tables, a server-set `set_updated_at()` trigger
+  (fires on INSERT *and* UPDATE — offline-created rows get server receive-time so
+  delta pull can't miss them), and a per-table `updated_at` index. Admin tables
+  excluded. **MANUAL STEP: apply via Supabase SQL editor (not yet applied).**
+- [x] RLS audit done (read all CREATE-TABLE migrations): all 16 replica tables
+  already have shop-scoped RLS via `is_shop_member` / `shop_id_from_branch`. No
+  gaps found in code. System rows (`shop_id IS NULL` units/payment methods/expense
+  cats) and same-shop profile names are intended shared data, not leaks.
+  - [ ] **MANUAL STEP: run `supabase/rls_isolation_test.sql`** (Part 1 coverage +
+    Part 2 cross-shop isolation with two real accounts) to verify live.
+- [x] UUID + idempotency confirmed already satisfied: writes use client-side
+  `Uuid().v4()`; push is idempotent (select-before-insert). Converting to a single
+  `upsert(onConflict:'id')` is folded into Phase B batching (removes the extra
+  round trip) — no separate change needed now.
+- [~] Local Drift schema migration: DEFERRED into Phase B/C by design — Phase A's
+  server change does not alter the local schema. The local columns (store server
+  `updated_at`, delta cursor) land when Phase B's pull *consumes* them, and the
+  denormalized-name columns land in Phase C; both bump `schemaVersion` together
+  with their `onUpgrade` steps so pilot devices migrate once, cleanly.
+
+**Phase B — The sync engine (single Supabase boundary)**
+- [ ] Define the sync registry: one descriptor per shop module (local+remote table,
+  FK order, conflict policy, shop-scoped pull query).
+- [ ] Outbox push: drain dirty rows in bulk upserts, FK order, mark synced on success,
+  backoff on failure. Remove the inline fire-and-forget push from `SalesRepository`.
+- [ ] Delta pull: `last_synced_at` cursor, pull `updated_at > cursor`, upsert by id,
+  honor `deleted_at`. Replace per-trigger full `seedAll` (keep full pull for first
+  login only, paginated).
+- [ ] Auto-trigger sync on connectivity restored (+ keep app-start, 15-min, debounced
+  post-write nudge). Run off the UI thread.
+- [ ] License = narrow `get_my_license_status(shop_id)` RPC; never sync the licenses
+  table.
+
+**Phase C — Close the observed bugs via the new model**
+- [ ] Point all form lookups (payment methods, categories, units) at local Drift.
+- [ ] Move remaining writes to local-first + outbox: credit settlement, inventory
+  (product create/edit, add/correct stock), expenses, customer edits.
+- [ ] Denormalize customer + cashier names onto local sale rows so detail screens
+  work offline.
+- [ ] Switch any remaining "try Supabase → fallback" reads to local-first.
+
+**Phase D — Sequenced-in hardening (not blocking)**
+- [ ] Indexes on local Drift: `is_synced`, `updated_at`, `shop_id`, FKs.
+- [ ] First-pull pagination + on-device retention policy (don't keep all history).
+- [ ] Offline JWT refresh on reconnect (don't let an expired token silently fail sync).
+- [ ] Operator sync-health debug view: last sync time, pending-push count, last error.
+- [ ] SQLCipher for the local cache (now holds full shop PII) — still deferred past pilot.
+- [ ] Audit SECURITY DEFINER functions for dynamic SQL / search_path (injection + priv-esc).
+
 ---
 
 ## Session 17 follow-ups

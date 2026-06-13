@@ -262,7 +262,9 @@ trigger via `SyncScheduler` (push then pull).
 - Inventory writes (create/edit product, stock adjust) not write-through to Drift
 - Hardcoded strings throughout screens violate l10n rule (`app_en.arb` not used)
 - No error boundaries — raw Supabase exceptions reach snackbars
-- `SyncService` not auto-triggered on connectivity change (must call `.sync()` manually)
+- ~~`SyncService` not auto-triggered on connectivity change~~ STALE — `SyncScheduler`
+  already fires on offline→online edge + 15-min backstop + cold start (verified
+  2026-06-14 reading the code)
 - Permission cache TTL not implemented (role changes need app restart)
 - `Decimal.parse()` without try-catch in models — can throw on malformed DB data
 - Inventory writes (create/edit product, stock adjust) not write-through to Drift

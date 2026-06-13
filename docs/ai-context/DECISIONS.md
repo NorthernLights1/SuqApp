@@ -18,6 +18,71 @@ pushes local writes AND pulls server state down (was push-only).
 
 ---
 
+## Decision: Offline-first v2 — absolute boundary + device-as-replica sync engine
+Date: 2026-06-13 | Status: Active (supersedes the partial migration; branch `offline-first`)
+
+**Why now:** the partial migration left bugs — payment-method and category dropdowns
+fail offline, credit settlement can't run offline, credit detail shows no
+customer/cashier offline, and *everything* is slower offline. Root cause: list-reads
+were moved local, but form lookups, several writes, and join-derived fields still hit
+Supabase, and the read pattern is "try Supabase → timeout → fall back to local"
+(fallback, not local-first), so the network sits on the critical path.
+
+**Mental model — the device is a replica of ONE shop, not a copy of the database.**
+Sync means "give me my shop's rows." Anything that isn't a shop's row data is, by
+definition, out of scope. This makes the customer/admin split fall out for free.
+
+**Core principles:**
+1. **Absolute boundary.** Feature/transaction code NEVER touches Supabase — it only
+   reads/writes local Drift. A single sync service is the *only* thing that talks to
+   Supabase. (Removes the inline fire-and-forget push from `SalesRepository`.)
+2. **Local-first, not local-fallback.** Reads return from local immediately; the
+   network is never on a user-visible path. Online and offline become equal speed.
+3. **One sync registry.** Syncable shop modules are declared as a small list of
+   descriptors (local+remote table, FK order, conflict policy, shop-scoped pull
+   query). Adding a module = add one descriptor. ~12 stable entries.
+
+**Customer vs admin split — no per-table tagging, two layers instead:**
+- **RLS is the boundary.** The anon key ships inside the APK and is public; RLS is the
+  *only* wall between a user and other shops' data. Shop users physically cannot
+  `SELECT` operator/admin tables (licenses, key generation, block list) — so admin
+  data can never enter the replica even if the registry were wrong.
+- **License is a question, not synced data.** The device never pulls the licenses
+  table; it calls a narrow `get_my_license_status(shop_id)` RPC returning a single
+  derived status (active/blocked/expires_at). Entitlement stays server-authoritative.
+
+**Sync engine design:**
+- **Push** via an outbox: local writes mark rows dirty (`is_synced=false`); the service
+  drains them in **bulk upserts** (never row-by-row), in FK-dependency order,
+  **idempotent by UUID** so a re-push after a crash can't duplicate.
+- **Pull** is **delta, not full re-download**: a `last_synced_at` cursor pulls only
+  rows where `updated_at > cursor`, upsert by id. Requires `updated_at` + `deleted_at`
+  (soft delete) on every shop table.
+- **Conflict policy** per table: last-write-wins for transactional/config rows;
+  inventory quantity keeps the Phase 3 negative-stock detection (accumulator, not a
+  value). All conflict logic lives inside the sync service.
+- **Triggers:** app start, **connectivity restored** (currently missing), 15-min timer,
+  debounced nudge after each local write. All non-blocking, off the UI thread.
+
+**Three non-negotiables (painful to retrofit — get right at the migration):**
+1. **`updated_at` is set server-side (`now()` trigger), never trusted from the device.**
+   Delta sync + LWW both depend on it; a wrong device clock would corrupt ordering.
+2. **RLS airtight and tested** (try to read another shop's rows with a normal token),
+   because the anon key is public and the replica makes the client read broadly.
+3. **Idempotent upsert-by-UUID push**; UUIDs generated client-side so rows are valid
+   before sync.
+
+**Sequenced in, not blocking:** batch push/pull, local-DB indexes on
+`is_synced/updated_at/shop_id/FKs`, paginated first pull + on-device retention
+(don't keep all history forever), local Drift schema migration for existing pilot
+devices, offline JWT refresh on reconnect, operator sync-health debug view, and
+SQLCipher for the now-larger plaintext PII replica (still deferred past pilot).
+
+**Explicitly NOT doing:** Supabase Realtime (polling is cheaper for single-device
+shops; revisit for multi-device-same-shop).
+
+---
+
 ## Decision: Staff invites use an email CODE, not a magic link
 Date: 2026-06-09 | Status: Active
 
