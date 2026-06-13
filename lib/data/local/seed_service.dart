@@ -297,7 +297,7 @@ class SeedService {
         .select('*, sale_items(*)')
         .inFilter('branch_id', branchIds)
         .eq('is_credit', true)
-        .filter('credit_settled_at', 'is', null);
+        .isFilter('credit_settled_at', null);
 
     final byId = <String, Map<String, dynamic>>{};
     for (final r in [...recent as List, ...credits as List]) {

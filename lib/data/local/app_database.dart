@@ -633,8 +633,9 @@ class AppDatabase extends _$AppDatabase {
 
   // ── Downloaded sales (replace a synced sale + its items atomically) ──────────
 
-  /// Upsert a server sale and replace its items. Skips sales that have an
-  /// unsynced local version (those are owned by the push path).
+  /// Upsert a server sale and atomically replace its items. Callers are
+  /// responsible for skipping sales with an unsynced local version (those are
+  /// owned by the push path) — see SeedService._seedSales.
   Future<void> upsertDownloadedSale(
     LocalSalesCompanion sale,
     List<LocalSaleItemsCompanion> items,

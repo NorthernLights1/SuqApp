@@ -227,9 +227,14 @@ Auth methods live in `AuthNotifier`: `sendInviteCode()`, `claimInvite()`.
 
 **Write path (sales)**: `SalesRepository.createSale` → write to Drift (`isSynced=false`) + update local stock → fire-and-forget Supabase push → on success `markSaleSynced`.
 
-**Read path (sales)**: Drift first, fallback to Supabase if local is empty.
+**Read path**: server-resilient — try Supabase, fall back to the local Drift
+cache when offline (offline-first; see branch `offline-first`).
 
-**Seed**: `SeedNotifier` watches shop, seeds products/stock/customers to Drift on first load. NOTE: `seedNotifierProvider` is defined but never watched in the UI — seeding does not trigger automatically yet.
+**Seed / pull**: `SeedNotifier` watches shop (watched in `dashboard_screen.dart`)
+and seeds on login; `SeedService.seedAll` is a full download (shop, branches,
+settings, payment methods, categories, units, profiles, products, stock,
+customers, sales+items, expenses, credit payments) and also runs on every sync
+trigger via `SyncScheduler` (push then pull).
 
 **Sync**: `SyncService._pushPendingSales` pushes unsynced sales to Supabase; handles duplicate-key gracefully.
 
