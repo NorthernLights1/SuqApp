@@ -10,11 +10,15 @@ Last updated: 2026-06-12 (session 17)
   methods/categories/units/profiles/credit_payments) + download/pull sync in
   SeedService + SyncScheduler push-then-pull on triggers + local-first
   shop/branch providers. (commits 54f5495, 77f4f46)
-- [ ] **Phase 2** — point every read screen at the local DB: Customers,
-  Expenses, Reports, Credits, Settings, Today's Summary. (sales detail/list +
-  payment history offline; settings reader jsonDecodes cached values.)
-- [ ] **Phase 3** — conflict detection (negative stock on sync) + owner email +
-  in-app resolution screen. Q2 decision: keep both sales, owner resolves.
+- [x] **Phase 2** — every read screen has an offline path: Today's Summary,
+  Inventory, Customers, Expenses (+categories), Credits (list/per-customer/
+  payment history), Reports (summary + drill-downs, recomputed locally),
+  Settings. (commits 512bde8, 5e69eb9, 6509744)
+  - Remaining polish: Sales tab offline list doesn't yet show customer/cashier
+    names (Reports drill-down does).
+- [ ] **Phase 3** (in progress) — conflict detection (negative stock on sync) +
+  owner email + in-app resolution screen. Q2 decision: keep both sales, owner
+  resolves.
 - [ ] Verify offline boot + every screen loads offline; keep 15-min pull.
 - [x] Q1 — overdue email = all unpaid credits regardless of age (fn v6).
 
