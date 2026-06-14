@@ -115,10 +115,13 @@ class SeedService {
       } else {
         live.add(r);
       }
+      // tryParse, not parse: a single malformed updated_at must never throw and
+      // abort the table's pull — that would leave the cursor unadvanced and
+      // re-fetch the bad page forever. Skip it; valid rows still advance it.
       final ua = r['updated_at'];
       if (ua is String) {
-        final dt = DateTime.parse(ua);
-        if (maxSeen == null || dt.isAfter(maxSeen)) maxSeen = dt;
+        final dt = DateTime.tryParse(ua);
+        if (dt != null && (maxSeen == null || dt.isAfter(maxSeen))) maxSeen = dt;
       }
     }
     return (live: live, deadIds: deadIds, maxSeen: maxSeen);

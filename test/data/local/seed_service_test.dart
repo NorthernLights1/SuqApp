@@ -43,6 +43,20 @@ void main() {
       expect(p.maxSeen, DateTime.parse('2026-06-14T13:00:00Z'));
     });
 
+    test('a malformed updated_at is skipped, never thrown', () {
+      // Guards against a poison row stalling a table's pull forever: the bad
+      // timestamp is ignored for the cursor, valid rows still advance it.
+      final rows = [
+        row('a', 'not-a-timestamp'),
+        row('b', '2026-06-14T10:00:00Z'),
+      ];
+      expect(() => SeedService.partitionDelta(rows, collectDead: true),
+          returnsNormally);
+      final p = SeedService.partitionDelta(rows, collectDead: true);
+      expect(p.live.map((r) => r['id']), ['a', 'b']);
+      expect(p.maxSeen, DateTime.parse('2026-06-14T10:00:00Z'));
+    });
+
     test('rows sharing the boundary timestamp resolve to that one cursor', () {
       // Postgres now() is constant per transaction, so a sale + its items share
       // an updated_at; the cursor lands on that shared value (>= overlap then
