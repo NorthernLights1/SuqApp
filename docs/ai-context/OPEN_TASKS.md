@@ -106,10 +106,17 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
     `.toUtc().toIso8601String()` so the delta `updated_at > cursor` stays correct.
 - [ ] **B2 — delta pull engine (rewrite `SeedService` → registry-driven):**
   - One descriptor per replica table (remote select, local upsert, pending-skip).
-  - Per table: `where updated_at > cursor order by updated_at`; upsert live rows;
-    DELETE rows with `deleted_at` set; advance cursor to max `updated_at` seen.
-  - First pull (null cursor) = full paginated download; keep 366-day/2000-row
-    window for sales/expenses. Keep the existing "skip rows pending local push".
+  - Per table: `where updated_at >= cursor order by updated_at` — **`>=`, not `>`**,
+    so rows sharing the boundary timestamp aren't skipped (Postgres `now()` is
+    constant within a transaction → a sale + its items share one `updated_at`).
+    Idempotent upsert makes the small boundary re-overlap harmless. Send the
+    cursor as `.toUtc().toIso8601String()` (Drift reads DateTime back local).
+  - Upsert live rows; DELETE rows with `deleted_at` set; advance the cursor to the
+    max `updated_at` seen.
+  - First pull (null cursor) = full paginated download; set the cursor ONCE at the
+    end of the full pull (never mid-pagination, or a page boundary could skip the
+    rest of a shared-timestamp batch). Keep 366-day/2000-row window for
+    sales/expenses; keep the existing "skip rows pending local push".
   - Sales pull also fills the new denormalized name columns (via the joins it
     already selects).
 - [ ] **B3 — batched push (`SyncService`), remove inline push:**

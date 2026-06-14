@@ -94,8 +94,12 @@ on reconnect/timer/cold-start), `SalesRepository.createSale` (has an inline
 fire-and-forget push to remove).
 
 - **Per-table cursor**, not global. New local Drift table `LocalSyncState
-  (tableName PK, lastPulledAt)`. Each table advances independently so one table's
-  failed pull doesn't stall the rest. (Decided — global cursor is too coarse.)
+  (tableKey PK, lastPulledAt)` (`tableKey`, not `tableName` — Drift reserves
+  `tableName`). Each table advances independently so one table's failed pull
+  doesn't stall the rest. (Decided — global cursor is too coarse.) The cursor is
+  **single-shop by design**: the device replicates exactly one shop per session,
+  so no `shopId` is keyed in. If multi-shop-per-device ever lands, the key becomes
+  `(shopId, tableKey)` and the local DB is cleared on shop switch.
 - **Delta pull** replaces full `seedAll` on every trigger: per table, fetch
   `where updated_at > cursor order by updated_at`, upsert live rows, DELETE rows
   whose `deleted_at` is set, then advance the cursor to the max `updated_at` seen.

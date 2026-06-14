@@ -268,8 +268,14 @@ class LocalCreditPayments extends Table {
 }
 
 /// Per-table delta-pull cursor: the max server `updated_at` already pulled for
-/// a replica table. The delta pull fetches `where updated_at > lastPulledAt`;
-/// no row = never pulled = do a full first download.
+/// a replica table. The delta pull fetches `where updated_at >= lastPulledAt`
+/// (>= not >, so rows sharing the boundary timestamp aren't skipped — Postgres
+/// `now()` is constant within a transaction, so a sale + its items share one
+/// `updated_at`; idempotent upsert makes the small re-overlap harmless).
+/// No row = never pulled = do a full first download.
+///
+/// Single-shop by design: the device replicates one shop per session, so the
+/// cursor is keyed by table only, not by shop.
 @DataClassName('SyncStateRow')
 class LocalSyncState extends Table {
   TextColumn get tableKey => text()();
