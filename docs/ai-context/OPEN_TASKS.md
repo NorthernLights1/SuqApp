@@ -145,8 +145,17 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
     be added to the registry later. A dedicated `get_my_license_status` RPC is
     optional polish (RLS already isolates) — skipped to avoid churn + a prod
     migration for no security gain.
-- [ ] **B5 — tests + verify:** unit-test delta cursor advance, soft-delete removal,
-  pending-skip, bulk-push idempotency; `flutter analyze` clean; run suite.
+- [x] **B5 — tests + verify:** DONE. Extracted the delta core into pure
+  `SeedService.partitionDelta` and unit-tested it: cursor advances to max
+  `updated_at` (incl. over soft-deletes / no-removal tables), live/dead split,
+  shared-boundary-timestamp resolution. Plus DB-layer cursor + `deleteByIds`
+  tests (B1/B2) and a guardrail test asserting `SeedService` never pulls
+  `license_keys`/`shop_controls`. analyze clean; 124 tests pass.
+  - Deferred (needs a mock SupabaseClient harness the project lacks): end-to-end
+    push/pull and pending-skip. Bulk-push idempotency is a DB-level
+    `upsert(onConflict:'id')` guarantee, not unit-covered here.
+  - Also addressed CodeRabbit: bounded `sync_logs` retention prune
+    (`syncLogRetentionDays`, 14d) so the heartbeat log can't grow unbounded.
 - [x] Auto-trigger on connectivity restored — already exists (`SyncScheduler`); B
   just repoints `onPull` at the delta pull. Optional debounced post-write nudge.
 

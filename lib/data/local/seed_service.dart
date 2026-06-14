@@ -90,32 +90,38 @@ class SeedService {
     final rows = await fetch(cursor?.toUtc().toIso8601String());
     if (rows.isEmpty) return;
 
+    final part = partitionDelta(rows, collectDead: deleteFromTable != null);
+    if (part.live.isNotEmpty) await applyLive(part.live);
+    if (part.deadIds.isNotEmpty && deleteFromTable != null) {
+      await _db.deleteByIds(deleteFromTable, part.deadIds);
+    }
+    // Advance the cursor over EVERY row seen — including soft-deletes — so a
+    // delete on a no-removal table still moves the cursor past it.
+    if (part.maxSeen != null) await _db.setPullCursor(tableKey, part.maxSeen!);
+  }
+
+  /// Pure split of a fetched page into rows to upsert (`live`), ids to remove
+  /// (`deadIds`, only when [collectDead]), and the max `updated_at` seen
+  /// (`maxSeen`, over all rows) = the new cursor. Extracted for unit testing.
+  static ({List<Map<String, dynamic>> live, List<String> deadIds, DateTime? maxSeen})
+      partitionDelta(List<Map<String, dynamic>> rows,
+          {required bool collectDead}) {
     final live = <Map<String, dynamic>>[];
     final deadIds = <String>[];
+    DateTime? maxSeen;
     for (final r in rows) {
       if (r['deleted_at'] != null) {
-        if (deleteFromTable != null && r['id'] != null) {
-          deadIds.add(r['id'] as String);
-        }
+        if (collectDead && r['id'] != null) deadIds.add(r['id'] as String);
       } else {
         live.add(r);
       }
-    }
-
-    if (live.isNotEmpty) await applyLive(live);
-    if (deadIds.isNotEmpty && deleteFromTable != null) {
-      await _db.deleteByIds(deleteFromTable, deadIds);
-    }
-
-    DateTime? maxSeen;
-    for (final r in rows) {
       final ua = r['updated_at'];
       if (ua is String) {
         final dt = DateTime.parse(ua);
         if (maxSeen == null || dt.isAfter(maxSeen)) maxSeen = dt;
       }
     }
-    if (maxSeen != null) await _db.setPullCursor(tableKey, maxSeen);
+    return (live: live, deadIds: deadIds, maxSeen: maxSeen);
   }
 
   // ── Shop ─────────────────────────────────────────────────────────────────────

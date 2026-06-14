@@ -262,6 +262,16 @@ class SyncService implements ISyncService {
       'last_synced_at': DateTime.now().toIso8601String(),
       'status': 'success',
     });
+    // Bounded retention: drop this user's stale heartbeats so the append-only
+    // log can't grow without limit (RLS scopes the delete to own rows).
+    final cutoff = DateTime.now()
+        .subtract(const Duration(days: AppConstants.syncLogRetentionDays))
+        .toIso8601String();
+    await _supabase
+        .from('sync_logs')
+        .delete()
+        .eq('user_id', userId)
+        .lt('last_synced_at', cutoff);
     return true;
   }
 
