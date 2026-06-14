@@ -104,21 +104,23 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
     regenerated. 117 tests pass; analyze clean. NOTE for B2: Drift reads
     DateTime back in local representation — send the cursor to Supabase as
     `.toUtc().toIso8601String()` so the delta `updated_at > cursor` stays correct.
-- [ ] **B2 — delta pull engine (rewrite `SeedService` → registry-driven):**
-  - One descriptor per replica table (remote select, local upsert, pending-skip).
-  - Per table: `where updated_at >= cursor order by updated_at` — **`>=`, not `>`**,
-    so rows sharing the boundary timestamp aren't skipped (Postgres `now()` is
-    constant within a transaction → a sale + its items share one `updated_at`).
-    Idempotent upsert makes the small boundary re-overlap harmless. Send the
-    cursor as `.toUtc().toIso8601String()` (Drift reads DateTime back local).
-  - Upsert live rows; DELETE rows with `deleted_at` set; advance the cursor to the
-    max `updated_at` seen.
-  - First pull (null cursor) = full paginated download; set the cursor ONCE at the
-    end of the full pull (never mid-pagination, or a page boundary could skip the
-    rest of a shared-timestamp batch). Keep 366-day/2000-row window for
-    sales/expenses; keep the existing "skip rows pending local push".
-  - Sales pull also fills the new denormalized name columns (via the joins it
-    already selects).
+- [x] **B2 — delta pull engine (rewrote `SeedService`):** DONE.
+  - Shared `_deltaPull` helper centralizes the per-table cursor: fetch
+    `updated_at >= cursor` (UTC ISO), upsert live rows, hard-remove `deleted_at`
+    rows via generic `AppDatabase.deleteByIds(sqlTable, ids)`, advance cursor to
+    max `updated_at`. The 13 thin `_seedX` methods are the registry entries.
+  - First pull (null cursor) keeps the 366-day/2000-row sales+expenses window;
+    delta pulls filter by `updated_at` only (catches old settlements/voids).
+  - Sales pull fills `customerName/cashierName/paymentMethodName` from the joins
+    (`cashier:profiles!sales_cashier_id_fkey`). Pending-skip preserved for
+    sales/customers/expenses.
+  - Products + payment_methods dropped the `is_active` filter so deactivation
+    propagates (local reads still filter active).
+  - Dropped `InventoryRemote` from the pull path; products/stock now pulled
+    directly. Updated 3 `SeedService(...)` call sites (constructor is now
+    `(_client, _db)`).
+  - analyze clean; 119 tests pass (+ deleteByIds + cursor tests). NOTE: pull is
+    not yet unit-tested end-to-end (needs a mock SupabaseClient) — deferred to B5.
 - [ ] **B3 — batched push (`SyncService`), remove inline push:**
   - Replace select-before-insert row loops with one bulk `upsert(onConflict:'id')`
     per table, FK order (customers → sales → sale_items → expenses → adjustments).

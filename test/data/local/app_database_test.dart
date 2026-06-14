@@ -430,4 +430,35 @@ void main() {
       expect((await db.getPullCursor('sales'))!.isAtSameMomentAs(t2), isTrue);
     });
   });
+
+  // ── deleteByIds (delta soft-delete removal) ─────────────────────────────────
+
+  group('deleteByIds', () {
+    Future<void> seed(String id) => db.upsertProducts([
+          LocalProductsCompanion(
+            id: Value(id),
+            shopId: const Value('s-1'),
+            name: Value('P-$id'),
+            measurementUnitId: const Value('mu-1'),
+            measurementUnitAbbr: const Value('pc'),
+            lowStockThreshold: Value(Decimal.zero),
+            isActive: const Value(true),
+            syncedAt: Value(DateTime.now()),
+          )
+        ]);
+
+    test('removes only the given ids (and maps the Drift table name)', () async {
+      await seed('a');
+      await seed('b');
+      await db.deleteByIds('local_products', ['a']);
+      final rows = await db.getProductsByShop('s-1');
+      expect(rows.map((r) => r.id).toList(), ['b']);
+    });
+
+    test('empty id list is a no-op', () async {
+      await seed('a');
+      await db.deleteByIds('local_products', []);
+      expect((await db.getProductsByShop('s-1')).length, 1);
+    });
+  });
 }

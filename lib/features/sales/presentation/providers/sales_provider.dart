@@ -14,7 +14,6 @@ import '../../../../features/customers/presentation/providers/customers_provider
         customerOutstandingMapProvider;
 import '../../../../features/reports/presentation/providers/reports_provider.dart'
     show reportSummaryProvider;
-import '../../../../features/inventory/data/inventory_remote.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../data/sales_remote.dart';
 import '../../domain/sales_repository.dart';
@@ -44,7 +43,7 @@ class SeedNotifier extends AsyncNotifier<void> {
     if (existing.isNotEmpty) return; // already seeded this session
 
     final client = ref.read(supabaseClientProvider);
-    await SeedService(client, InventoryRemote(client), db)
+    await SeedService(client, db)
         .seedAll(shopId: shop.id, branchId: branches.first.id);
   }
 
@@ -57,7 +56,7 @@ class SeedNotifier extends AsyncNotifier<void> {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final client = ref.read(supabaseClientProvider);
-      await SeedService(client, InventoryRemote(client), db)
+      await SeedService(client, db)
           .seedAll(shopId: shop.id, branchId: branches.first.id);
     });
   }

@@ -5,7 +5,6 @@ import '../../data/local/seed_service.dart';
 import '../../domain/interfaces/sync_service_interface.dart';
 import '../../features/auth/presentation/providers/auth_provider.dart';
 import '../../features/auth/presentation/providers/shop_provider.dart';
-import '../../features/inventory/data/inventory_remote.dart';
 import 'sync_scheduler.dart';
 import 'sync_service.dart';
 
@@ -14,7 +13,7 @@ final seedServiceProvider = Provider<SeedService?>((ref) {
   final db = ref.read(appDatabaseProvider);
   if (db == null) return null; // web — no local DB
   final client = ref.read(supabaseClientProvider);
-  return SeedService(client, InventoryRemote(client), db);
+  return SeedService(client, db);
 });
 
 /// Shared connectivity handle (one per app).

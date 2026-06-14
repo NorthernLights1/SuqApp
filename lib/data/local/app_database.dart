@@ -737,4 +737,14 @@ class AppDatabase extends _$AppDatabase {
         tableKey: Value(tableName),
         lastPulledAt: Value(lastPulledAt),
       ));
+
+  /// Hard-remove rows by `id` from an id-keyed local table — used by the delta
+  /// pull to apply server soft-deletes (`deleted_at` set). [sqlTable] is a
+  /// fixed, code-supplied Drift table name (never user input); [ids] are bound
+  /// parameters.
+  Future<void> deleteByIds(String sqlTable, List<String> ids) async {
+    if (ids.isEmpty) return;
+    final placeholders = List.filled(ids.length, '?').join(', ');
+    await customStatement('DELETE FROM $sqlTable WHERE id IN ($placeholders)', ids);
+  }
 }
