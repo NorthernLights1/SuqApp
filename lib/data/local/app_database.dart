@@ -71,6 +71,12 @@ class LocalSales extends Table {
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get creditSettledAt => dateTime().nullable()();
+  // Denormalized names captured at write/pull time so offline detail screens
+  // (Sales/Credits) can show them without a Supabase join. Null on rows written
+  // before v7 / before they are populated.
+  TextColumn get customerName => text().nullable()();
+  TextColumn get cashierName => text().nullable()();
+  TextColumn get paymentMethodName => text().nullable()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
 
   @override
@@ -261,6 +267,18 @@ class LocalCreditPayments extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Per-table delta-pull cursor: the max server `updated_at` already pulled for
+/// a replica table. The delta pull fetches `where updated_at > lastPulledAt`;
+/// no row = never pulled = do a full first download.
+@DataClassName('SyncStateRow')
+class LocalSyncState extends Table {
+  TextColumn get tableKey => text()();
+  DateTimeColumn get lastPulledAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {tableKey};
+}
+
 // ─── Database ─────────────────────────────────────────────────────────────────
 
 @DriftDatabase(tables: [
@@ -280,12 +298,13 @@ class LocalCreditPayments extends Table {
   LocalProfiles,
   LocalExpenseCategories,
   LocalCreditPayments,
+  LocalSyncState,
 ])
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -313,6 +332,15 @@ class AppDatabase extends _$AppDatabase {
           }
           // v5 -> v6: expense categories read cache.
           if (from < 6) await m.createTable(localExpenseCategories);
+          // v6 -> v7: offline-first v2 — per-table delta-pull cursors +
+          // denormalized customer/cashier/payment names on the local sales
+          // mirror (so offline detail screens render without a Supabase join).
+          if (from < 7) {
+            await m.createTable(localSyncState);
+            await m.addColumn(localSales, localSales.customerName);
+            await m.addColumn(localSales, localSales.cashierName);
+            await m.addColumn(localSales, localSales.paymentMethodName);
+          }
         },
       );
 
@@ -685,4 +713,22 @@ class AppDatabase extends _$AppDatabase {
     }
     return map;
   }
+
+  // ── Sync state (per-table delta-pull cursors) ────────────────────────────────
+
+  /// The max server `updated_at` already pulled for [tableName], or null if the
+  /// table has never been pulled (→ the delta pull does a full first download).
+  Future<DateTime?> getPullCursor(String tableName) async {
+    final row = await (select(localSyncState)
+          ..where((t) => t.tableKey.equals(tableName)))
+        .getSingleOrNull();
+    return row?.lastPulledAt;
+  }
+
+  /// Advance (or set) the delta cursor for [tableName] to [lastPulledAt].
+  Future<void> setPullCursor(String tableName, DateTime lastPulledAt) =>
+      into(localSyncState).insertOnConflictUpdate(LocalSyncStateCompanion(
+        tableKey: Value(tableName),
+        lastPulledAt: Value(lastPulledAt),
+      ));
 }

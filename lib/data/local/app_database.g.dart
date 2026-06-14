@@ -1239,6 +1239,40 @@ class $LocalSalesTable extends LocalSales
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _customerNameMeta = const VerificationMeta(
+    'customerName',
+  );
+  @override
+  late final GeneratedColumn<String> customerName = GeneratedColumn<String>(
+    'customer_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _cashierNameMeta = const VerificationMeta(
+    'cashierName',
+  );
+  @override
+  late final GeneratedColumn<String> cashierName = GeneratedColumn<String>(
+    'cashier_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _paymentMethodNameMeta = const VerificationMeta(
+    'paymentMethodName',
+  );
+  @override
+  late final GeneratedColumn<String> paymentMethodName =
+      GeneratedColumn<String>(
+        'payment_method_name',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _isSyncedMeta = const VerificationMeta(
     'isSynced',
   );
@@ -1272,6 +1306,9 @@ class $LocalSalesTable extends LocalSales
     notes,
     createdAt,
     creditSettledAt,
+    customerName,
+    cashierName,
+    paymentMethodName,
     isSynced,
   ];
   @override
@@ -1381,6 +1418,33 @@ class $LocalSalesTable extends LocalSales
         ),
       );
     }
+    if (data.containsKey('customer_name')) {
+      context.handle(
+        _customerNameMeta,
+        customerName.isAcceptableOrUnknown(
+          data['customer_name']!,
+          _customerNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('cashier_name')) {
+      context.handle(
+        _cashierNameMeta,
+        cashierName.isAcceptableOrUnknown(
+          data['cashier_name']!,
+          _cashierNameMeta,
+        ),
+      );
+    }
+    if (data.containsKey('payment_method_name')) {
+      context.handle(
+        _paymentMethodNameMeta,
+        paymentMethodName.isAcceptableOrUnknown(
+          data['payment_method_name']!,
+          _paymentMethodNameMeta,
+        ),
+      );
+    }
     if (data.containsKey('is_synced')) {
       context.handle(
         _isSyncedMeta,
@@ -1466,6 +1530,18 @@ class $LocalSalesTable extends LocalSales
         DriftSqlType.dateTime,
         data['${effectivePrefix}credit_settled_at'],
       ),
+      customerName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}customer_name'],
+      ),
+      cashierName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}cashier_name'],
+      ),
+      paymentMethodName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payment_method_name'],
+      ),
       isSynced: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_synced'],
@@ -1500,6 +1576,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
   final String? notes;
   final DateTime createdAt;
   final DateTime? creditSettledAt;
+  final String? customerName;
+  final String? cashierName;
+  final String? paymentMethodName;
   final bool isSynced;
   const SaleRow({
     required this.id,
@@ -1518,6 +1597,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     this.notes,
     required this.createdAt,
     this.creditSettledAt,
+    this.customerName,
+    this.cashierName,
+    this.paymentMethodName,
     required this.isSynced,
   });
   @override
@@ -1563,6 +1645,15 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     if (!nullToAbsent || creditSettledAt != null) {
       map['credit_settled_at'] = Variable<DateTime>(creditSettledAt);
     }
+    if (!nullToAbsent || customerName != null) {
+      map['customer_name'] = Variable<String>(customerName);
+    }
+    if (!nullToAbsent || cashierName != null) {
+      map['cashier_name'] = Variable<String>(cashierName);
+    }
+    if (!nullToAbsent || paymentMethodName != null) {
+      map['payment_method_name'] = Variable<String>(paymentMethodName);
+    }
     map['is_synced'] = Variable<bool>(isSynced);
     return map;
   }
@@ -1597,6 +1688,15 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       creditSettledAt: creditSettledAt == null && nullToAbsent
           ? const Value.absent()
           : Value(creditSettledAt),
+      customerName: customerName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(customerName),
+      cashierName: cashierName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(cashierName),
+      paymentMethodName: paymentMethodName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(paymentMethodName),
       isSynced: Value(isSynced),
     );
   }
@@ -1623,6 +1723,11 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       creditSettledAt: serializer.fromJson<DateTime?>(json['creditSettledAt']),
+      customerName: serializer.fromJson<String?>(json['customerName']),
+      cashierName: serializer.fromJson<String?>(json['cashierName']),
+      paymentMethodName: serializer.fromJson<String?>(
+        json['paymentMethodName'],
+      ),
       isSynced: serializer.fromJson<bool>(json['isSynced']),
     );
   }
@@ -1646,6 +1751,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'creditSettledAt': serializer.toJson<DateTime?>(creditSettledAt),
+      'customerName': serializer.toJson<String?>(customerName),
+      'cashierName': serializer.toJson<String?>(cashierName),
+      'paymentMethodName': serializer.toJson<String?>(paymentMethodName),
       'isSynced': serializer.toJson<bool>(isSynced),
     };
   }
@@ -1667,6 +1775,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
     Value<DateTime?> creditSettledAt = const Value.absent(),
+    Value<String?> customerName = const Value.absent(),
+    Value<String?> cashierName = const Value.absent(),
+    Value<String?> paymentMethodName = const Value.absent(),
     bool? isSynced,
   }) => SaleRow(
     id: id ?? this.id,
@@ -1687,6 +1798,11 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     creditSettledAt: creditSettledAt.present
         ? creditSettledAt.value
         : this.creditSettledAt,
+    customerName: customerName.present ? customerName.value : this.customerName,
+    cashierName: cashierName.present ? cashierName.value : this.cashierName,
+    paymentMethodName: paymentMethodName.present
+        ? paymentMethodName.value
+        : this.paymentMethodName,
     isSynced: isSynced ?? this.isSynced,
   );
   SaleRow copyWithCompanion(LocalSalesCompanion data) {
@@ -1717,6 +1833,15 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       creditSettledAt: data.creditSettledAt.present
           ? data.creditSettledAt.value
           : this.creditSettledAt,
+      customerName: data.customerName.present
+          ? data.customerName.value
+          : this.customerName,
+      cashierName: data.cashierName.present
+          ? data.cashierName.value
+          : this.cashierName,
+      paymentMethodName: data.paymentMethodName.present
+          ? data.paymentMethodName.value
+          : this.paymentMethodName,
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
     );
   }
@@ -1740,6 +1865,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
           ..write('creditSettledAt: $creditSettledAt, ')
+          ..write('customerName: $customerName, ')
+          ..write('cashierName: $cashierName, ')
+          ..write('paymentMethodName: $paymentMethodName, ')
           ..write('isSynced: $isSynced')
           ..write(')'))
         .toString();
@@ -1763,6 +1891,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     notes,
     createdAt,
     creditSettledAt,
+    customerName,
+    cashierName,
+    paymentMethodName,
     isSynced,
   );
   @override
@@ -1785,6 +1916,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
           other.notes == this.notes &&
           other.createdAt == this.createdAt &&
           other.creditSettledAt == this.creditSettledAt &&
+          other.customerName == this.customerName &&
+          other.cashierName == this.cashierName &&
+          other.paymentMethodName == this.paymentMethodName &&
           other.isSynced == this.isSynced);
 }
 
@@ -1805,6 +1939,9 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
   final Value<String?> notes;
   final Value<DateTime> createdAt;
   final Value<DateTime?> creditSettledAt;
+  final Value<String?> customerName;
+  final Value<String?> cashierName;
+  final Value<String?> paymentMethodName;
   final Value<bool> isSynced;
   final Value<int> rowid;
   const LocalSalesCompanion({
@@ -1824,6 +1961,9 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.creditSettledAt = const Value.absent(),
+    this.customerName = const Value.absent(),
+    this.cashierName = const Value.absent(),
+    this.paymentMethodName = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1844,6 +1984,9 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     this.notes = const Value.absent(),
     required DateTime createdAt,
     this.creditSettledAt = const Value.absent(),
+    this.customerName = const Value.absent(),
+    this.cashierName = const Value.absent(),
+    this.paymentMethodName = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -1873,6 +2016,9 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? creditSettledAt,
+    Expression<String>? customerName,
+    Expression<String>? cashierName,
+    Expression<String>? paymentMethodName,
     Expression<bool>? isSynced,
     Expression<int>? rowid,
   }) {
@@ -1893,6 +2039,9 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
       if (creditSettledAt != null) 'credit_settled_at': creditSettledAt,
+      if (customerName != null) 'customer_name': customerName,
+      if (cashierName != null) 'cashier_name': cashierName,
+      if (paymentMethodName != null) 'payment_method_name': paymentMethodName,
       if (isSynced != null) 'is_synced': isSynced,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1915,6 +2064,9 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     Value<String?>? notes,
     Value<DateTime>? createdAt,
     Value<DateTime?>? creditSettledAt,
+    Value<String?>? customerName,
+    Value<String?>? cashierName,
+    Value<String?>? paymentMethodName,
     Value<bool>? isSynced,
     Value<int>? rowid,
   }) {
@@ -1935,6 +2087,9 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       creditSettledAt: creditSettledAt ?? this.creditSettledAt,
+      customerName: customerName ?? this.customerName,
+      cashierName: cashierName ?? this.cashierName,
+      paymentMethodName: paymentMethodName ?? this.paymentMethodName,
       isSynced: isSynced ?? this.isSynced,
       rowid: rowid ?? this.rowid,
     );
@@ -1997,6 +2152,15 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     if (creditSettledAt.present) {
       map['credit_settled_at'] = Variable<DateTime>(creditSettledAt.value);
     }
+    if (customerName.present) {
+      map['customer_name'] = Variable<String>(customerName.value);
+    }
+    if (cashierName.present) {
+      map['cashier_name'] = Variable<String>(cashierName.value);
+    }
+    if (paymentMethodName.present) {
+      map['payment_method_name'] = Variable<String>(paymentMethodName.value);
+    }
     if (isSynced.present) {
       map['is_synced'] = Variable<bool>(isSynced.value);
     }
@@ -2025,6 +2189,9 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
           ..write('creditSettledAt: $creditSettledAt, ')
+          ..write('customerName: $customerName, ')
+          ..write('cashierName: $cashierName, ')
+          ..write('paymentMethodName: $paymentMethodName, ')
           ..write('isSynced: $isSynced, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -7704,6 +7871,229 @@ class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
   }
 }
 
+class $LocalSyncStateTable extends LocalSyncState
+    with TableInfo<$LocalSyncStateTable, SyncStateRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalSyncStateTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _tableKeyMeta = const VerificationMeta(
+    'tableKey',
+  );
+  @override
+  late final GeneratedColumn<String> tableKey = GeneratedColumn<String>(
+    'table_key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastPulledAtMeta = const VerificationMeta(
+    'lastPulledAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> lastPulledAt = GeneratedColumn<DateTime>(
+    'last_pulled_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [tableKey, lastPulledAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_sync_state';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncStateRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('table_key')) {
+      context.handle(
+        _tableKeyMeta,
+        tableKey.isAcceptableOrUnknown(data['table_key']!, _tableKeyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_tableKeyMeta);
+    }
+    if (data.containsKey('last_pulled_at')) {
+      context.handle(
+        _lastPulledAtMeta,
+        lastPulledAt.isAcceptableOrUnknown(
+          data['last_pulled_at']!,
+          _lastPulledAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_lastPulledAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {tableKey};
+  @override
+  SyncStateRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncStateRow(
+      tableKey: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}table_key'],
+      )!,
+      lastPulledAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}last_pulled_at'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalSyncStateTable createAlias(String alias) {
+    return $LocalSyncStateTable(attachedDatabase, alias);
+  }
+}
+
+class SyncStateRow extends DataClass implements Insertable<SyncStateRow> {
+  final String tableKey;
+  final DateTime lastPulledAt;
+  const SyncStateRow({required this.tableKey, required this.lastPulledAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['table_key'] = Variable<String>(tableKey);
+    map['last_pulled_at'] = Variable<DateTime>(lastPulledAt);
+    return map;
+  }
+
+  LocalSyncStateCompanion toCompanion(bool nullToAbsent) {
+    return LocalSyncStateCompanion(
+      tableKey: Value(tableKey),
+      lastPulledAt: Value(lastPulledAt),
+    );
+  }
+
+  factory SyncStateRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncStateRow(
+      tableKey: serializer.fromJson<String>(json['tableKey']),
+      lastPulledAt: serializer.fromJson<DateTime>(json['lastPulledAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'tableKey': serializer.toJson<String>(tableKey),
+      'lastPulledAt': serializer.toJson<DateTime>(lastPulledAt),
+    };
+  }
+
+  SyncStateRow copyWith({String? tableKey, DateTime? lastPulledAt}) =>
+      SyncStateRow(
+        tableKey: tableKey ?? this.tableKey,
+        lastPulledAt: lastPulledAt ?? this.lastPulledAt,
+      );
+  SyncStateRow copyWithCompanion(LocalSyncStateCompanion data) {
+    return SyncStateRow(
+      tableKey: data.tableKey.present ? data.tableKey.value : this.tableKey,
+      lastPulledAt: data.lastPulledAt.present
+          ? data.lastPulledAt.value
+          : this.lastPulledAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncStateRow(')
+          ..write('tableKey: $tableKey, ')
+          ..write('lastPulledAt: $lastPulledAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(tableKey, lastPulledAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncStateRow &&
+          other.tableKey == this.tableKey &&
+          other.lastPulledAt == this.lastPulledAt);
+}
+
+class LocalSyncStateCompanion extends UpdateCompanion<SyncStateRow> {
+  final Value<String> tableKey;
+  final Value<DateTime> lastPulledAt;
+  final Value<int> rowid;
+  const LocalSyncStateCompanion({
+    this.tableKey = const Value.absent(),
+    this.lastPulledAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalSyncStateCompanion.insert({
+    required String tableKey,
+    required DateTime lastPulledAt,
+    this.rowid = const Value.absent(),
+  }) : tableKey = Value(tableKey),
+       lastPulledAt = Value(lastPulledAt);
+  static Insertable<SyncStateRow> custom({
+    Expression<String>? tableKey,
+    Expression<DateTime>? lastPulledAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (tableKey != null) 'table_key': tableKey,
+      if (lastPulledAt != null) 'last_pulled_at': lastPulledAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalSyncStateCompanion copyWith({
+    Value<String>? tableKey,
+    Value<DateTime>? lastPulledAt,
+    Value<int>? rowid,
+  }) {
+    return LocalSyncStateCompanion(
+      tableKey: tableKey ?? this.tableKey,
+      lastPulledAt: lastPulledAt ?? this.lastPulledAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (tableKey.present) {
+      map['table_key'] = Variable<String>(tableKey.value);
+    }
+    if (lastPulledAt.present) {
+      map['last_pulled_at'] = Variable<DateTime>(lastPulledAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalSyncStateCompanion(')
+          ..write('tableKey: $tableKey, ')
+          ..write('lastPulledAt: $lastPulledAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
@@ -7730,6 +8120,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $LocalExpenseCategoriesTable(this);
   late final $LocalCreditPaymentsTable localCreditPayments =
       $LocalCreditPaymentsTable(this);
+  late final $LocalSyncStateTable localSyncState = $LocalSyncStateTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -7751,6 +8142,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localProfiles,
     localExpenseCategories,
     localCreditPayments,
+    localSyncState,
   ];
 }
 
@@ -8298,6 +8690,9 @@ typedef $$LocalSalesTableCreateCompanionBuilder =
       Value<String?> notes,
       required DateTime createdAt,
       Value<DateTime?> creditSettledAt,
+      Value<String?> customerName,
+      Value<String?> cashierName,
+      Value<String?> paymentMethodName,
       Value<bool> isSynced,
       Value<int> rowid,
     });
@@ -8319,6 +8714,9 @@ typedef $$LocalSalesTableUpdateCompanionBuilder =
       Value<String?> notes,
       Value<DateTime> createdAt,
       Value<DateTime?> creditSettledAt,
+      Value<String?> customerName,
+      Value<String?> cashierName,
+      Value<String?> paymentMethodName,
       Value<bool> isSynced,
       Value<int> rowid,
     });
@@ -8412,6 +8810,21 @@ class $$LocalSalesTableFilterComposer
 
   ColumnFilters<DateTime> get creditSettledAt => $composableBuilder(
     column: $table.creditSettledAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get customerName => $composableBuilder(
+    column: $table.customerName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get cashierName => $composableBuilder(
+    column: $table.cashierName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get paymentMethodName => $composableBuilder(
+    column: $table.paymentMethodName,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8510,6 +8923,21 @@ class $$LocalSalesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get customerName => $composableBuilder(
+    column: $table.customerName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get cashierName => $composableBuilder(
+    column: $table.cashierName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get paymentMethodName => $composableBuilder(
+    column: $table.paymentMethodName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isSynced => $composableBuilder(
     column: $table.isSynced,
     builder: (column) => ColumnOrderings(column),
@@ -8584,6 +9012,21 @@ class $$LocalSalesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get customerName => $composableBuilder(
+    column: $table.customerName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get cashierName => $composableBuilder(
+    column: $table.cashierName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get paymentMethodName => $composableBuilder(
+    column: $table.paymentMethodName,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<bool> get isSynced =>
       $composableBuilder(column: $table.isSynced, builder: (column) => column);
 }
@@ -8632,6 +9075,9 @@ class $$LocalSalesTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime?> creditSettledAt = const Value.absent(),
+                Value<String?> customerName = const Value.absent(),
+                Value<String?> cashierName = const Value.absent(),
+                Value<String?> paymentMethodName = const Value.absent(),
                 Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalSalesCompanion(
@@ -8651,6 +9097,9 @@ class $$LocalSalesTableTableManager
                 notes: notes,
                 createdAt: createdAt,
                 creditSettledAt: creditSettledAt,
+                customerName: customerName,
+                cashierName: cashierName,
+                paymentMethodName: paymentMethodName,
                 isSynced: isSynced,
                 rowid: rowid,
               ),
@@ -8672,6 +9121,9 @@ class $$LocalSalesTableTableManager
                 Value<String?> notes = const Value.absent(),
                 required DateTime createdAt,
                 Value<DateTime?> creditSettledAt = const Value.absent(),
+                Value<String?> customerName = const Value.absent(),
+                Value<String?> cashierName = const Value.absent(),
+                Value<String?> paymentMethodName = const Value.absent(),
                 Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalSalesCompanion.insert(
@@ -8691,6 +9143,9 @@ class $$LocalSalesTableTableManager
                 notes: notes,
                 createdAt: createdAt,
                 creditSettledAt: creditSettledAt,
+                customerName: customerName,
+                cashierName: cashierName,
+                paymentMethodName: paymentMethodName,
                 isSynced: isSynced,
                 rowid: rowid,
               ),
@@ -11835,6 +12290,153 @@ typedef $$LocalCreditPaymentsTableProcessedTableManager =
       CreditPaymentRow,
       PrefetchHooks Function()
     >;
+typedef $$LocalSyncStateTableCreateCompanionBuilder =
+    LocalSyncStateCompanion Function({
+      required String tableKey,
+      required DateTime lastPulledAt,
+      Value<int> rowid,
+    });
+typedef $$LocalSyncStateTableUpdateCompanionBuilder =
+    LocalSyncStateCompanion Function({
+      Value<String> tableKey,
+      Value<DateTime> lastPulledAt,
+      Value<int> rowid,
+    });
+
+class $$LocalSyncStateTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalSyncStateTable> {
+  $$LocalSyncStateTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get tableKey => $composableBuilder(
+    column: $table.tableKey,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get lastPulledAt => $composableBuilder(
+    column: $table.lastPulledAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalSyncStateTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalSyncStateTable> {
+  $$LocalSyncStateTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get tableKey => $composableBuilder(
+    column: $table.tableKey,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get lastPulledAt => $composableBuilder(
+    column: $table.lastPulledAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalSyncStateTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalSyncStateTable> {
+  $$LocalSyncStateTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get tableKey =>
+      $composableBuilder(column: $table.tableKey, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get lastPulledAt => $composableBuilder(
+    column: $table.lastPulledAt,
+    builder: (column) => column,
+  );
+}
+
+class $$LocalSyncStateTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalSyncStateTable,
+          SyncStateRow,
+          $$LocalSyncStateTableFilterComposer,
+          $$LocalSyncStateTableOrderingComposer,
+          $$LocalSyncStateTableAnnotationComposer,
+          $$LocalSyncStateTableCreateCompanionBuilder,
+          $$LocalSyncStateTableUpdateCompanionBuilder,
+          (
+            SyncStateRow,
+            BaseReferences<_$AppDatabase, $LocalSyncStateTable, SyncStateRow>,
+          ),
+          SyncStateRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalSyncStateTableTableManager(
+    _$AppDatabase db,
+    $LocalSyncStateTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalSyncStateTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalSyncStateTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LocalSyncStateTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> tableKey = const Value.absent(),
+                Value<DateTime> lastPulledAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalSyncStateCompanion(
+                tableKey: tableKey,
+                lastPulledAt: lastPulledAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String tableKey,
+                required DateTime lastPulledAt,
+                Value<int> rowid = const Value.absent(),
+              }) => LocalSyncStateCompanion.insert(
+                tableKey: tableKey,
+                lastPulledAt: lastPulledAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalSyncStateTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalSyncStateTable,
+      SyncStateRow,
+      $$LocalSyncStateTableFilterComposer,
+      $$LocalSyncStateTableOrderingComposer,
+      $$LocalSyncStateTableAnnotationComposer,
+      $$LocalSyncStateTableCreateCompanionBuilder,
+      $$LocalSyncStateTableUpdateCompanionBuilder,
+      (
+        SyncStateRow,
+        BaseReferences<_$AppDatabase, $LocalSyncStateTable, SyncStateRow>,
+      ),
+      SyncStateRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -11880,4 +12482,6 @@ class $AppDatabaseManager {
       );
   $$LocalCreditPaymentsTableTableManager get localCreditPayments =>
       $$LocalCreditPaymentsTableTableManager(_db, _db.localCreditPayments);
+  $$LocalSyncStateTableTableManager get localSyncState =>
+      $$LocalSyncStateTableTableManager(_db, _db.localSyncState);
 }

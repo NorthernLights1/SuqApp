@@ -406,4 +406,28 @@ void main() {
       expect(totals['count'], Decimal.parse('2')); // tally keeps voided
     });
   });
+
+  // ── Sync state (delta-pull cursors) ─────────────────────────────────────────
+
+  group('sync state cursors', () {
+    test('getPullCursor is null before any pull', () async {
+      expect(await db.getPullCursor('sales'), isNull);
+    });
+
+    test('setPullCursor round-trips and advances per table', () async {
+      // Drift stores DateTime as a Unix instant and reads it back in local
+      // representation, so compare by moment (isAtSameMomentAs), not ==.
+      final t1 = DateTime.utc(2026, 6, 14, 10, 0, 0);
+      final t2 = DateTime.utc(2026, 6, 14, 12, 30, 0);
+
+      await db.setPullCursor('sales', t1);
+      expect((await db.getPullCursor('sales'))!.isAtSameMomentAs(t1), isTrue);
+      // Other tables stay independent (null until set).
+      expect(await db.getPullCursor('customers'), isNull);
+
+      // Advancing the same table overwrites, not duplicates.
+      await db.setPullCursor('sales', t2);
+      expect((await db.getPullCursor('sales'))!.isAtSameMomentAs(t2), isTrue);
+    });
+  });
 }

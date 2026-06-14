@@ -94,12 +94,16 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
 "Offline-first v2 Phase B". Grounded in: `seed_service.dart`, `sync_service.dart`,
 `sync_scheduler.dart`, `sales_repository.dart`, `app_database.dart`. Do in order.
 
-- [ ] **B1 — local schema v6→v7 (migrate once for B+C):**
-  - Add `LocalSyncState (tableName text PK, lastPulledAt datetime)` for per-table
-    delta cursors.
-  - Add denormalized-name columns to `LocalSales`: `customerName`, `cashierName`,
-    `paymentMethodName` (nullable) — populated in B2's pull, consumed in Phase C.
-  - `onUpgrade` step so existing pilot devices upgrade without data loss.
+- [x] **B1 — local schema v6→v7 (migrate once for B+C):** DONE.
+  - `LocalSyncState (tableKey text PK, lastPulledAt datetime)` + `getPullCursor` /
+    `setPullCursor`. (Column is `tableKey` not `tableName` — Drift reserves
+    `tableName`.)
+  - `LocalSales` gained nullable `customerName` / `cashierName` /
+    `paymentMethodName` (populated in B2, consumed in Phase C).
+  - `schemaVersion` 6→7 + `onUpgrade` (createTable + 3 addColumn). `.g.dart`
+    regenerated. 117 tests pass; analyze clean. NOTE for B2: Drift reads
+    DateTime back in local representation — send the cursor to Supabase as
+    `.toUtc().toIso8601String()` so the delta `updated_at > cursor` stays correct.
 - [ ] **B2 — delta pull engine (rewrite `SeedService` → registry-driven):**
   - One descriptor per replica table (remote select, local upsert, pending-skip).
   - Per table: `where updated_at > cursor order by updated_at`; upsert live rows;
