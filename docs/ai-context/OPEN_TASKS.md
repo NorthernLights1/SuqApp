@@ -90,18 +90,37 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
   denormalized-name columns land in Phase C; both bump `schemaVersion` together
   with their `onUpgrade` steps so pilot devices migrate once, cleanly.
 
-**Phase B — The sync engine (single Supabase boundary)**
-- [ ] Define the sync registry: one descriptor per shop module (local+remote table,
-  FK order, conflict policy, shop-scoped pull query).
-- [ ] Outbox push: drain dirty rows in bulk upserts, FK order, mark synced on success,
-  backoff on failure. Remove the inline fire-and-forget push from `SalesRepository`.
-- [ ] Delta pull: `last_synced_at` cursor, pull `updated_at > cursor`, upsert by id,
-  honor `deleted_at`. Replace per-trigger full `seedAll` (keep full pull for first
-  login only, paginated).
-- [ ] Auto-trigger sync on connectivity restored (+ keep app-start, 15-min, debounced
-  post-write nudge). Run off the UI thread.
-- [ ] License = narrow `get_my_license_status(shop_id)` RPC; never sync the licenses
-  table.
+**Phase B — The sync engine (single Supabase boundary)** — see DECISIONS.md
+"Offline-first v2 Phase B". Grounded in: `seed_service.dart`, `sync_service.dart`,
+`sync_scheduler.dart`, `sales_repository.dart`, `app_database.dart`. Do in order.
+
+- [ ] **B1 — local schema v6→v7 (migrate once for B+C):**
+  - Add `LocalSyncState (tableName text PK, lastPulledAt datetime)` for per-table
+    delta cursors.
+  - Add denormalized-name columns to `LocalSales`: `customerName`, `cashierName`,
+    `paymentMethodName` (nullable) — populated in B2's pull, consumed in Phase C.
+  - `onUpgrade` step so existing pilot devices upgrade without data loss.
+- [ ] **B2 — delta pull engine (rewrite `SeedService` → registry-driven):**
+  - One descriptor per replica table (remote select, local upsert, pending-skip).
+  - Per table: `where updated_at > cursor order by updated_at`; upsert live rows;
+    DELETE rows with `deleted_at` set; advance cursor to max `updated_at` seen.
+  - First pull (null cursor) = full paginated download; keep 366-day/2000-row
+    window for sales/expenses. Keep the existing "skip rows pending local push".
+  - Sales pull also fills the new denormalized name columns (via the joins it
+    already selects).
+- [ ] **B3 — batched push (`SyncService`), remove inline push:**
+  - Replace select-before-insert row loops with one bulk `upsert(onConflict:'id')`
+    per table, FK order (customers → sales → sale_items → expenses → adjustments).
+  - Delete the fire-and-forget push block in `SalesRepository.createSale`
+    (:217-233); local write just marks `isSynced=false`, SyncService is sole pusher.
+- [ ] **B4 — license as RPC, not synced data:**
+  - Audit the license read path; ensure status comes from a narrow
+    `get_my_license_status(shop_id)` RPC (create if missing). Never register
+    `license_keys` / `shop_controls` in the sync registry.
+- [ ] **B5 — tests + verify:** unit-test delta cursor advance, soft-delete removal,
+  pending-skip, bulk-push idempotency; `flutter analyze` clean; run suite.
+- [x] Auto-trigger on connectivity restored — already exists (`SyncScheduler`); B
+  just repoints `onPull` at the delta pull. Optional debounced post-write nudge.
 
 **Phase C — Close the observed bugs via the new model**
 - [ ] Point all form lookups (payment methods, categories, units) at local Drift.

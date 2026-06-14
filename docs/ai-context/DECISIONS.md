@@ -83,6 +83,45 @@ shops; revisit for multi-device-same-shop).
 
 ---
 
+## Decision: Offline-first v2 Phase B — delta pull, batched push, sync registry
+Date: 2026-06-14 | Status: Planned (branch `offline-first`)
+
+Builds the single-boundary sync engine on the Phase A metadata (`updated_at` /
+`deleted_at`, applied live in 023). Grounded in the current code:
+`SeedService.seedAll` (full re-download every trigger), `SyncService` (row-by-row
+push of customers/sales/expenses/adjustments), `SyncScheduler` (already triggers
+on reconnect/timer/cold-start), `SalesRepository.createSale` (has an inline
+fire-and-forget push to remove).
+
+- **Per-table cursor**, not global. New local Drift table `LocalSyncState
+  (tableName PK, lastPulledAt)`. Each table advances independently so one table's
+  failed pull doesn't stall the rest. (Decided — global cursor is too coarse.)
+- **Delta pull** replaces full `seedAll` on every trigger: per table, fetch
+  `where updated_at > cursor order by updated_at`, upsert live rows, DELETE rows
+  whose `deleted_at` is set, then advance the cursor to the max `updated_at` seen.
+  First pull (null cursor) = full, paginated download; keep the existing 366-day /
+  2000-row windowing for sales/expenses history depth.
+- **Sync registry**: one descriptor per replica module (remote table + columns,
+  local upsert, pending-skip rule, conflict policy). The pull loop is registry-
+  driven instead of 13 hand-written `_seedX` methods. Adding a module = one entry.
+- **Batched, idempotent push**: convert `SyncService` from select-before-insert,
+  row-by-row to a single bulk `upsert(onConflict:'id')` per table, in FK order
+  (customers → sales → sale_items → …). Removes the extra round trip and is
+  idempotent by UUID. **Remove the inline push from `SalesRepository.createSale`**
+  — the local write only marks `isSynced=false`; `SyncService` is the sole pusher.
+- **Conflict policy**: LWW (≈ last-push-wins) for config/customer/product edits;
+  the pull already skips rows with a pending local version (push owns them). Stock
+  oversell keeps the Phase 3 negative-stock detection. All conflict logic stays in
+  the sync layer.
+- **License = a question, not synced data**: device calls a narrow
+  `get_my_license_status(shop_id)` RPC for active/blocked/expires; `license_keys` /
+  `shop_controls` are never in the registry (already excluded in Phase A).
+- **Migrate-once**: the B1 local schema bump (v6→v7) that adds `LocalSyncState`
+  also adds the denormalized-name columns Phase C needs (customer/cashier/payment
+  on `LocalSales`), so pilot devices migrate one time across B+C.
+- Triggering already satisfied by `SyncScheduler`; B just repoints `onPull` at the
+  new delta pull. Optional debounced post-write nudge if needed.
+
 ## Decision: Staff invites use an email CODE, not a magic link
 Date: 2026-06-09 | Status: Active
 
