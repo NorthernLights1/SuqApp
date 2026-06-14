@@ -134,10 +134,17 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
     (`syncSchedulerProvider.syncNow()`) so removing the inline push doesn't
     regress online sales to the 15-min backstop. Offline it's a no-op.
   - Dropped the `CustomersRemote` dep from SyncService. analyze clean; 119 tests.
-- [ ] **B4 — license as RPC, not synced data:**
-  - Audit the license read path; ensure status comes from a narrow
-    `get_my_license_status(shop_id)` RPC (create if missing). Never register
-    `license_keys` / `shop_controls` in the sync registry.
+- [x] **B4 — license as a question, not synced data:** VERIFIED already-satisfied,
+  no code change needed (read `license_provider.dart` + migration 019).
+  - `shop_controls`/`license_keys` are NOT in the sync registry. ✅
+  - `shop_controls` RLS scopes SELECT to own shop; `license_keys` is deny-all
+    (no client policy); device reads only its own 3-col control row. ✅
+  - Activation is the owner-only `activate_license` SECURITY DEFINER RPC. ✅
+  - Status read fails open offline; entitlement never cached locally. ✅
+  - Added a guardrail comment in `seed_service.dart` so the operator tables can't
+    be added to the registry later. A dedicated `get_my_license_status` RPC is
+    optional polish (RLS already isolates) — skipped to avoid churn + a prod
+    migration for no security gain.
 - [ ] **B5 — tests + verify:** unit-test delta cursor advance, soft-delete removal,
   pending-skip, bulk-push idempotency; `flutter analyze` clean; run suite.
 - [x] Auto-trigger on connectivity restored — already exists (`SyncScheduler`); B

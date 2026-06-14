@@ -117,9 +117,14 @@ fire-and-forget push to remove).
   the pull already skips rows with a pending local version (push owns them). Stock
   oversell keeps the Phase 3 negative-stock detection. All conflict logic stays in
   the sync layer.
-- **License = a question, not synced data**: device calls a narrow
-  `get_my_license_status(shop_id)` RPC for active/blocked/expires; `license_keys` /
-  `shop_controls` are never in the registry (already excluded in Phase A).
+- **License = a question, not synced data** (B4 verified already-satisfied):
+  the device reads only its OWN `shop_controls` row (3 cols) via an RLS-scoped
+  direct select that fails open offline; `license_keys` is deny-all (no client
+  policy); activation is the owner-only `activate_license` RPC. The tables are
+  never in the sync registry and entitlement is never cached locally. A dedicated
+  `get_my_license_status` RPC is optional polish, NOT required — RLS already gives
+  the own-shop isolation, so building one would be churn + a prod migration for no
+  security gain. Guardrail comment added in `seed_service.dart`.
 - **Migrate-once**: the B1 local schema bump (v6→v7) that adds `LocalSyncState`
   also adds the denormalized-name columns Phase C needs (customer/cashier/payment
   on `LocalSales`), so pilot devices migrate one time across B+C.

@@ -16,6 +16,11 @@ import 'app_database.dart';
 /// `deleted_at` is set are hard-removed locally (id-keyed tables).
 ///
 /// Runs on login and on every sync trigger via the SyncScheduler.
+///
+/// GUARDRAIL: only shop-owned data is replicated. Operator/admin tables —
+/// `license_keys`, `shop_controls` — must NEVER be added here. License status is
+/// a live, RLS-scoped own-shop read (see licenseStatusProvider) that fails open
+/// offline; entitlement stays server-authoritative and is never cached locally.
 class SeedService {
   SeedService(this._client, this._db);
 
