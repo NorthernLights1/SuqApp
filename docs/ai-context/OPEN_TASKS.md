@@ -121,11 +121,19 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
     `(_client, _db)`).
   - analyze clean; 119 tests pass (+ deleteByIds + cursor tests). NOTE: pull is
     not yet unit-tested end-to-end (needs a mock SupabaseClient) — deferred to B5.
-- [ ] **B3 — batched push (`SyncService`), remove inline push:**
-  - Replace select-before-insert row loops with one bulk `upsert(onConflict:'id')`
-    per table, FK order (customers → sales → sale_items → expenses → adjustments).
-  - Delete the fire-and-forget push block in `SalesRepository.createSale`
-    (:217-233); local write just marks `isSynced=false`, SyncService is sole pusher.
+- [x] **B3 — batched push (`SyncService`), remove inline push:** DONE.
+  - Customers / sales(+items) / expenses now push as one bulk
+    `upsert(onConflict:'id')` each (was select-before-insert, row-by-row). FK
+    order preserved (customers → sales → sale_items → expenses). Bulk is
+    all-or-nothing per batch (retried on failure) — noted as a pilot trade-off.
+  - Stock adjustments kept per-row: `InventoryRemote.applyAdjustment` is
+    delta-aware (server-side quantity composition), so it can't be a blind upsert.
+  - Removed the inline fire-and-forget push from `SalesRepository.createSale`;
+    the sale just stays `isSynced=false` and SyncService is the sole pusher.
+  - Added a non-blocking post-sale sync nudge in `CreateSaleNotifier.submit`
+    (`syncSchedulerProvider.syncNow()`) so removing the inline push doesn't
+    regress online sales to the 15-min backstop. Offline it's a no-op.
+  - Dropped the `CustomersRemote` dep from SyncService. analyze clean; 119 tests.
 - [ ] **B4 — license as RPC, not synced data:**
   - Audit the license read path; ensure status comes from a narrow
     `get_my_license_status(shop_id)` RPC (create if missing). Never register

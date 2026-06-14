@@ -739,11 +739,16 @@ class AppDatabase extends _$AppDatabase {
       ));
 
   /// Hard-remove rows by `id` from an id-keyed local table — used by the delta
-  /// pull to apply server soft-deletes (`deleted_at` set). [sqlTable] is a
-  /// fixed, code-supplied Drift table name (never user input); [ids] are bound
-  /// parameters.
+  /// pull to apply server soft-deletes (`deleted_at` set). [ids] are bound
+  /// parameters; [sqlTable] is interpolated, so — defence-in-depth, even though
+  /// callers only ever pass a code constant — it is validated against the real
+  /// tables in this schema and rejected otherwise.
   Future<void> deleteByIds(String sqlTable, List<String> ids) async {
     if (ids.isEmpty) return;
+    final known = allTables.map((t) => t.actualTableName).toSet();
+    if (!known.contains(sqlTable)) {
+      throw ArgumentError.value(sqlTable, 'sqlTable', 'not a table in this schema');
+    }
     final placeholders = List.filled(ids.length, '?').join(', ');
     await customStatement('DELETE FROM $sqlTable WHERE id IN ($placeholders)', ids);
   }

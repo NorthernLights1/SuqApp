@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:decimal/decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/services/sync_providers.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../data/local/seed_service.dart';
 import '../../../../domain/models/product.dart';
@@ -250,6 +253,10 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
       ref.invalidate(reportSummaryProvider);
       if (isCredit) ref.invalidate(outstandingCreditProvider);
       if (customerId != null) ref.invalidate(customerSalesProvider(customerId));
+      // Single-boundary sync: nudge the sync service to push this sale (then
+      // pull). Non-blocking so checkout stays instant; offline it's a no-op and
+      // the reconnect/backstop trigger pushes it later.
+      unawaited(ref.read(syncSchedulerProvider).syncNow());
       // Low-stock alerts are no longer fired per-sale (that was spammy). They
       // now run as a scheduled server-side sweep (Supabase cron, 9am & 9pm).
       return sale;

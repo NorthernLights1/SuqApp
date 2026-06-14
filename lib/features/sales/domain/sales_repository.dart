@@ -213,25 +213,9 @@ class SalesRepository implements ISalesRepository {
       }
     }
 
-    // Fire-and-forget push to Supabase; SyncService handles retries on failure
-    unawaited(
-      _remote
-          .createSale(
-            id: saleId,
-            branchId: branchId,
-            shopId: shopId,
-            cashierId: cashierId,
-            paymentMethodId: paymentMethodId,
-            items: items,
-            customerId: customerId,
-            isCredit: isCredit,
-            notes: notes,
-            discountReason: discountReason,
-          )
-          .then((_) => _db.markSaleSynced(saleId))
-          .catchError((_) {}),
-    );
-
+    // No inline push (offline-first v2 absolute boundary): the sale stays
+    // isSynced=false and SyncService is the sole pusher. The caller nudges a
+    // sync after a successful write (see CreateSaleNotifier.submit).
     final itemRows = await _db.getSaleItems(saleId);
     return _saleFromRows(saleRow, itemRows);
   }
