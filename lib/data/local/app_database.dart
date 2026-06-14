@@ -613,6 +613,11 @@ class AppDatabase extends _$AppDatabase {
             ..where((t) => t.shopId.equals(shopId) & t.isActive.equals(true)))
           .get();
 
+  /// Any local branch (for the device-level sync heartbeat, which needs a valid
+  /// branch_id but isn't branch-specific). Null before the first seed.
+  Future<BranchRow?> getAnyBranch() =>
+      (select(localBranches)..limit(1)).getSingleOrNull();
+
   // ── Shop settings ────────────────────────────────────────────────────────────
 
   Future<void> upsertSettings(List<LocalShopSettingsCompanion> rows) =>

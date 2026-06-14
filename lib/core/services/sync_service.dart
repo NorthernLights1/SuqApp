@@ -62,8 +62,7 @@ class SyncService implements ISyncService {
           pushed > 0 ||
           _lastLogAt == null ||
           now.difference(_lastLogAt!) >= _logHeartbeatInterval) {
-        await _upsertSyncLog(userId);
-        _lastLogAt = now;
+        if (await _writeSyncLog(userId)) _lastLogAt = now;
       }
       _emit(SyncStatus.success);
     } catch (_) {
@@ -248,14 +247,22 @@ class SyncService implements ISyncService {
         AppConstants.defaultSyncWarningHours;
   }
 
-  Future<void> _upsertSyncLog(String userId) async {
-    await _supabase.from('sync_logs').upsert({
+  /// Writes the device heartbeat row for overdue-sync detection. Returns false
+  /// (and writes nothing) when no local branch is available yet — sync_logs
+  /// requires a non-null branch_id, but the heartbeat itself isn't
+  /// branch-specific, so any local branch serves. (device_id is a coarse label;
+  /// a stable per-device id is future cleanup.)
+  Future<bool> _writeSyncLog(String userId) async {
+    final branchId = (await _db?.getAnyBranch())?.id;
+    if (branchId == null) return false;
+    await _supabase.from('sync_logs').insert({
       'user_id': userId,
-      'branch_id': '',
+      'branch_id': branchId,
       'device_id': 'mobile',
       'last_synced_at': DateTime.now().toIso8601String(),
       'status': 'success',
     });
+    return true;
   }
 
   void _emit(SyncStatus s) {
