@@ -11,7 +11,8 @@ import '../../domain/interfaces/sync_service_interface.dart';
 /// App-resume and post-login triggers are driven from outside (see
 /// sync_providers / app root) and also funnel through [syncNow].
 class SyncScheduler {
-  SyncScheduler(this._service, this._connectivity, {this.onPull});
+  SyncScheduler(this._service, this._connectivity,
+      {this.onPull, this.pendingStream});
 
   final ISyncService _service;
   final Connectivity _connectivity;
@@ -21,19 +22,34 @@ class SyncScheduler {
   /// the scheduler stays usable without a pull wired in.
   final Future<void> Function()? onPull;
 
+  /// Emits true whenever a local write leaves unsynced work (see
+  /// [AppDatabase.watchHasPendingWork]). A debounced sync drains it promptly —
+  /// the single post-write nudge for every offline write. Null on web.
+  final Stream<bool>? pendingStream;
+
   StreamSubscription<List<ConnectivityResult>>? _connSub;
+  StreamSubscription<bool>? _pendingSub;
   Timer? _timer;
+  Timer? _debounce;
   bool _wasOnline = true;
 
   /// Foreground backstop. Timers on mobile don't fire while backgrounded, so
   /// this is effectively foreground-only. 15 min keeps it nearly free.
   static const _backstopInterval = Duration(minutes: 15);
 
+  /// Coalesce a burst of writes (e.g. a multi-line sale) into one sync.
+  static const _writeDebounce = Duration(seconds: 2);
+
   /// Begins listening and runs an initial sync (cold start).
   void start() {
     syncNow();
     _connSub = _connectivity.onConnectivityChanged.listen(_onConnectivity);
     _timer = Timer.periodic(_backstopInterval, (_) => syncNow());
+    _pendingSub = pendingStream?.listen((hasPending) {
+      if (!hasPending) return;
+      _debounce?.cancel();
+      _debounce = Timer(_writeDebounce, () => syncNow());
+    });
   }
 
   void _onConnectivity(List<ConnectivityResult> results) {
@@ -60,6 +76,8 @@ class SyncScheduler {
 
   void dispose() {
     _connSub?.cancel();
+    _pendingSub?.cancel();
     _timer?.cancel();
+    _debounce?.cancel();
   }
 }

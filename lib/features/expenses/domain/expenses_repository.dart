@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
@@ -107,7 +106,9 @@ class ExpensesRepository implements IExpensesRepository {
       return expense;
     }
 
-    // Native: local-first, then background push (SyncService handles retries).
+    // Native: local-first. No inline push (single boundary): the row stays
+    // isSynced=false and SyncService is the sole pusher; the pending-work
+    // watcher nudges a sync.
     await _db.insertExpense(LocalExpensesCompanion(
       id: Value(id),
       branchId: Value(branchId),
@@ -120,22 +121,6 @@ class ExpensesRepository implements IExpensesRepository {
       createdAt: Value(now),
       isSynced: const Value(false),
     ));
-
-    unawaited(
-      _remote
-          .insertExpense(
-            id: id,
-            branchId: branchId,
-            categoryId: categoryId,
-            amount: amount,
-            description: desc,
-            recordedBy: recordedBy,
-            date: day,
-            createdAt: now,
-          )
-          .then((_) => _db.markExpenseSynced(id))
-          .catchError((_) {}),
-    );
 
     return expense;
   }

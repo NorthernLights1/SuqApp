@@ -186,10 +186,15 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
     both record payments → possible overpayment in the ledger, both visible (no
     loss). Sale-level `credit_settlement_method` not stamped offline (recoverable
     from `credit_payments`).
-- [ ] **C3b — remove inline pushes** (boundary consistency, no reported bug):
-  `InventoryRepository._queueAdjustment` and `ExpensesRepository.record` and
-  `CustomersRepository.save` still fire their own background push — remove; let
-  SyncService be sole pusher + add post-write nudges.
+- [x] **C3b — remove inline pushes + central nudge** (boundary consistency): DONE.
+  Removed the fire-and-forget pushes from `InventoryRepository._queueAdjustment`,
+  `ExpensesRepository.record`, `CustomersRepository.save` — SyncService is now the
+  sole pusher for every write. Replaced per-call-site nudges with ONE central
+  mechanism: `AppDatabase.watchHasPendingWork()` (a loop-safe Drift stream — pulled
+  rows are isSynced=1 so syncing never re-arms it) drives a 2s-debounced
+  `syncNow()` in `SyncScheduler`. Covers all offline writes automatically. (The
+  explicit sales/credit nudges from B3/C3a remain — redundant-but-harmless; the
+  watcher is now primary.) analyze clean; 126 tests.
 - [ ] **C3c — product writes local-first** (debt, no reported bug): product
   create/edit/deactivate + `createCustomer` are still remote-first.
 - [ ] **C4 — remaining server-first reads → local-first**: `getSale` /

@@ -848,6 +848,28 @@ class AppDatabase extends _$AppDatabase {
         lastPulledAt: Value(lastPulledAt),
       ));
 
+  /// Emits whether any local write is waiting to push. Drives a debounced sync
+  /// nudge after offline writes. Loop-safe: pulled rows are `is_synced = 1`, so a
+  /// pull never re-arms this — only genuine pending work flips it true.
+  Stream<bool> watchHasPendingWork() {
+    return customSelect(
+      'SELECT ('
+      'EXISTS(SELECT 1 FROM local_sales WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_expenses WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_inventory_adjustments WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_customers WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_credit_payments WHERE is_synced = 0)'
+      ') AS has_pending',
+      readsFrom: {
+        localSales,
+        localExpenses,
+        localInventoryAdjustments,
+        localCustomers,
+        localCreditPayments,
+      },
+    ).watch().map((rows) => rows.first.read<int>('has_pending') == 1);
+  }
+
   /// Hard-remove rows by `id` from an id-keyed local table — used by the delta
   /// pull to apply server soft-deletes (`deleted_at` set). [ids] are bound
   /// parameters; [sqlTable] is interpolated, so — defence-in-depth, even though

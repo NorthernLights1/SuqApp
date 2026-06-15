@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
@@ -80,13 +79,8 @@ class CustomersRepository {
       await _db.updateCustomerIdentity(id, cleanName, cleanPhone);
     }
 
-    unawaited(
-      _remote
-          .upsertIdentity(
-              id: id, shopId: shopId, name: cleanName, phone: cleanPhone)
-          .then((_) => _db.markCustomerSynced(id))
-          .catchError((_) {}),
-    );
+    // No inline push (single boundary): the row stays isSynced=false and
+    // SyncService is the sole pusher; the pending-work watcher nudges a sync.
     return id;
   }
 

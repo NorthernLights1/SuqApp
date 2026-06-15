@@ -47,6 +47,9 @@ final syncSchedulerProvider = Provider<SyncScheduler>((ref) {
   final scheduler = SyncScheduler(
     ref.read(syncServiceProvider),
     ref.read(connectivityProvider),
+    // Single post-write nudge: a debounced sync whenever a local write leaves
+    // unsynced work (null on web, where there's no local DB / queue).
+    pendingStream: ref.read(appDatabaseProvider)?.watchHasPendingWork(),
     // Pull half: after each push, download server state into the local caches
     // so other devices' changes appear (resolves shop+branch each run).
     onPull: () async {

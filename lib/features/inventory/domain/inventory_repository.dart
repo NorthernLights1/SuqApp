@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
@@ -291,7 +290,9 @@ class InventoryRepository {
       return;
     }
 
-    // Native: optimistic mirror update + queue, then background push.
+    // Native: optimistic mirror update + queue. No inline push (single
+    // boundary): the adjustment stays isSynced=false and SyncService is the
+    // sole pusher; the pending-work watcher nudges a sync.
     await _db.setStockLevel(branchId, productId, after);
     await _db.insertInventoryAdjustment(LocalInventoryAdjustmentsCompanion(
       id: Value(id),
@@ -306,23 +307,6 @@ class InventoryRepository {
       createdAt: Value(DateTime.now()),
       isSynced: const Value(false),
     ));
-
-    unawaited(
-      _remote
-          .applyAdjustment(
-            id: id,
-            type: type,
-            branchId: branchId,
-            productId: productId,
-            quantityBefore: before,
-            quantityAfter: after,
-            adjustedBy: adjustedBy,
-            notes: notes,
-            expiryDate: expiryDate,
-          )
-          .then((_) => _db.markInventoryAdjustmentSynced(id))
-          .catchError((_) {}),
-    );
   }
 
   // ── Mappers ──────────────────────────────────────────────────────────────────
