@@ -108,6 +108,7 @@ class InventoryRemote {
     required String adjustedBy,
     String? notes,
     DateTime? expiryDate,
+    DateTime? createdAt,
   }) async {
     await _client.rpc('apply_inventory_adjustment', params: {
       'p_id': id,
@@ -118,6 +119,8 @@ class InventoryRemote {
       'p_quantity_after': quantityAfter.toString(),
       'p_notes': notes,
       'p_expiry_date': expiryDate?.toIso8601String().substring(0, 10),
+      // Preserve the offline recording time on replay (null online → now()).
+      'p_created_at': createdAt?.toUtc().toIso8601String(),
     });
   }
 

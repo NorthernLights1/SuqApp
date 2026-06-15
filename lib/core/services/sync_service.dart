@@ -126,6 +126,7 @@ class SyncService implements ISyncService {
           adjustedBy: adjustment.adjustedBy,
           notes: adjustment.notes,
           expiryDate: adjustment.expiryDate,
+          createdAt: adjustment.createdAt,
         );
         await db.markInventoryAdjustmentSynced(adjustment.id);
       }
@@ -226,6 +227,9 @@ class SyncService implements ISyncService {
             'p_amount': p.amount.toString(),
             'p_method': p.method,
             'p_notes': p.notes,
+            // Preserve when the payment was actually recorded offline, not the
+            // (possibly days-later) push time.
+            'p_created_at': p.createdAt.toUtc().toIso8601String(),
           },
         );
         await db.markCreditPaymentSynced(p.id);
