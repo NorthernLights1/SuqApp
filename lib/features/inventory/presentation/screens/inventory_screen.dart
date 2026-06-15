@@ -1,6 +1,5 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../domain/models/product.dart';
@@ -13,12 +12,7 @@ import '../../../../features/auth/presentation/providers/permissions_provider.da
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../data/inventory_remote.dart';
 import '../providers/inventory_provider.dart';
-
-// Allows a single decimal separator and up to four fractional digits.
-final _numericFormatter = TextInputFormatter.withFunction((oldValue, newValue) {
-  final valid = RegExp(r'^\d*(?:\.\d{0,4})?$').hasMatch(newValue.text);
-  return valid ? newValue : oldValue;
-});
+import '../../../../shared/widgets/decimal_input_formatter.dart';
 
 class InventoryScreen extends ConsumerWidget {
   const InventoryScreen({super.key});
@@ -466,7 +460,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               autofocus: true,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_numericFormatter],
+              inputFormatters: [decimalInputFormatter],
               decoration: InputDecoration(
                 labelText: 'Quantity received ($unitAbbr)',
                 isDense: true,
@@ -478,7 +472,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               controller: _sellPriceCtrl,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_numericFormatter],
+              inputFormatters: [decimalInputFormatter],
               decoration: InputDecoration(
                 labelText: 'Sale price (optional)',
                 hintText: _priceHint(p.sellingPrice),
@@ -491,7 +485,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               controller: _costPriceCtrl,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_numericFormatter],
+              inputFormatters: [decimalInputFormatter],
               decoration: InputDecoration(
                 labelText: 'Purchase price (optional)',
                 hintText: _priceHint(p.costPrice),
@@ -504,7 +498,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               controller: _thresholdCtrl,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_numericFormatter],
+              inputFormatters: [decimalInputFormatter],
               decoration: InputDecoration(
                 labelText: 'Low stock threshold (optional)',
                 hintText: _priceHint(p.lowStockThreshold),
@@ -685,7 +679,7 @@ class _CorrectStockDialogState extends ConsumerState<_CorrectStockDialog> {
               autofocus: true,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_numericFormatter],
+              inputFormatters: [decimalInputFormatter],
               decoration: InputDecoration(
                 labelText: 'Correct quantity ($unitAbbr)',
                 isDense: true,
@@ -1122,7 +1116,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 label: 'Selling Price — optional',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [_numericFormatter],
+                inputFormatters: [decimalInputFormatter],
                 textInputAction: TextInputAction.next,
                 prefixText: 'ETB ',
               ),
@@ -1132,7 +1126,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 label: 'Cost / Purchase Price — optional',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [_numericFormatter],
+                inputFormatters: [decimalInputFormatter],
                 textInputAction: TextInputAction.next,
                 prefixText: 'ETB ',
               ),
@@ -1142,7 +1136,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 label: 'Low Stock Alert Threshold',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [_numericFormatter],
+                inputFormatters: [decimalInputFormatter],
                 textInputAction: TextInputAction.done,
                 prefixIcon: const Icon(Icons.warning_amber_outlined),
               ),
@@ -1168,7 +1162,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   label: 'Quantity',
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [_numericFormatter],
+                  inputFormatters: [decimalInputFormatter],
                   textInputAction: TextInputAction.done,
                   prefixIcon: const Icon(Icons.inventory_outlined),
                 ),

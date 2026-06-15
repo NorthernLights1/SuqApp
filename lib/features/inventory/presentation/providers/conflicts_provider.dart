@@ -31,8 +31,13 @@ class StockConflict extends Equatable {
         productName:
             (j['products'] as Map<String, dynamic>?)?['name'] as String? ??
                 'Unknown product',
-        observedQuantity: Decimal.parse(j['observed_quantity'].toString()),
-        detectedAt: DateTime.parse(j['detected_at'] as String).toLocal(),
+        // Tolerant parsing: a single malformed row must not crash the whole
+        // conflict list / resolution flow.
+        observedQuantity:
+            Decimal.tryParse(j['observed_quantity'].toString()) ?? Decimal.zero,
+        detectedAt:
+            DateTime.tryParse(j['detected_at'] as String? ?? '')?.toLocal() ??
+                DateTime.now(),
       );
 
   @override

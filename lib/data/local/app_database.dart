@@ -356,6 +356,11 @@ class AppDatabase extends _$AppDatabase {
           }
           // v7 -> v8: offline credit settlement — credit payments can be
           // recorded offline and queued for push.
+          // Lower bound matters: localCreditPayments is created (createTable) in
+          // the v5 step, which always builds the *current* schema — so a DB at
+          // from < 5 already gets isSynced from createTable and must NOT addColumn
+          // it again (that would be a duplicate-column error). Only DBs created at
+          // v5–v7 (before isSynced was added) need the retrofit.
           if (from >= 5 && from < 8) {
             await m.addColumn(localCreditPayments, localCreditPayments.isSynced);
           }

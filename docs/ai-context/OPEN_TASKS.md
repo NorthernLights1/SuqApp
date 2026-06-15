@@ -331,6 +331,11 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
 - First sales pull caps at 2000 most-recent rows (unsettled credits unbounded);
   older sales come via delta/on-demand. Fine for the pilot; revisit pagination
   for very high-volume shops.
+- Presentation providers call Supabase directly (read queries + the stock-conflict
+  claim/resolve in `conflicts_provider`), bypassing the "modules behind interfaces"
+  rule. This is the existing pattern across `customers_provider`, `reports_provider`,
+  `settings_provider`, etc. — a repository-layer extraction is an app-wide cleanup,
+  not a per-feature change. (CodeRabbit CR#6/#7.)
 
 ---
 

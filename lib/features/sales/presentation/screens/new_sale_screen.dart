@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../domain/models/sale.dart';
@@ -11,11 +10,7 @@ import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../providers/sales_provider.dart';
-
-final _decimalInputFormatter = TextInputFormatter.withFunction((oldValue, newValue) {
-  final valid = RegExp(r'^\d*(?:\.\d{0,4})?$').hasMatch(newValue.text);
-  return valid ? newValue : oldValue;
-});
+import '../../../../shared/widgets/decimal_input_formatter.dart';
 
 class NewSaleScreen extends ConsumerStatefulWidget {
   const NewSaleScreen({super.key});
@@ -379,7 +374,7 @@ class _CartItemTileState extends State<_CartItemTile> {
             child: TextField(
               controller: _qtyCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_decimalInputFormatter],
+              inputFormatters: [decimalInputFormatter],
               textAlign: TextAlign.center,
               decoration: const InputDecoration(
                   labelText: 'Qty', isDense: true, contentPadding: EdgeInsets.all(8)),
@@ -392,7 +387,7 @@ class _CartItemTileState extends State<_CartItemTile> {
             child: TextField(
               controller: _priceCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_decimalInputFormatter],
+              inputFormatters: [decimalInputFormatter],
               textAlign: TextAlign.end,
               decoration: const InputDecoration(
                   labelText: 'Price', isDense: true, contentPadding: EdgeInsets.all(8)),

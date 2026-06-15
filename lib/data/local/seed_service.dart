@@ -613,7 +613,10 @@ class SeedService {
         tableKey: 'credit_payments',
         deleteFromTable: 'local_credit_payments',
         fetch: (cursorIso) async {
-          // RLS scopes this to the current shop's sales.
+          // RLS scopes this to the current shop's sales. Intentionally NO time
+          // window on the first pull (unlike sales/expenses): payment volume is
+          // low, and the full history backs both the dispute audit trail and the
+          // remaining-balance math for unsettled credits of any age.
           var q = _client.from('credit_payments').select(
               'id, sale_id, customer_id, amount, method, notes, created_at, updated_at, deleted_at');
           if (cursorIso != null) q = q.gte('updated_at', cursorIso);
