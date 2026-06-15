@@ -129,7 +129,7 @@ class CreditSale extends Equatable {
 final customersRepositoryProvider = Provider<CustomersRepository>((ref) {
   return CustomersRepository(
     CustomersRemote(ref.read(supabaseClientProvider)),
-    ref.read(appDatabaseProvider),
+    ref.watch(appDatabaseProvider),
   );
 });
 

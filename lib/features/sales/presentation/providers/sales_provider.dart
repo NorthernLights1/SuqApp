@@ -25,7 +25,7 @@ import '../../domain/sales_repository.dart';
 
 final salesRepositoryProvider = Provider<SalesRepository>((ref) {
   final client = ref.read(supabaseClientProvider);
-  final db = ref.read(appDatabaseProvider);
+  final db = ref.watch(appDatabaseProvider);
   return SalesRepository(SalesRemote(client), db);
 });
 
@@ -315,18 +315,16 @@ class VoidSaleNotifier extends AsyncNotifier<void> {
     required String reason,
   }) async {
     final userId = ref.read(currentUserIdProvider);
-    final branches = await ref.read(currentShopBranchesProvider.future);
-    final activeBranch = ref.read(activeBranchProvider) ?? (branches.isNotEmpty ? branches.first : null);
-
-    if (userId == null || activeBranch == null) throw Exception('Missing context');
+    if (userId == null) throw Exception('Missing user context');
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
+      final sale = await ref.read(salesRepositoryProvider).getSale(saleId);
       await ref.read(salesRepositoryProvider).voidSale(
             saleId: saleId,
             voidedBy: userId,
             reason: reason,
-            branchId: activeBranch.id,
+            branchId: sale.branchId,
           );
       ref.invalidate(salesListProvider);
       ref.invalidate(todaySalesTotalsProvider);

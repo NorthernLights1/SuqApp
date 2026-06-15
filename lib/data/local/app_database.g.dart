@@ -782,6 +782,17 @@ class $LocalStockTable extends LocalStock
         type: DriftSqlType.string,
         requiredDuringInsert: true,
       ).withConverter<Decimal>($LocalStockTable.$converterquantity);
+  static const VerificationMeta _expiryDateMeta = const VerificationMeta(
+    'expiryDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> expiryDate = GeneratedColumn<DateTime>(
+    'expiry_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _syncedAtMeta = const VerificationMeta(
     'syncedAt',
   );
@@ -798,6 +809,7 @@ class $LocalStockTable extends LocalStock
     productId,
     branchId,
     quantity,
+    expiryDate,
     syncedAt,
   ];
   @override
@@ -827,6 +839,12 @@ class $LocalStockTable extends LocalStock
       );
     } else if (isInserting) {
       context.missing(_branchIdMeta);
+    }
+    if (data.containsKey('expiry_date')) {
+      context.handle(
+        _expiryDateMeta,
+        expiryDate.isAcceptableOrUnknown(data['expiry_date']!, _expiryDateMeta),
+      );
     }
     if (data.containsKey('synced_at')) {
       context.handle(
@@ -859,6 +877,10 @@ class $LocalStockTable extends LocalStock
           data['${effectivePrefix}quantity'],
         )!,
       ),
+      expiryDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}expiry_date'],
+      ),
       syncedAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}synced_at'],
@@ -878,11 +900,13 @@ class StockRow extends DataClass implements Insertable<StockRow> {
   final String productId;
   final String branchId;
   final Decimal quantity;
+  final DateTime? expiryDate;
   final DateTime syncedAt;
   const StockRow({
     required this.productId,
     required this.branchId,
     required this.quantity,
+    this.expiryDate,
     required this.syncedAt,
   });
   @override
@@ -895,6 +919,9 @@ class StockRow extends DataClass implements Insertable<StockRow> {
         $LocalStockTable.$converterquantity.toSql(quantity),
       );
     }
+    if (!nullToAbsent || expiryDate != null) {
+      map['expiry_date'] = Variable<DateTime>(expiryDate);
+    }
     map['synced_at'] = Variable<DateTime>(syncedAt);
     return map;
   }
@@ -904,6 +931,9 @@ class StockRow extends DataClass implements Insertable<StockRow> {
       productId: Value(productId),
       branchId: Value(branchId),
       quantity: Value(quantity),
+      expiryDate: expiryDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expiryDate),
       syncedAt: Value(syncedAt),
     );
   }
@@ -917,6 +947,7 @@ class StockRow extends DataClass implements Insertable<StockRow> {
       productId: serializer.fromJson<String>(json['productId']),
       branchId: serializer.fromJson<String>(json['branchId']),
       quantity: serializer.fromJson<Decimal>(json['quantity']),
+      expiryDate: serializer.fromJson<DateTime?>(json['expiryDate']),
       syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
     );
   }
@@ -927,6 +958,7 @@ class StockRow extends DataClass implements Insertable<StockRow> {
       'productId': serializer.toJson<String>(productId),
       'branchId': serializer.toJson<String>(branchId),
       'quantity': serializer.toJson<Decimal>(quantity),
+      'expiryDate': serializer.toJson<DateTime?>(expiryDate),
       'syncedAt': serializer.toJson<DateTime>(syncedAt),
     };
   }
@@ -935,11 +967,13 @@ class StockRow extends DataClass implements Insertable<StockRow> {
     String? productId,
     String? branchId,
     Decimal? quantity,
+    Value<DateTime?> expiryDate = const Value.absent(),
     DateTime? syncedAt,
   }) => StockRow(
     productId: productId ?? this.productId,
     branchId: branchId ?? this.branchId,
     quantity: quantity ?? this.quantity,
+    expiryDate: expiryDate.present ? expiryDate.value : this.expiryDate,
     syncedAt: syncedAt ?? this.syncedAt,
   );
   StockRow copyWithCompanion(LocalStockCompanion data) {
@@ -947,6 +981,9 @@ class StockRow extends DataClass implements Insertable<StockRow> {
       productId: data.productId.present ? data.productId.value : this.productId,
       branchId: data.branchId.present ? data.branchId.value : this.branchId,
       quantity: data.quantity.present ? data.quantity.value : this.quantity,
+      expiryDate: data.expiryDate.present
+          ? data.expiryDate.value
+          : this.expiryDate,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
     );
   }
@@ -957,13 +994,15 @@ class StockRow extends DataClass implements Insertable<StockRow> {
           ..write('productId: $productId, ')
           ..write('branchId: $branchId, ')
           ..write('quantity: $quantity, ')
+          ..write('expiryDate: $expiryDate, ')
           ..write('syncedAt: $syncedAt')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(productId, branchId, quantity, syncedAt);
+  int get hashCode =>
+      Object.hash(productId, branchId, quantity, expiryDate, syncedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -971,6 +1010,7 @@ class StockRow extends DataClass implements Insertable<StockRow> {
           other.productId == this.productId &&
           other.branchId == this.branchId &&
           other.quantity == this.quantity &&
+          other.expiryDate == this.expiryDate &&
           other.syncedAt == this.syncedAt);
 }
 
@@ -978,12 +1018,14 @@ class LocalStockCompanion extends UpdateCompanion<StockRow> {
   final Value<String> productId;
   final Value<String> branchId;
   final Value<Decimal> quantity;
+  final Value<DateTime?> expiryDate;
   final Value<DateTime> syncedAt;
   final Value<int> rowid;
   const LocalStockCompanion({
     this.productId = const Value.absent(),
     this.branchId = const Value.absent(),
     this.quantity = const Value.absent(),
+    this.expiryDate = const Value.absent(),
     this.syncedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -991,6 +1033,7 @@ class LocalStockCompanion extends UpdateCompanion<StockRow> {
     required String productId,
     required String branchId,
     required Decimal quantity,
+    this.expiryDate = const Value.absent(),
     required DateTime syncedAt,
     this.rowid = const Value.absent(),
   }) : productId = Value(productId),
@@ -1001,6 +1044,7 @@ class LocalStockCompanion extends UpdateCompanion<StockRow> {
     Expression<String>? productId,
     Expression<String>? branchId,
     Expression<String>? quantity,
+    Expression<DateTime>? expiryDate,
     Expression<DateTime>? syncedAt,
     Expression<int>? rowid,
   }) {
@@ -1008,6 +1052,7 @@ class LocalStockCompanion extends UpdateCompanion<StockRow> {
       if (productId != null) 'product_id': productId,
       if (branchId != null) 'branch_id': branchId,
       if (quantity != null) 'quantity': quantity,
+      if (expiryDate != null) 'expiry_date': expiryDate,
       if (syncedAt != null) 'synced_at': syncedAt,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1017,6 +1062,7 @@ class LocalStockCompanion extends UpdateCompanion<StockRow> {
     Value<String>? productId,
     Value<String>? branchId,
     Value<Decimal>? quantity,
+    Value<DateTime?>? expiryDate,
     Value<DateTime>? syncedAt,
     Value<int>? rowid,
   }) {
@@ -1024,6 +1070,7 @@ class LocalStockCompanion extends UpdateCompanion<StockRow> {
       productId: productId ?? this.productId,
       branchId: branchId ?? this.branchId,
       quantity: quantity ?? this.quantity,
+      expiryDate: expiryDate ?? this.expiryDate,
       syncedAt: syncedAt ?? this.syncedAt,
       rowid: rowid ?? this.rowid,
     );
@@ -1043,6 +1090,9 @@ class LocalStockCompanion extends UpdateCompanion<StockRow> {
         $LocalStockTable.$converterquantity.toSql(quantity.value),
       );
     }
+    if (expiryDate.present) {
+      map['expiry_date'] = Variable<DateTime>(expiryDate.value);
+    }
     if (syncedAt.present) {
       map['synced_at'] = Variable<DateTime>(syncedAt.value);
     }
@@ -1058,6 +1108,7 @@ class LocalStockCompanion extends UpdateCompanion<StockRow> {
           ..write('productId: $productId, ')
           ..write('branchId: $branchId, ')
           ..write('quantity: $quantity, ')
+          ..write('expiryDate: $expiryDate, ')
           ..write('syncedAt: $syncedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -8616,6 +8667,7 @@ typedef $$LocalStockTableCreateCompanionBuilder =
       required String productId,
       required String branchId,
       required Decimal quantity,
+      Value<DateTime?> expiryDate,
       required DateTime syncedAt,
       Value<int> rowid,
     });
@@ -8624,6 +8676,7 @@ typedef $$LocalStockTableUpdateCompanionBuilder =
       Value<String> productId,
       Value<String> branchId,
       Value<Decimal> quantity,
+      Value<DateTime?> expiryDate,
       Value<DateTime> syncedAt,
       Value<int> rowid,
     });
@@ -8652,6 +8705,11 @@ class $$LocalStockTableFilterComposer
         column: $table.quantity,
         builder: (column) => ColumnWithTypeConverterFilters(column),
       );
+
+  ColumnFilters<DateTime> get expiryDate => $composableBuilder(
+    column: $table.expiryDate,
+    builder: (column) => ColumnFilters(column),
+  );
 
   ColumnFilters<DateTime> get syncedAt => $composableBuilder(
     column: $table.syncedAt,
@@ -8683,6 +8741,11 @@ class $$LocalStockTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get expiryDate => $composableBuilder(
+    column: $table.expiryDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
     column: $table.syncedAt,
     builder: (column) => ColumnOrderings(column),
@@ -8706,6 +8769,11 @@ class $$LocalStockTableAnnotationComposer
 
   GeneratedColumnWithTypeConverter<Decimal, String> get quantity =>
       $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get expiryDate => $composableBuilder(
+    column: $table.expiryDate,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get syncedAt =>
       $composableBuilder(column: $table.syncedAt, builder: (column) => column);
@@ -8742,12 +8810,14 @@ class $$LocalStockTableTableManager
                 Value<String> productId = const Value.absent(),
                 Value<String> branchId = const Value.absent(),
                 Value<Decimal> quantity = const Value.absent(),
+                Value<DateTime?> expiryDate = const Value.absent(),
                 Value<DateTime> syncedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalStockCompanion(
                 productId: productId,
                 branchId: branchId,
                 quantity: quantity,
+                expiryDate: expiryDate,
                 syncedAt: syncedAt,
                 rowid: rowid,
               ),
@@ -8756,12 +8826,14 @@ class $$LocalStockTableTableManager
                 required String productId,
                 required String branchId,
                 required Decimal quantity,
+                Value<DateTime?> expiryDate = const Value.absent(),
                 required DateTime syncedAt,
                 Value<int> rowid = const Value.absent(),
               }) => LocalStockCompanion.insert(
                 productId: productId,
                 branchId: branchId,
                 quantity: quantity,
+                expiryDate: expiryDate,
                 syncedAt: syncedAt,
                 rowid: rowid,
               ),

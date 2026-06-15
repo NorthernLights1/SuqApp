@@ -32,7 +32,7 @@ final currentShopProvider = FutureProvider<Shop?>((ref) async {
         .from('shop_users')
         .select('shops(id, name, config, created_at)')
         .eq('user_id', userId)
-        .neq('status', 'suspended')
+        .eq('status', 'active')
         .maybeSingle();
 
     if (memberData != null) {
@@ -94,7 +94,10 @@ final currentShopBranchesProvider = FutureProvider<List<Branch>>((ref) async {
 /// The active branch for this session (first branch by default).
 class _ActiveBranchNotifier extends Notifier<Branch?> {
   @override
-  Branch? build() => null;
+  Branch? build() {
+    ref.watch(currentUserIdProvider);
+    return null;
+  }
   void set(Branch? branch) => state = branch;
 }
 

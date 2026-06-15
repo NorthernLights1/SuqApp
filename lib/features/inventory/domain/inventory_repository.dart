@@ -48,6 +48,23 @@ class InventoryRepository {
     return _remote.getProductCategories(shopId);
   }
 
+  Future<ProductCategory> createProductCategory({
+    required String shopId,
+    required String name,
+  }) async {
+    final category =
+        await _remote.createProductCategory(shopId: shopId, name: name);
+    await _db?.upsertCategories([
+      LocalProductCategoriesCompanion(
+        id: Value(category.id),
+        shopId: Value(shopId),
+        name: Value(category.name),
+        syncedAt: Value(DateTime.now()),
+      ),
+    ]);
+    return category;
+  }
+
   // ── Products ─────────────────────────────────────────────────────────────────
 
   Future<List<Product>> getProducts(String shopId) async {
@@ -128,6 +145,7 @@ class InventoryRepository {
             productId: Value(s.productId),
             branchId: Value(branchId),
             quantity: Value(s.quantity),
+            expiryDate: Value(s.expiryDate),
             syncedAt: Value(DateTime.now()),
           ),
       ]);
@@ -167,7 +185,7 @@ class InventoryRepository {
         lowStockThreshold: p.lowStockThreshold,
         sellingPrice: p.sellingPrice,
         unitAbbr: p.measurementUnitAbbr,
-        expiryDate: null, // not mirrored locally
+        expiryDate: s.expiryDate,
         updatedAt: s.syncedAt,
       ));
     }
@@ -293,7 +311,12 @@ class InventoryRepository {
     // Native: optimistic mirror update + queue. No inline push (single
     // boundary): the adjustment stays isSynced=false and SyncService is the
     // sole pusher; the pending-work watcher nudges a sync.
-    await _db.setStockLevel(branchId, productId, after);
+    await _db.setStockLevel(
+      branchId,
+      productId,
+      after,
+      expiryDate: expiryDate,
+    );
     await _db.insertInventoryAdjustment(LocalInventoryAdjustmentsCompanion(
       id: Value(id),
       branchId: Value(branchId),

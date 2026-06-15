@@ -5,6 +5,7 @@ import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../domain/models/sale.dart';
+import '../../../../domain/models/shop.dart';
 import '../../../../features/customers/presentation/screens/credits_screen.dart';
 import '../../../../features/inventory/presentation/providers/conflicts_provider.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
@@ -156,7 +157,7 @@ class _HomeTab extends ConsumerWidget {
 
 class _BranchChip extends ConsumerWidget {
   const _BranchChip({required this.branches});
-  final List branches;
+  final List<Branch> branches;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -165,20 +166,29 @@ class _BranchChip extends ConsumerWidget {
 
     if (display == null) return const SizedBox.shrink();
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.primaryLight,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.location_on, size: 14, color: AppColors.primary),
-          const SizedBox(width: 4),
-          Text(display.name as String, style: AppTextStyles.label.copyWith(color: AppColors.primary)),
-          const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.primary),
-        ],
+    return PopupMenuButton<Branch>(
+      onSelected: ref.read(activeBranchProvider.notifier).set,
+      itemBuilder: (_) => [
+        for (final branch in branches)
+          PopupMenuItem(value: branch, child: Text(branch.name)),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppColors.primaryLight,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.location_on, size: 14, color: AppColors.primary),
+            const SizedBox(width: 4),
+            Text(display.name,
+                style: AppTextStyles.label.copyWith(color: AppColors.primary)),
+            const Icon(Icons.arrow_drop_down,
+                size: 18, color: AppColors.primary),
+          ],
+        ),
       ),
     );
   }
@@ -481,13 +491,17 @@ class _MoreTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _MoreTile(icon: Icons.people_outline, label: 'Customers', route: AppRoutes.customers),
-        _MoreTile(icon: Icons.money_off_outlined, label: 'Expenses', route: AppRoutes.expenses),
+        if (hasPermissionSync(ref, 'customers.view'))
+          _MoreTile(icon: Icons.people_outline, label: 'Customers', route: AppRoutes.customers),
+        if (hasPermissionSync(ref, 'expenses.view'))
+          _MoreTile(icon: Icons.money_off_outlined, label: 'Expenses', route: AppRoutes.expenses),
         // Reports are owner/manager only (cashiers lack reports.view).
         if (hasPermissionSync(ref, 'reports.view'))
           _MoreTile(icon: Icons.bar_chart, label: 'Reports', route: AppRoutes.reports),
-        _MoreTile(icon: Icons.manage_accounts_outlined, label: 'Staff', route: AppRoutes.staff),
-        _MoreTile(icon: Icons.settings_outlined, label: 'Settings', route: AppRoutes.settings),
+        if (hasPermissionSync(ref, 'staff.view'))
+          _MoreTile(icon: Icons.manage_accounts_outlined, label: 'Staff', route: AppRoutes.staff),
+        if (hasPermissionSync(ref, 'settings.view'))
+          _MoreTile(icon: Icons.settings_outlined, label: 'Settings', route: AppRoutes.settings),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.logout, color: AppColors.error),

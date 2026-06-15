@@ -95,6 +95,19 @@ void main() {
       final qty = await db.getStockLevel('b-1', 'p-1');
       expect(qty, Decimal.parse('15'));
     });
+
+    test('stock expiry date survives the local cache', () async {
+      final expiry = DateTime(2026, 7, 1);
+      await db.setStockLevel(
+        'b-1',
+        'p-1',
+        Decimal.parse('12'),
+        expiryDate: expiry,
+      );
+
+      final row = (await db.getStockByBranch('b-1')).single;
+      expect(row.expiryDate, expiry);
+    });
   });
 
   // ── Sales ─────────────────────────────────────────────────────────────────
@@ -161,6 +174,48 @@ void main() {
       await db.markSaleSynced('sale-1');
       final pending = await db.getPendingSales();
       expect(pending, isEmpty);
+    });
+
+    test('pending tracked sales protect optimistic stock from pulls', () async {
+      await db.insertSaleWithItems(
+        LocalSalesCompanion(
+          id: const Value('sale-tracked'),
+          branchId: const Value('b-1'),
+          cashierId: const Value('user-1'),
+          paymentMethodId: const Value('pm-1'),
+          subtotal: Value(Decimal.parse('20')),
+          discountAmount: Value(Decimal.zero),
+          total: Value(Decimal.parse('20')),
+          status: const Value('completed'),
+          isCredit: const Value(false),
+          createdAt: Value(DateTime.now()),
+          isSynced: const Value(false),
+        ),
+        [
+          LocalSaleItemsCompanion(
+            id: const Value('item-tracked'),
+            saleId: const Value('sale-tracked'),
+            productId: const Value('p-tracked'),
+            productNameSnapshot: const Value('Tracked product'),
+            quantity: Value(Decimal.one),
+            unitPrice: Value(Decimal.parse('20')),
+            discountAmount: Value(Decimal.zero),
+            total: Value(Decimal.parse('20')),
+            inventoryStatus: const Value('tracked'),
+          ),
+        ],
+      );
+
+      expect(
+        await db.getPendingStockProductIds('b-1'),
+        contains('p-tracked'),
+      );
+
+      await db.markSaleSynced('sale-tracked');
+      expect(
+        await db.getPendingStockProductIds('b-1'),
+        isNot(contains('p-tracked')),
+      );
     });
 
     test('markSaleVoided updates status', () async {

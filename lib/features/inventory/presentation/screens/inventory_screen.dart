@@ -9,12 +9,16 @@ import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_text_field.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
+import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../data/inventory_remote.dart';
 import '../providers/inventory_provider.dart';
 
-// Allows digits and a single decimal separator — nothing else.
-final _numericFormatter = FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'));
+// Allows a single decimal separator and up to four fractional digits.
+final _numericFormatter = TextInputFormatter.withFunction((oldValue, newValue) {
+  final valid = RegExp(r'^\d*(?:\.\d{0,4})?$').hasMatch(newValue.text);
+  return valid ? newValue : oldValue;
+});
 
 class InventoryScreen extends ConsumerWidget {
   const InventoryScreen({super.key});
@@ -137,7 +141,8 @@ class InventoryScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: hasPermissionSync(ref, 'inventory.edit')
+          ? FloatingActionButton(
         onPressed: () async {
           await Navigator.of(context).push(
             MaterialPageRoute(
@@ -154,7 +159,8 @@ class InventoryScreen extends ConsumerWidget {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
-      ),
+      )
+          : null,
     );
   }
 }
@@ -234,7 +240,7 @@ class _ProductStockTile extends ConsumerWidget {
       ),
       isThreeLine: true,
       trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-      onTap: () => _showStockSheet(context, product, stockEntry),
+      onTap: () => _showStockSheet(context, ref, product, stockEntry),
     );
   }
 
@@ -250,7 +256,10 @@ class _ProductStockTile extends ConsumerWidget {
 // ─── Stock action sheet ───────────────────────────────────────────────────────
 
 void _showStockSheet(
-    BuildContext context, Product product, StockEntry? entry) {
+    BuildContext context, WidgetRef ref, Product product, StockEntry? entry) {
+  final canAdjust = hasPermissionSync(ref, 'inventory.adjust');
+  final canCorrect = hasPermissionSync(ref, 'settings.manage');
+  final canEdit = hasPermissionSync(ref, 'inventory.edit');
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -275,22 +284,23 @@ void _showStockSheet(
               ),
             ),
             const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text('Add Stock'),
-                onPressed: () {
-                  Navigator.pop(sheetCtx);
-                  showDialog(
-                    context: context,
-                    builder: (_) =>
-                        _AddStockDialog(product: product, currentEntry: entry),
-                  );
-                },
+            if (canAdjust)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Stock'),
+                  onPressed: () {
+                    Navigator.pop(sheetCtx);
+                    showDialog(
+                      context: context,
+                      builder: (_) =>
+                          _AddStockDialog(product: product, currentEntry: entry),
+                    );
+                  },
+                ),
               ),
-            ),
-            if (entry != null) ...[
+            if (entry != null && canCorrect) ...[
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -310,20 +320,22 @@ void _showStockSheet(
                 ),
               ),
             ],
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: () {
-                  Navigator.pop(sheetCtx);
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ProductFormScreen(product: product),
-                    fullscreenDialog: true,
-                  ));
-                },
-                child: const Text('Edit Product Details'),
+            if (canEdit) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.pop(sheetCtx);
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ProductFormScreen(product: product),
+                      fullscreenDialog: true,
+                    ));
+                  },
+                  child: const Text('Edit Product Details'),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -938,7 +950,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     if (name == null || name.isEmpty || !mounted) return;
     try {
       final cat = await ref
-          .read(inventoryRemoteProvider)
+          .read(inventoryRepositoryProvider)
           .createProductCategory(shopId: shop.id, name: name);
       ref.invalidate(productCategoriesProvider);
       if (mounted) setState(() => _selectedCategoryId = cat.id);

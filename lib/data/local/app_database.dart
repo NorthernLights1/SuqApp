@@ -47,6 +47,7 @@ class LocalStock extends Table {
   TextColumn get productId => text()();
   TextColumn get branchId => text()();
   TextColumn get quantity => text().map(const _Dec())();
+  DateTimeColumn get expiryDate => dateTime().nullable()();
   DateTimeColumn get syncedAt => dateTime()();
 
   @override
@@ -316,7 +317,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -355,7 +356,7 @@ class AppDatabase extends _$AppDatabase {
           }
           // v7 -> v8: offline credit settlement — credit payments can be
           // recorded offline and queued for push.
-          if (from < 8) {
+          if (from >= 5 && from < 8) {
             await m.addColumn(localCreditPayments, localCreditPayments.isSynced);
           }
           // v8 -> v9: store the sale-level settlement method locally so an
@@ -363,6 +364,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 9) {
             await m.addColumn(
                 localSales, localSales.creditSettlementMethod);
+          }
+          // v9 -> v10: retain stock expiry dates in the offline mirror.
+          if (from < 10) {
+            await m.addColumn(localStock, localStock.expiryDate);
           }
         },
       );
@@ -414,11 +419,14 @@ class AppDatabase extends _$AppDatabase {
   /// Upsert a single stock level (used by stock ops, which may target a
   /// product that has no local row yet — e.g. opening stock).
   Future<void> setStockLevel(
-          String branchId, String productId, Decimal newQty) =>
+          String branchId, String productId, Decimal newQty,
+          {DateTime? expiryDate}) =>
       into(localStock).insertOnConflictUpdate(LocalStockCompanion(
         productId: Value(productId),
         branchId: Value(branchId),
         quantity: Value(newQty),
+        expiryDate:
+            expiryDate == null ? const Value.absent() : Value(expiryDate),
         syncedAt: Value(DateTime.now()),
       ));
 
@@ -465,6 +473,34 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<SaleRow>> getPendingSales() =>
       (select(localSales)..where((t) => t.isSynced.equals(false))).get();
+
+  /// Products whose optimistic stock must not be overwritten by a server pull.
+  /// This includes both explicit stock operations and tracked items in sales
+  /// that have not reached the transactional sale RPC yet.
+  Future<Set<String>> getPendingStockProductIds(String branchId) async {
+    final rows = await customSelect(
+      'SELECT DISTINCT si.product_id AS product_id '
+      'FROM local_sale_items si '
+      'JOIN local_sales s ON s.id = si.sale_id '
+      'WHERE s.branch_id = ? AND s.is_synced = 0 '
+      'AND si.product_id IS NOT NULL '
+      'AND si.inventory_status != ? '
+      'UNION '
+      'SELECT product_id FROM local_inventory_adjustments '
+      'WHERE branch_id = ? AND is_synced = 0',
+      variables: [
+        Variable<String>(branchId),
+        const Variable<String>('untracked'),
+        Variable<String>(branchId),
+      ],
+      readsFrom: {
+        localSales,
+        localSaleItems,
+        localInventoryAdjustments,
+      },
+    ).get();
+    return rows.map((row) => row.read<String>('product_id')).toSet();
+  }
 
   Future<void> markSaleSynced(String saleId) =>
       (update(localSales)..where((t) => t.id.equals(saleId)))

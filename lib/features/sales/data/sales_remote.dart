@@ -1,5 +1,6 @@
 import 'package:decimal/decimal.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../../../core/constants/setting_keys.dart';
 import '../../../domain/models/product.dart';
 import '../../../domain/models/sale.dart';
@@ -87,9 +88,7 @@ class SalesRemote {
   }
 
   // ─── Create sale ───────────────────────────────────────────────────────────
-  // Supabase does not expose cross-table transactions from the client.
-  // We insert in sequence and use the audit trail (inventory_adjustments)
-  // to ensure consistency. The DB schema enforces FK constraints.
+  // The server RPC owns the sale/items/inventory transaction and stock lock.
 
   Future<Sale> createSale({
     required String id,
@@ -103,6 +102,20 @@ class SalesRemote {
     String? notes,
     String? discountReason,
   }) async {
+    if (await _createSaleAtomically(
+      id: id,
+      branchId: branchId,
+      cashierId: cashierId,
+      paymentMethodId: paymentMethodId,
+      items: items,
+      customerId: customerId,
+      isCredit: isCredit,
+      notes: notes,
+      discountReason: discountReason,
+    )) {
+      return getSale(id);
+    }
+
     // Compute totals — subtotal is pre-discount, total is what customer pays
     final subtotal = items.fold(
         Decimal.zero, (sum, i) => sum + (i.unitPrice * i.quantity));
@@ -217,6 +230,65 @@ class SalesRemote {
     return getSale(id);
   }
 
+  Future<bool> _createSaleAtomically({
+    required String id,
+    required String branchId,
+    required String cashierId,
+    required String paymentMethodId,
+    required List<CartItem> items,
+    required bool isCredit,
+    String? customerId,
+    String? notes,
+    String? discountReason,
+  }) async {
+    await _syncSale(
+      sale: {
+        'id': id,
+        'branch_id': branchId,
+        'customer_id': customerId,
+        'cashier_id': cashierId,
+        'payment_method_id': paymentMethodId,
+        'is_credit': isCredit,
+        'notes': notes,
+        'created_at': DateTime.now().toUtc().toIso8601String(),
+      },
+      items: [
+        for (final item in items)
+          {
+            'id': const Uuid().v4(),
+            'product_id': item.productId,
+            'product_name_snapshot': item.productName,
+            'measurement_unit_id': item.measurementUnitId,
+            'quantity': item.quantity.toString(),
+            'unit_price': item.unitPrice.toString(),
+            'discount_amount': item.discountAmount.toString(),
+            'inventory_status': (item.productId == null
+                    ? InventoryStatus.untracked
+                    : InventoryStatus.tracked)
+                .name,
+            'cost_price_snapshot': item.costPrice?.toString(),
+          },
+      ],
+      allowOversell: false,
+      discountReason: discountReason,
+    );
+    return true;
+  }
+
+  Future<void> _syncSale({
+    required Map<String, dynamic> sale,
+    required List<Map<String, dynamic>> items,
+    required bool allowOversell,
+    String? discountReason,
+  }) async {
+    await _client.rpc('upsert_sale_with_inventory', params: {
+      'p_sale': sale,
+      'p_items': items,
+      'p_allow_oversell': allowOversell,
+      'p_discount_reason': discountReason,
+    });
+  }
+
   // ─── Void sale ─────────────────────────────────────────────────────────────
 
   Future<void> voidSale({
@@ -225,6 +297,12 @@ class SalesRemote {
     required String reason,
     required String branchId,
   }) async {
+    await _client.rpc('void_sale_with_inventory', params: {
+      'p_sale_id': saleId,
+      'p_reason': reason,
+    });
+    if (saleId.isNotEmpty) return;
+
     await _client.from('sales').update({
       'status': 'voided',
       'void_reason': reason,

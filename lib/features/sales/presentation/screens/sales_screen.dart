@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../domain/models/sale.dart';
+import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/customers/presentation/widgets/payment_history.dart';
 import '../../../../shared/router/app_routes.dart';
 import '../../../../shared/theme/app_colors.dart';
@@ -301,7 +302,7 @@ class SaleDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Sale Details'),
         actions: [
-          if (!isVoided)
+          if (!isVoided && hasPermissionSync(ref, 'sales.void'))
             TextButton.icon(
               icon: const Icon(Icons.cancel_outlined, color: AppColors.error),
               label: const Text('Void', style: TextStyle(color: AppColors.error)),

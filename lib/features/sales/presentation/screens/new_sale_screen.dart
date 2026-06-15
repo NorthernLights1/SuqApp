@@ -6,10 +6,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../domain/models/sale.dart';
+import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../providers/sales_provider.dart';
+
+final _decimalInputFormatter = TextInputFormatter.withFunction((oldValue, newValue) {
+  final valid = RegExp(r'^\d*(?:\.\d{0,4})?$').hasMatch(newValue.text);
+  return valid ? newValue : oldValue;
+});
 
 class NewSaleScreen extends ConsumerStatefulWidget {
   const NewSaleScreen({super.key});
@@ -104,6 +110,21 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     if (isCredit && customer == null) {
       _showSnack('Select or add a customer for credit sales');
       return;
+    }
+    for (final item in cart) {
+      if (item.quantity <= Decimal.zero) {
+        _showSnack('Quantity must be greater than zero for ${item.productName}');
+        return;
+      }
+      if (item.unitPrice <= Decimal.zero) {
+        _showSnack('Enter a price greater than zero for ${item.productName}');
+        return;
+      }
+      if (item.discountAmount < Decimal.zero ||
+          item.discountAmount > item.quantity * item.unitPrice) {
+        _showSnack('Discount is invalid for ${item.productName}');
+        return;
+      }
     }
 
     final sale = await ref.read(createSaleProvider.notifier).submit(
@@ -319,8 +340,9 @@ class _CartItemTileState extends State<_CartItemTile> {
   }
 
   void _commit() {
-    final qty = Decimal.tryParse(_qtyCtrl.text) ?? Decimal.one;
-    final price = Decimal.tryParse(_priceCtrl.text) ?? Decimal.zero;
+    final qty = Decimal.tryParse(_qtyCtrl.text);
+    final price = Decimal.tryParse(_priceCtrl.text);
+    if (qty == null || price == null) return;
     widget.onUpdate(widget.item.copyWith(quantity: qty, unitPrice: price));
   }
 
@@ -357,7 +379,7 @@ class _CartItemTileState extends State<_CartItemTile> {
             child: TextField(
               controller: _qtyCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+              inputFormatters: [_decimalInputFormatter],
               textAlign: TextAlign.center,
               decoration: const InputDecoration(
                   labelText: 'Qty', isDense: true, contentPadding: EdgeInsets.all(8)),
@@ -370,7 +392,7 @@ class _CartItemTileState extends State<_CartItemTile> {
             child: TextField(
               controller: _priceCtrl,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))],
+              inputFormatters: [_decimalInputFormatter],
               textAlign: TextAlign.end,
               decoration: const InputDecoration(
                   labelText: 'Price', isDense: true, contentPadding: EdgeInsets.all(8)),
@@ -635,6 +657,7 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final canManageCustomers = hasPermissionSync(ref, 'customers.manage');
     return Padding(
       // Keep the sheet above the keyboard while typing.
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -687,14 +710,15 @@ class _CustomerPickerSheetState extends ConsumerState<_CustomerPickerSheet> {
                         },
                       ),
                     ),
-                    TextButton(
-                      onPressed: () => setState(() {
-                        _adding = true;
-                        _searchCtrl.clear();
-                        ref.read(customerSearchQueryProvider.notifier).set('');
-                      }),
-                      child: const Text('+ New'),
-                    ),
+                    if (canManageCustomers)
+                      TextButton(
+                        onPressed: () => setState(() {
+                          _adding = true;
+                          _searchCtrl.clear();
+                          ref.read(customerSearchQueryProvider.notifier).set('');
+                        }),
+                        child: const Text('+ New'),
+                      ),
                   ],
                 ),
                 if (_searchCtrl.text.length >= 2)

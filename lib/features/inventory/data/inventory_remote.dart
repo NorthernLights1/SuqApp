@@ -221,6 +221,18 @@ class InventoryRemote {
     String? notes,
     DateTime? expiryDate,
   }) async {
+    await _client.rpc('apply_inventory_adjustment', params: {
+      'p_id': id,
+      'p_type': type,
+      'p_branch_id': branchId,
+      'p_product_id': productId,
+      'p_quantity_before': quantityBefore.toString(),
+      'p_quantity_after': quantityAfter.toString(),
+      'p_notes': notes,
+      'p_expiry_date': expiryDate?.toIso8601String().substring(0, 10),
+    });
+    if (id.isNotEmpty) return;
+
     final already = await _client
         .from('inventory_adjustments')
         .select('id')

@@ -36,7 +36,16 @@ class ReportSummary extends Equatable {
   Decimal get net => salesTotal - expenseTotal;
 
   @override
-  List<Object?> get props => [salesTotal, salesCount, expenseTotal, grossProfit];
+  List<Object?> get props => [
+        salesTotal,
+        salesCount,
+        creditTotal,
+        creditCount,
+        expenseTotal,
+        expenseByCategory,
+        grossProfit,
+        profitItemCount,
+      ];
 }
 
 class _ReportPeriodNotifier extends Notifier<ReportPeriod> {
@@ -256,7 +265,7 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   final salesData = await client
       .from('sales')
       .select(
-          'total, status, is_credit, credit_settled_at, sale_items(quantity, unit_price, discount_amount, cost_price_snapshot, products(category_id))')
+          'total, status, is_credit, credit_settled_at, credit_payments(amount), sale_items(quantity, unit_price, discount_amount, cost_price_snapshot, products(category_id))')
       .eq('branch_id', branch.id)
       .gte('created_at', range.start.toUtc().toIso8601String())
       .lt('created_at', range.end.toUtc().toIso8601String());
@@ -273,8 +282,15 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
     final items = (row['sale_items'] as List? ?? []);
     // "On credit" means still outstanding — exclude settled credit sales so
     // the figure matches the credits screen once debts are paid.
+    final saleAmount = Decimal.parse(row['total'].toString());
+    final paid = (row['credit_payments'] as List? ?? []).fold<Decimal>(
+      Decimal.zero,
+      (sum, payment) =>
+          sum + Decimal.parse(payment['amount'].toString()),
+    );
+    final remainingCredit = saleAmount > paid ? saleAmount - paid : Decimal.zero;
     final isOutstandingCredit =
-        row['is_credit'] == true && row['credit_settled_at'] == null;
+        row['is_credit'] == true && remainingCredit > Decimal.zero;
 
     if (categoryFilter != null) {
       // Category mode: sum only items from the selected category.
@@ -291,7 +307,8 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
         if (item['cost_price_snapshot'] != null) {
           final costPrice =
               Decimal.parse(item['cost_price_snapshot'].toString());
-          grossProfit += (unitPrice - costPrice) * qty;
+          grossProfit +=
+              ((unitPrice * qty) - disc) - (costPrice * qty);
           profitItemCount++;
         }
       }
@@ -299,24 +316,27 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
       salesTotal += catRevenue;
       salesCount++;
       if (isOutstandingCredit) {
-        creditTotal += catRevenue;
+        creditTotal +=
+            catRevenue < remainingCredit ? catRevenue : remainingCredit;
         creditCount++;
       }
     } else {
       // All categories: use the stored sale total.
-      final amount = Decimal.parse(row['total'].toString());
+      final amount = saleAmount;
       salesTotal += amount;
       salesCount++;
       if (isOutstandingCredit) {
-        creditTotal += amount;
+        creditTotal += remainingCredit;
         creditCount++;
       }
       for (final item in items) {
         if (item['cost_price_snapshot'] == null) continue;
         final qty = Decimal.parse(item['quantity'].toString());
         final unitPrice = Decimal.parse(item['unit_price'].toString());
+        final disc =
+            Decimal.parse((item['discount_amount'] ?? '0').toString());
         final costPrice = Decimal.parse(item['cost_price_snapshot'].toString());
-        grossProfit += (unitPrice - costPrice) * qty;
+        grossProfit += ((unitPrice * qty) - disc) - (costPrice * qty);
         profitItemCount++;
       }
     }
@@ -389,7 +409,13 @@ Future<ReportSummary> _localReportSummary(
   for (final s in sales) {
     if (s.status != 'completed') continue;
     final items = await db.getSaleItems(s.id);
-    final isOutstandingCredit = s.isCredit && s.creditSettledAt == null;
+    final payments = await db.getCreditPaymentsForSale(s.id);
+    final paid = payments.fold<Decimal>(
+      Decimal.zero,
+      (sum, payment) => sum + payment.amount,
+    );
+    final remainingCredit = s.total > paid ? s.total - paid : Decimal.zero;
+    final isOutstandingCredit = s.isCredit && remainingCredit > Decimal.zero;
 
     if (categoryFilter != null) {
       Decimal catRevenue = Decimal.zero;
@@ -400,7 +426,8 @@ Future<ReportSummary> _localReportSummary(
         catRevenue += (item.unitPrice * item.quantity) - item.discountAmount;
         if (item.costPriceSnapshot != null) {
           grossProfit +=
-              (item.unitPrice - item.costPriceSnapshot!) * item.quantity;
+              ((item.unitPrice * item.quantity) - item.discountAmount) -
+                  (item.costPriceSnapshot! * item.quantity);
           profitItemCount++;
         }
       }
@@ -408,20 +435,22 @@ Future<ReportSummary> _localReportSummary(
       salesTotal += catRevenue;
       salesCount++;
       if (isOutstandingCredit) {
-        creditTotal += catRevenue;
+        creditTotal +=
+            catRevenue < remainingCredit ? catRevenue : remainingCredit;
         creditCount++;
       }
     } else {
       salesTotal += s.total;
       salesCount++;
       if (isOutstandingCredit) {
-        creditTotal += s.total;
+        creditTotal += remainingCredit;
         creditCount++;
       }
       for (final item in items) {
         if (item.costPriceSnapshot == null) continue;
         grossProfit +=
-            (item.unitPrice - item.costPriceSnapshot!) * item.quantity;
+            ((item.unitPrice * item.quantity) - item.discountAmount) -
+                (item.costPriceSnapshot! * item.quantity);
         profitItemCount++;
       }
     }

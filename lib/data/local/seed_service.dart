@@ -121,7 +121,9 @@ class SeedService {
       final ua = r['updated_at'];
       if (ua is String) {
         final dt = DateTime.tryParse(ua);
-        if (dt != null && (maxSeen == null || dt.isAfter(maxSeen))) maxSeen = dt;
+        if (dt != null && (maxSeen == null || dt.isAfter(maxSeen))) {
+          maxSeen = dt;
+        }
       }
     }
     return (live: live, deadIds: deadIds, maxSeen: maxSeen);
@@ -350,19 +352,29 @@ class SeedService {
         fetch: (cursorIso) async {
           var q = _client
               .from('inventory')
-              .select('product_id, quantity, updated_at, deleted_at')
+              .select(
+                  'product_id, quantity, expiry_date, updated_at, deleted_at')
               .eq('branch_id', branchId);
           if (cursorIso != null) q = q.gte('updated_at', cursorIso);
           return (await q as List).cast<Map<String, dynamic>>();
         },
-        applyLive: (rows) => _db.upsertStock(rows
-            .map((s) => LocalStockCompanion(
-                  productId: Value(s['product_id'] as String),
-                  branchId: Value(branchId),
-                  quantity: Value(_dec(s['quantity'])),
-                  syncedAt: Value(_now),
-                ))
-            .toList()),
+        applyLive: (rows) async {
+          final pendingProductIds =
+              await _db.getPendingStockProductIds(branchId);
+          await _db.upsertStock(rows
+              .where((s) =>
+                  !pendingProductIds.contains(s['product_id'] as String))
+              .map((s) => LocalStockCompanion(
+                    productId: Value(s['product_id'] as String),
+                    branchId: Value(branchId),
+                    quantity: Value(_dec(s['quantity'])),
+                    expiryDate: Value(s['expiry_date'] == null
+                        ? null
+                        : DateTime.parse(s['expiry_date'] as String)),
+                    syncedAt: Value(_now),
+                  ))
+              .toList());
+        },
       );
 
   // ── Customers ────────────────────────────────────────────────────────────────

@@ -48,10 +48,9 @@ class SyncService implements ISyncService {
       var pushed = 0;
       if (_db != null) {
         pushed += await _pushPendingCustomers();
-        pushed += await _pushPendingSales();
+        pushed += await _pushPendingInventoryWork();
         pushed += await _pushPendingCreditPayments();
         pushed += await _pushPendingExpenses();
-        pushed += await _pushPendingAdjustments();
       }
 
       // The sync_logs heartbeat records "this device reached the server" for
@@ -71,72 +70,105 @@ class SyncService implements ISyncService {
     }
   }
 
-  /// Pushes all pending local sales (+ their items) in two bulk upserts,
-  /// idempotent by id. All-or-nothing per batch: on any failure the rows stay
-  /// `isSynced=false` and the next sync retries. (A single invalid row blocks
-  /// its batch — acceptable for the pilot; revisit with per-row fallback if it
-  /// bites.)
-  Future<int> _pushPendingSales() async {
+  /// Sales and stock operations share one inventory timeline. Replaying them
+  /// by creation time preserves sequences such as restock-then-sale and avoids
+  /// creating a false negative-stock conflict on the server.
+  Future<int> _pushPendingInventoryWork() async {
     final db = _db!;
-    final pending = await db.getPendingSales();
-    if (pending.isEmpty) return 0;
-    try {
-      await _supabase
-          .from('sales')
-          .upsert(pending.map(_saleJson).toList(), onConflict: 'id');
+    final sales = await db.getPendingSales();
+    final adjustments = await db.getPendingInventoryAdjustments();
+    final operations =
+        <
+            ({
+              DateTime createdAt,
+              SaleRow? sale,
+              InventoryAdjustmentRow? adjustment,
+            })
+          >[
+            for (final sale in sales)
+              (createdAt: sale.createdAt, sale: sale, adjustment: null),
+            for (final adjustment in adjustments)
+              (
+                createdAt: adjustment.createdAt,
+                sale: null,
+                adjustment: adjustment,
+              ),
+          ]
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
-      final items = <Map<String, dynamic>>[];
-      for (final sale in pending) {
-        items.addAll((await db.getSaleItems(sale.id)).map(_saleItemJson));
-      }
-      if (items.isNotEmpty) {
-        await _supabase.from('sale_items').upsert(items, onConflict: 'id');
-      }
-
-      for (final sale in pending) {
+    final inventoryRemote = InventoryRemote(_supabase);
+    var pushed = 0;
+    for (final operation in operations) {
+      final sale = operation.sale;
+      if (sale != null) {
+        final items = (await db.getSaleItems(
+          sale.id,
+        )).map(_saleItemJson).toList();
+        await _supabase.rpc(
+          'upsert_sale_with_inventory',
+          params: {
+            'p_sale': _saleJson(sale),
+            'p_items': items,
+            'p_allow_oversell': true,
+            'p_discount_reason': null,
+          },
+        );
         await db.markSaleSynced(sale.id);
+      } else {
+        final adjustment = operation.adjustment!;
+        await inventoryRemote.applyAdjustment(
+          id: adjustment.id,
+          type: adjustment.type,
+          branchId: adjustment.branchId,
+          productId: adjustment.productId,
+          quantityBefore: adjustment.quantityBefore,
+          quantityAfter: adjustment.quantityAfter,
+          adjustedBy: adjustment.adjustedBy,
+          notes: adjustment.notes,
+          expiryDate: adjustment.expiryDate,
+        );
+        await db.markInventoryAdjustmentSynced(adjustment.id);
       }
-      return pending.length;
-    } catch (_) {
-      return 0; // leave isSynced=false; next sync retries
+      pushed++;
     }
+    return pushed;
   }
 
   Map<String, dynamic> _saleJson(SaleRow sale) => {
-        'id': sale.id,
-        'branch_id': sale.branchId,
-        'customer_id': sale.customerId,
-        'cashier_id': sale.cashierId,
-        'payment_method_id': sale.paymentMethodId,
-        'subtotal': sale.subtotal.toString(),
-        'discount_amount': sale.discountAmount.toString(),
-        'total': sale.total.toString(),
-        'status': sale.status,
-        'void_reason': sale.voidReason,
-        'voided_by': sale.voidedBy,
-        'voided_at': sale.voidedAt?.toIso8601String(),
-        'is_credit': sale.isCredit,
-        'notes': sale.notes,
-        'created_at': sale.createdAt.toIso8601String(),
-        // Carries an offline settlement up: a bill settled offline re-pushes the
-        // sale with these stamped (null otherwise, which is a no-op).
-        'credit_settled_at': sale.creditSettledAt?.toIso8601String(),
-        'credit_settlement_method': sale.creditSettlementMethod,
-      };
+    'id': sale.id,
+    'branch_id': sale.branchId,
+    'customer_id': sale.customerId,
+    'cashier_id': sale.cashierId,
+    'payment_method_id': sale.paymentMethodId,
+    'subtotal': sale.subtotal.toString(),
+    'discount_amount': sale.discountAmount.toString(),
+    'total': sale.total.toString(),
+    'status': sale.status,
+    'void_reason': sale.voidReason,
+    'voided_by': sale.voidedBy,
+    'voided_at': sale.voidedAt?.toIso8601String(),
+    'is_credit': sale.isCredit,
+    'notes': sale.notes,
+    'created_at': sale.createdAt.toIso8601String(),
+    // Carries an offline settlement up: a bill settled offline re-pushes the
+    // sale with these stamped (null otherwise, which is a no-op).
+    'credit_settled_at': sale.creditSettledAt?.toIso8601String(),
+    'credit_settlement_method': sale.creditSettlementMethod,
+  };
 
   Map<String, dynamic> _saleItemJson(SaleItemRow item) => {
-        'id': item.id,
-        'sale_id': item.saleId,
-        'product_id': item.productId,
-        'product_name_snapshot': item.productNameSnapshot,
-        'measurement_unit_id': item.measurementUnitId,
-        'quantity': item.quantity.toString(),
-        'unit_price': item.unitPrice.toString(),
-        'discount_amount': item.discountAmount.toString(),
-        'total': item.total.toString(),
-        'inventory_status': item.inventoryStatus,
-        'cost_price_snapshot': item.costPriceSnapshot?.toString(),
-      };
+    'id': item.id,
+    'sale_id': item.saleId,
+    'product_id': item.productId,
+    'product_name_snapshot': item.productNameSnapshot,
+    'measurement_unit_id': item.measurementUnitId,
+    'quantity': item.quantity.toString(),
+    'unit_price': item.unitPrice.toString(),
+    'discount_amount': item.discountAmount.toString(),
+    'total': item.total.toString(),
+    'inventory_status': item.inventoryStatus,
+    'cost_price_snapshot': item.costPriceSnapshot?.toString(),
+  };
 
   /// Pushes all pending local expenses in one bulk upsert (idempotent by id).
   Future<int> _pushPendingExpenses() async {
@@ -144,27 +176,31 @@ class SyncService implements ISyncService {
     final pending = await db.getPendingExpenses();
     if (pending.isEmpty) return 0;
     try {
-      await _supabase.from('expenses').upsert(
-        pending
-            .map((e) => {
-                  'id': e.id,
-                  'branch_id': e.branchId,
-                  'category_id': e.categoryId,
-                  'amount': e.amount.toString(),
-                  'description': e.description,
-                  'recorded_by': e.recordedBy,
-                  'date': e.date.toIso8601String().substring(0, 10),
-                  'created_at': e.createdAt.toIso8601String(),
-                })
-            .toList(),
-        onConflict: 'id',
-      );
+      await _supabase
+          .from('expenses')
+          .upsert(
+            pending
+                .map(
+                  (e) => {
+                    'id': e.id,
+                    'branch_id': e.branchId,
+                    'category_id': e.categoryId,
+                    'amount': e.amount.toString(),
+                    'description': e.description,
+                    'recorded_by': e.recordedBy,
+                    'date': e.date.toIso8601String().substring(0, 10),
+                    'created_at': e.createdAt.toIso8601String(),
+                  },
+                )
+                .toList(),
+            onConflict: 'id',
+          );
       for (final e in pending) {
         await db.markExpenseSynced(e.id);
       }
       return pending.length;
     } catch (_) {
-      return 0; // leave isSynced=false; next sync retries
+      rethrow;
     }
   }
 
@@ -180,26 +216,23 @@ class SyncService implements ISyncService {
     // the payments queued rather than push a null attribution.
     if (userId == null) return 0;
     try {
-      await _supabase.from('credit_payments').upsert(
-        pending
-            .map((p) => {
-                  'id': p.id,
-                  'sale_id': p.saleId,
-                  'customer_id': p.customerId,
-                  'amount': p.amount.toString(),
-                  'method': p.method,
-                  'notes': p.notes,
-                  'recorded_by': userId,
-                })
-            .toList(),
-        onConflict: 'id',
-      );
       for (final p in pending) {
+        await _supabase.rpc(
+          'record_credit_payment',
+          params: {
+            'p_id': p.id,
+            'p_sale_id': p.saleId,
+            'p_customer_id': p.customerId,
+            'p_amount': p.amount.toString(),
+            'p_method': p.method,
+            'p_notes': p.notes,
+          },
+        );
         await db.markCreditPaymentSynced(p.id);
       }
       return pending.length;
     } catch (_) {
-      return 0; // leave isSynced=false; next sync retries
+      rethrow;
     }
   }
 
@@ -211,54 +244,28 @@ class SyncService implements ISyncService {
     final pending = await db.getPendingCustomers();
     if (pending.isEmpty) return 0;
     try {
-      await _supabase.from('customers').upsert(
-        pending
-            .map((c) => {
-                  'id': c.id,
-                  'shop_id': c.shopId,
-                  'name': c.name,
-                  'phone': c.phone,
-                })
-            .toList(),
-        onConflict: 'id',
-      );
+      await _supabase
+          .from('customers')
+          .upsert(
+            pending
+                .map(
+                  (c) => {
+                    'id': c.id,
+                    'shop_id': c.shopId,
+                    'name': c.name,
+                    'phone': c.phone,
+                  },
+                )
+                .toList(),
+            onConflict: 'id',
+          );
       for (final c in pending) {
         await db.markCustomerSynced(c.id);
       }
       return pending.length;
     } catch (_) {
-      return 0; // leave isSynced=false; next sync retries
+      rethrow;
     }
-  }
-
-  /// Pushes all pending stock adjustments (replayed in creation order via the
-  /// idempotent, delta-aware [InventoryRemote.applyAdjustment]).
-  Future<int> _pushPendingAdjustments() async {
-    final db = _db!;
-    final pending = await db.getPendingInventoryAdjustments();
-    if (pending.isEmpty) return 0;
-    final remote = InventoryRemote(_supabase);
-    var pushed = 0;
-    for (final a in pending) {
-      try {
-        await remote.applyAdjustment(
-          id: a.id,
-          type: a.type,
-          branchId: a.branchId,
-          productId: a.productId,
-          quantityBefore: a.quantityBefore,
-          quantityAfter: a.quantityAfter,
-          adjustedBy: a.adjustedBy,
-          notes: a.notes,
-          expiryDate: a.expiryDate,
-        );
-        await db.markInventoryAdjustmentSynced(a.id);
-        pushed++;
-      } catch (_) {
-        // Leave isSynced=false; next sync will retry
-      }
-    }
-    return pushed;
   }
 
   @override
