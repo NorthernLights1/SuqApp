@@ -1,3 +1,4 @@
+import 'package:decimal/decimal.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../domain/customer.dart';
 
@@ -30,5 +31,44 @@ class CustomersRemote {
       'name': name,
       'phone': phone,
     }, onConflict: 'id');
+  }
+
+  /// Online credit-payment record + settle (web path): inserts the payment,
+  /// recomputes the total paid from the server, and stamps the sale settled when
+  /// the bill is cleared (claiming a single method only when every payment used
+  /// the same one). Returns true if it settled.
+  Future<bool> recordCreditPayment({
+    required String saleId,
+    required String customerId,
+    required Decimal saleTotal,
+    required Decimal amount,
+    required String method,
+    String? notes,
+    String? recordedBy,
+  }) async {
+    await _client.from('credit_payments').insert({
+      'sale_id': saleId,
+      'customer_id': customerId,
+      'amount': amount.toString(),
+      'method': method,
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+      'recorded_by': recordedBy,
+    });
+    final rows = (await _client
+        .from('credit_payments')
+        .select('amount, method')
+        .eq('sale_id', saleId)) as List;
+    final paid = rows.fold<Decimal>(
+      Decimal.zero,
+      (s, r) => s + Decimal.parse((r['amount'] ?? '0').toString()),
+    );
+    if (paid < saleTotal) return false;
+    final methods = rows.map((r) => r['method'] as String).toSet();
+    final update = <String, dynamic>{
+      'credit_settled_at': DateTime.now().toIso8601String(),
+    };
+    if (methods.length == 1) update['credit_settlement_method'] = methods.first;
+    await _client.from('sales').update(update).eq('id', saleId);
+    return true;
   }
 }

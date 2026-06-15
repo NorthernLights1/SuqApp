@@ -64,7 +64,9 @@ class SalesRepository implements ISalesRepository {
   Future<List<PaymentMethod>> getPaymentMethods(String shopId) async {
     // Local-first: the seeded cache always holds the system methods (Cash/Bank),
     // so a non-empty local result is authoritative. Empty = pre-seed or web →
-    // fall through to the server.
+    // fall through to the server. No shop filter needed: the cache is seeded
+    // with this shop's + system methods only (single-shop-per-device replica;
+    // cleared on shop switch — same model as the delta cursor).
     if (_db != null) {
       final rows = await _db.getPaymentMethods();
       if (rows.isNotEmpty) {
@@ -276,12 +278,12 @@ class SalesRepository implements ISalesRepository {
     // names) as of the last sync — no network on the critical path. Web → remote.
     if (_db != null) {
       final rows = await _db.getSalesByBranch(branchId, from, to);
-      final result = <Sale>[];
-      for (final row in rows) {
-        final items = await _db.getSaleItems(row.id);
-        result.add(_saleFromRows(row, items));
-      }
-      return result;
+      // One query for all items (avoids N+1 across the day's sales).
+      final itemsBySale =
+          await _db.getSaleItemsForSales(rows.map((r) => r.id).toList());
+      return rows
+          .map((row) => _saleFromRows(row, itemsBySale[row.id] ?? const []))
+          .toList();
     }
     return _remote.getSalesForBranch(branchId: branchId, from: from, to: to);
   }
@@ -347,6 +349,7 @@ class SalesRepository implements ISalesRepository {
         notes: r.notes,
         createdAt: r.createdAt,
         creditSettledAt: r.creditSettledAt,
+        creditSettlementMethod: r.creditSettlementMethod,
         items: items.map(_saleItemFromRow).toList(),
       );
 

@@ -119,8 +119,9 @@ class SyncService implements ISyncService {
         'notes': sale.notes,
         'created_at': sale.createdAt.toIso8601String(),
         // Carries an offline settlement up: a bill settled offline re-pushes the
-        // sale with this stamped (null otherwise, which is a no-op).
+        // sale with these stamped (null otherwise, which is a no-op).
         'credit_settled_at': sale.creditSettledAt?.toIso8601String(),
+        'credit_settlement_method': sale.creditSettlementMethod,
       };
 
   Map<String, dynamic> _saleItemJson(SaleItemRow item) => {
@@ -175,6 +176,9 @@ class SyncService implements ISyncService {
     final pending = await db.getPendingCreditPayments();
     if (pending.isEmpty) return 0;
     final userId = _supabase.auth.currentUser?.id;
+    // recorded_by references a real user; if we somehow lost the session, leave
+    // the payments queued rather than push a null attribution.
+    if (userId == null) return 0;
     try {
       await _supabase.from('credit_payments').upsert(
         pending

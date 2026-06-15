@@ -508,6 +508,7 @@ class SeedService {
         creditSettledAt: Value(r['credit_settled_at'] != null
             ? DateTime.parse(r['credit_settled_at'] as String)
             : null),
+        creditSettlementMethod: Value(r['credit_settlement_method'] as String?),
         // Denormalized names from the joins, so offline detail screens render
         // without a Supabase round-trip (consumed in Phase C).
         customerName:

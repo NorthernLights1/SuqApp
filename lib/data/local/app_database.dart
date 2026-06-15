@@ -71,6 +71,9 @@ class LocalSales extends Table {
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get creditSettledAt => dateTime().nullable()();
+  // Single settlement method when every payment used the same one (parity with
+  // the online path); null for mixed/unknown.
+  TextColumn get creditSettlementMethod => text().nullable()();
   // Denormalized names captured at write/pull time so offline detail screens
   // (Sales/Credits) can show them without a Supabase join. Null on rows written
   // before v7 / before they are populated.
@@ -313,7 +316,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -354,6 +357,12 @@ class AppDatabase extends _$AppDatabase {
           // recorded offline and queued for push.
           if (from < 8) {
             await m.addColumn(localCreditPayments, localCreditPayments.isSynced);
+          }
+          // v8 -> v9: store the sale-level settlement method locally so an
+          // offline settlement matches the online path.
+          if (from < 9) {
+            await m.addColumn(
+                localSales, localSales.creditSettlementMethod);
           }
         },
       );
@@ -764,14 +773,62 @@ class AppDatabase extends _$AppDatabase {
           .write(const LocalCreditPaymentsCompanion(isSynced: Value(true)));
 
   /// Stamp a credit sale settled locally AND flag it unsynced, so the sale push
-  /// re-sends it carrying `credit_settled_at` (the server learns it's settled).
-  Future<void> markSaleSettledLocal(String saleId) =>
+  /// re-sends it carrying `credit_settled_at` (+ method). [method] is the single
+  /// settlement method when every payment used the same one, else null.
+  Future<void> markSaleSettledLocal(String saleId, {String? method}) =>
       (update(localSales)..where((t) => t.id.equals(saleId))).write(
         LocalSalesCompanion(
           creditSettledAt: Value(DateTime.now()),
+          creditSettlementMethod: Value(method),
           isSynced: const Value(false),
         ),
       );
+
+  /// Atomically record an offline credit payment and settle the sale when the
+  /// recorded payments cover its total. Returns true if it settled. Wrapped in a
+  /// transaction so a crash can't leave a payment recorded but the bill unsettled.
+  Future<bool> recordCreditPaymentTxn({
+    required String id,
+    required String saleId,
+    String? customerId,
+    required Decimal saleTotal,
+    required Decimal amount,
+    required String method,
+    String? notes,
+  }) =>
+      transaction(() async {
+        await recordLocalCreditPayment(
+          id: id,
+          saleId: saleId,
+          customerId: customerId,
+          amount: amount,
+          method: method,
+          notes: notes,
+        );
+        final paid = (await getPaidBySale([saleId]))[saleId] ?? Decimal.zero;
+        if (paid < saleTotal) return false;
+        // Settled: claim a single method only when every payment used the same.
+        final methods =
+            (await getCreditPaymentsForSale(saleId)).map((p) => p.method).toSet();
+        await markSaleSettledLocal(saleId,
+            method: methods.length == 1 ? methods.first : null);
+        return true;
+      });
+
+  /// Sale items for many sales in one query, grouped by saleId (avoids N+1 when
+  /// building a sales list).
+  Future<Map<String, List<SaleItemRow>>> getSaleItemsForSales(
+      List<String> saleIds) async {
+    if (saleIds.isEmpty) return {};
+    final rows = await (select(localSaleItems)
+          ..where((t) => t.saleId.isIn(saleIds)))
+        .get();
+    final map = <String, List<SaleItemRow>>{};
+    for (final r in rows) {
+      (map[r.saleId] ??= []).add(r);
+    }
+    return map;
+  }
 
   // ── Sync state (per-table delta-pull cursors) ────────────────────────────────
 

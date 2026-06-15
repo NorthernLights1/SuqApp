@@ -90,6 +90,39 @@ class CustomersRepository {
     return id;
   }
 
+  /// Record a credit payment against a bill. Native: local-first + atomic settle
+  /// (queued for push). Web: straight to Supabase. Returns true if it settled.
+  Future<bool> recordCreditPayment({
+    required String saleId,
+    required String customerId,
+    required Decimal saleTotal,
+    required Decimal amount,
+    required String method,
+    String? notes,
+    String? recordedBy,
+  }) {
+    if (_db == null) {
+      return _remote.recordCreditPayment(
+        saleId: saleId,
+        customerId: customerId,
+        saleTotal: saleTotal,
+        amount: amount,
+        method: method,
+        notes: notes,
+        recordedBy: recordedBy,
+      );
+    }
+    return _db.recordCreditPaymentTxn(
+      id: const Uuid().v4(),
+      saleId: saleId,
+      customerId: customerId,
+      saleTotal: saleTotal,
+      amount: amount,
+      method: method,
+      notes: (notes != null && notes.isNotEmpty) ? notes : null,
+    );
+  }
+
   LocalCustomersCompanion _toCompanion(Customer c, {required bool synced}) =>
       LocalCustomersCompanion(
         id: Value(c.id),

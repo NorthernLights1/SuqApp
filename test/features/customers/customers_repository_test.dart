@@ -23,6 +23,17 @@ class _ThrowingRemote implements CustomersRemote {
     String? phone,
   }) async =>
       throw Exception('offline');
+  @override
+  Future<bool> recordCreditPayment({
+    required String saleId,
+    required String customerId,
+    required Decimal saleTotal,
+    required Decimal amount,
+    required String method,
+    String? notes,
+    String? recordedBy,
+  }) async =>
+      throw Exception('offline');
 }
 
 class _CapturingRemote implements CustomersRemote {
@@ -40,6 +51,18 @@ class _CapturingRemote implements CustomersRemote {
   }) async {
     upsertedIds.add(id);
   }
+
+  @override
+  Future<bool> recordCreditPayment({
+    required String saleId,
+    required String customerId,
+    required Decimal saleTotal,
+    required Decimal amount,
+    required String method,
+    String? notes,
+    String? recordedBy,
+  }) async =>
+      false;
 }
 
 Customer _cust(String id, String name, {Decimal? balance}) => Customer(

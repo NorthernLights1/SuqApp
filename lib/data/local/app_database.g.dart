@@ -1239,6 +1239,17 @@ class $LocalSalesTable extends LocalSales
         type: DriftSqlType.dateTime,
         requiredDuringInsert: false,
       );
+  static const VerificationMeta _creditSettlementMethodMeta =
+      const VerificationMeta('creditSettlementMethod');
+  @override
+  late final GeneratedColumn<String> creditSettlementMethod =
+      GeneratedColumn<String>(
+        'credit_settlement_method',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
   static const VerificationMeta _customerNameMeta = const VerificationMeta(
     'customerName',
   );
@@ -1306,6 +1317,7 @@ class $LocalSalesTable extends LocalSales
     notes,
     createdAt,
     creditSettledAt,
+    creditSettlementMethod,
     customerName,
     cashierName,
     paymentMethodName,
@@ -1415,6 +1427,15 @@ class $LocalSalesTable extends LocalSales
         creditSettledAt.isAcceptableOrUnknown(
           data['credit_settled_at']!,
           _creditSettledAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('credit_settlement_method')) {
+      context.handle(
+        _creditSettlementMethodMeta,
+        creditSettlementMethod.isAcceptableOrUnknown(
+          data['credit_settlement_method']!,
+          _creditSettlementMethodMeta,
         ),
       );
     }
@@ -1530,6 +1551,10 @@ class $LocalSalesTable extends LocalSales
         DriftSqlType.dateTime,
         data['${effectivePrefix}credit_settled_at'],
       ),
+      creditSettlementMethod: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}credit_settlement_method'],
+      ),
       customerName: attachedDatabase.typeMapping.read(
         DriftSqlType.string,
         data['${effectivePrefix}customer_name'],
@@ -1576,6 +1601,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
   final String? notes;
   final DateTime createdAt;
   final DateTime? creditSettledAt;
+  final String? creditSettlementMethod;
   final String? customerName;
   final String? cashierName;
   final String? paymentMethodName;
@@ -1597,6 +1623,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     this.notes,
     required this.createdAt,
     this.creditSettledAt,
+    this.creditSettlementMethod,
     this.customerName,
     this.cashierName,
     this.paymentMethodName,
@@ -1645,6 +1672,11 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     if (!nullToAbsent || creditSettledAt != null) {
       map['credit_settled_at'] = Variable<DateTime>(creditSettledAt);
     }
+    if (!nullToAbsent || creditSettlementMethod != null) {
+      map['credit_settlement_method'] = Variable<String>(
+        creditSettlementMethod,
+      );
+    }
     if (!nullToAbsent || customerName != null) {
       map['customer_name'] = Variable<String>(customerName);
     }
@@ -1688,6 +1720,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       creditSettledAt: creditSettledAt == null && nullToAbsent
           ? const Value.absent()
           : Value(creditSettledAt),
+      creditSettlementMethod: creditSettlementMethod == null && nullToAbsent
+          ? const Value.absent()
+          : Value(creditSettlementMethod),
       customerName: customerName == null && nullToAbsent
           ? const Value.absent()
           : Value(customerName),
@@ -1723,6 +1758,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       creditSettledAt: serializer.fromJson<DateTime?>(json['creditSettledAt']),
+      creditSettlementMethod: serializer.fromJson<String?>(
+        json['creditSettlementMethod'],
+      ),
       customerName: serializer.fromJson<String?>(json['customerName']),
       cashierName: serializer.fromJson<String?>(json['cashierName']),
       paymentMethodName: serializer.fromJson<String?>(
@@ -1751,6 +1789,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'creditSettledAt': serializer.toJson<DateTime?>(creditSettledAt),
+      'creditSettlementMethod': serializer.toJson<String?>(
+        creditSettlementMethod,
+      ),
       'customerName': serializer.toJson<String?>(customerName),
       'cashierName': serializer.toJson<String?>(cashierName),
       'paymentMethodName': serializer.toJson<String?>(paymentMethodName),
@@ -1775,6 +1816,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
     Value<DateTime?> creditSettledAt = const Value.absent(),
+    Value<String?> creditSettlementMethod = const Value.absent(),
     Value<String?> customerName = const Value.absent(),
     Value<String?> cashierName = const Value.absent(),
     Value<String?> paymentMethodName = const Value.absent(),
@@ -1798,6 +1840,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     creditSettledAt: creditSettledAt.present
         ? creditSettledAt.value
         : this.creditSettledAt,
+    creditSettlementMethod: creditSettlementMethod.present
+        ? creditSettlementMethod.value
+        : this.creditSettlementMethod,
     customerName: customerName.present ? customerName.value : this.customerName,
     cashierName: cashierName.present ? cashierName.value : this.cashierName,
     paymentMethodName: paymentMethodName.present
@@ -1833,6 +1878,9 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
       creditSettledAt: data.creditSettledAt.present
           ? data.creditSettledAt.value
           : this.creditSettledAt,
+      creditSettlementMethod: data.creditSettlementMethod.present
+          ? data.creditSettlementMethod.value
+          : this.creditSettlementMethod,
       customerName: data.customerName.present
           ? data.customerName.value
           : this.customerName,
@@ -1865,6 +1913,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
           ..write('creditSettledAt: $creditSettledAt, ')
+          ..write('creditSettlementMethod: $creditSettlementMethod, ')
           ..write('customerName: $customerName, ')
           ..write('cashierName: $cashierName, ')
           ..write('paymentMethodName: $paymentMethodName, ')
@@ -1874,7 +1923,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
   }
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     id,
     branchId,
     customerId,
@@ -1891,11 +1940,12 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
     notes,
     createdAt,
     creditSettledAt,
+    creditSettlementMethod,
     customerName,
     cashierName,
     paymentMethodName,
     isSynced,
-  );
+  ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1916,6 +1966,7 @@ class SaleRow extends DataClass implements Insertable<SaleRow> {
           other.notes == this.notes &&
           other.createdAt == this.createdAt &&
           other.creditSettledAt == this.creditSettledAt &&
+          other.creditSettlementMethod == this.creditSettlementMethod &&
           other.customerName == this.customerName &&
           other.cashierName == this.cashierName &&
           other.paymentMethodName == this.paymentMethodName &&
@@ -1939,6 +1990,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
   final Value<String?> notes;
   final Value<DateTime> createdAt;
   final Value<DateTime?> creditSettledAt;
+  final Value<String?> creditSettlementMethod;
   final Value<String?> customerName;
   final Value<String?> cashierName;
   final Value<String?> paymentMethodName;
@@ -1961,6 +2013,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.creditSettledAt = const Value.absent(),
+    this.creditSettlementMethod = const Value.absent(),
     this.customerName = const Value.absent(),
     this.cashierName = const Value.absent(),
     this.paymentMethodName = const Value.absent(),
@@ -1984,6 +2037,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     this.notes = const Value.absent(),
     required DateTime createdAt,
     this.creditSettledAt = const Value.absent(),
+    this.creditSettlementMethod = const Value.absent(),
     this.customerName = const Value.absent(),
     this.cashierName = const Value.absent(),
     this.paymentMethodName = const Value.absent(),
@@ -2016,6 +2070,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? creditSettledAt,
+    Expression<String>? creditSettlementMethod,
     Expression<String>? customerName,
     Expression<String>? cashierName,
     Expression<String>? paymentMethodName,
@@ -2039,6 +2094,8 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
       if (creditSettledAt != null) 'credit_settled_at': creditSettledAt,
+      if (creditSettlementMethod != null)
+        'credit_settlement_method': creditSettlementMethod,
       if (customerName != null) 'customer_name': customerName,
       if (cashierName != null) 'cashier_name': cashierName,
       if (paymentMethodName != null) 'payment_method_name': paymentMethodName,
@@ -2064,6 +2121,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     Value<String?>? notes,
     Value<DateTime>? createdAt,
     Value<DateTime?>? creditSettledAt,
+    Value<String?>? creditSettlementMethod,
     Value<String?>? customerName,
     Value<String?>? cashierName,
     Value<String?>? paymentMethodName,
@@ -2087,6 +2145,8 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       creditSettledAt: creditSettledAt ?? this.creditSettledAt,
+      creditSettlementMethod:
+          creditSettlementMethod ?? this.creditSettlementMethod,
       customerName: customerName ?? this.customerName,
       cashierName: cashierName ?? this.cashierName,
       paymentMethodName: paymentMethodName ?? this.paymentMethodName,
@@ -2152,6 +2212,11 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
     if (creditSettledAt.present) {
       map['credit_settled_at'] = Variable<DateTime>(creditSettledAt.value);
     }
+    if (creditSettlementMethod.present) {
+      map['credit_settlement_method'] = Variable<String>(
+        creditSettlementMethod.value,
+      );
+    }
     if (customerName.present) {
       map['customer_name'] = Variable<String>(customerName.value);
     }
@@ -2189,6 +2254,7 @@ class LocalSalesCompanion extends UpdateCompanion<SaleRow> {
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
           ..write('creditSettledAt: $creditSettledAt, ')
+          ..write('creditSettlementMethod: $creditSettlementMethod, ')
           ..write('customerName: $customerName, ')
           ..write('cashierName: $cashierName, ')
           ..write('paymentMethodName: $paymentMethodName, ')
@@ -8739,6 +8805,7 @@ typedef $$LocalSalesTableCreateCompanionBuilder =
       Value<String?> notes,
       required DateTime createdAt,
       Value<DateTime?> creditSettledAt,
+      Value<String?> creditSettlementMethod,
       Value<String?> customerName,
       Value<String?> cashierName,
       Value<String?> paymentMethodName,
@@ -8763,6 +8830,7 @@ typedef $$LocalSalesTableUpdateCompanionBuilder =
       Value<String?> notes,
       Value<DateTime> createdAt,
       Value<DateTime?> creditSettledAt,
+      Value<String?> creditSettlementMethod,
       Value<String?> customerName,
       Value<String?> cashierName,
       Value<String?> paymentMethodName,
@@ -8859,6 +8927,11 @@ class $$LocalSalesTableFilterComposer
 
   ColumnFilters<DateTime> get creditSettledAt => $composableBuilder(
     column: $table.creditSettledAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get creditSettlementMethod => $composableBuilder(
+    column: $table.creditSettlementMethod,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8972,6 +9045,11 @@ class $$LocalSalesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get creditSettlementMethod => $composableBuilder(
+    column: $table.creditSettlementMethod,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<String> get customerName => $composableBuilder(
     column: $table.customerName,
     builder: (column) => ColumnOrderings(column),
@@ -9061,6 +9139,11 @@ class $$LocalSalesTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get creditSettlementMethod => $composableBuilder(
+    column: $table.creditSettlementMethod,
+    builder: (column) => column,
+  );
+
   GeneratedColumn<String> get customerName => $composableBuilder(
     column: $table.customerName,
     builder: (column) => column,
@@ -9124,6 +9207,7 @@ class $$LocalSalesTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime?> creditSettledAt = const Value.absent(),
+                Value<String?> creditSettlementMethod = const Value.absent(),
                 Value<String?> customerName = const Value.absent(),
                 Value<String?> cashierName = const Value.absent(),
                 Value<String?> paymentMethodName = const Value.absent(),
@@ -9146,6 +9230,7 @@ class $$LocalSalesTableTableManager
                 notes: notes,
                 createdAt: createdAt,
                 creditSettledAt: creditSettledAt,
+                creditSettlementMethod: creditSettlementMethod,
                 customerName: customerName,
                 cashierName: cashierName,
                 paymentMethodName: paymentMethodName,
@@ -9170,6 +9255,7 @@ class $$LocalSalesTableTableManager
                 Value<String?> notes = const Value.absent(),
                 required DateTime createdAt,
                 Value<DateTime?> creditSettledAt = const Value.absent(),
+                Value<String?> creditSettlementMethod = const Value.absent(),
                 Value<String?> customerName = const Value.absent(),
                 Value<String?> cashierName = const Value.absent(),
                 Value<String?> paymentMethodName = const Value.absent(),
@@ -9192,6 +9278,7 @@ class $$LocalSalesTableTableManager
                 notes: notes,
                 createdAt: createdAt,
                 creditSettledAt: creditSettledAt,
+                creditSettlementMethod: creditSettlementMethod,
                 customerName: customerName,
                 cashierName: cashierName,
                 paymentMethodName: paymentMethodName,

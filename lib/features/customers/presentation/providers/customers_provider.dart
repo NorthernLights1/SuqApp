@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:uuid/uuid.dart';
 import '../../../../core/services/sync_providers.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
@@ -326,59 +325,23 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
     String? notes,
   }) async {
     if (amount <= Decimal.zero) return false;
-    final db = ref.read(appDatabaseProvider);
     final userId = ref.read(currentUserIdProvider);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      if (db != null) {
-        // Local-first: record the payment + (if cleared) settle the bill in the
-        // local DB; SyncService pushes the payment and the re-flagged settled
-        // sale in the background. `getPaidBySale` sums local payments (incl. the
-        // one just recorded) so the running total is correct offline.
-        final id = const Uuid().v4();
-        await db.recordLocalCreditPayment(
-          id: id,
-          saleId: saleId,
-          customerId: customerId,
-          amount: amount,
-          method: method,
-          notes: (notes != null && notes.isNotEmpty) ? notes : null,
-        );
-        final paid = (await db.getPaidBySale([saleId]))[saleId] ?? Decimal.zero;
-        if (paid >= saleTotal) await db.markSaleSettledLocal(saleId);
-        unawaited(ref.read(syncSchedulerProvider).syncNow());
-      } else {
-        // Web (no local DB): the original online flow (record → recompute from
-        // server → stamp the sale settled, claiming a single method only when
-        // every payment used the same one).
-        final client = ref.read(supabaseClientProvider);
-        await client.from('credit_payments').insert({
-          'sale_id': saleId,
-          'customer_id': customerId,
-          'amount': amount.toString(),
-          'method': method,
-          if (notes != null && notes.isNotEmpty) 'notes': notes,
-          'recorded_by': userId,
-        });
-        final rows = (await client
-            .from('credit_payments')
-            .select('amount, method')
-            .eq('sale_id', saleId)) as List;
-        final paid = rows.fold<Decimal>(
-          Decimal.zero,
-          (s, r) => s + Decimal.parse((r['amount'] ?? '0').toString()),
-        );
-        if (paid >= saleTotal) {
-          final methods = rows.map((r) => r['method'] as String).toSet();
-          final saleUpdate = <String, dynamic>{
-            'credit_settled_at': DateTime.now().toIso8601String(),
-          };
-          if (methods.length == 1) {
-            saleUpdate['credit_settlement_method'] = methods.first;
-          }
-          await client.from('sales').update(saleUpdate).eq('id', saleId);
-        }
-      }
+      // Data access lives in the repository (native: local-first + atomic settle
+      // + queued push; web: online). The provider only orchestrates + refreshes.
+      await ref.read(customersRepositoryProvider).recordCreditPayment(
+            saleId: saleId,
+            customerId: customerId,
+            saleTotal: saleTotal,
+            amount: amount,
+            method: method,
+            notes: notes,
+            recordedBy: userId,
+          );
+      // Nudge a sync so an offline-recorded payment pushes promptly (no-op on
+      // web / when offline).
+      unawaited(ref.read(syncSchedulerProvider).syncNow());
       ref.invalidate(customersProvider);
       ref.invalidate(customerCreditSalesProvider(customerId));
       ref.invalidate(customerSalesProvider(customerId));

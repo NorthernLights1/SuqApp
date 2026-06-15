@@ -483,32 +483,35 @@ void main() {
         [],
       );
 
-      // Partial payment: queued, summed, sale still open.
-      await db.recordLocalCreditPayment(
+      // Partial payment: not settled, queued, summed.
+      final settled1 = await db.recordCreditPaymentTxn(
           id: 'pay-1',
           saleId: 'sale-credit',
           customerId: 'c-1',
+          saleTotal: Decimal.parse('100'),
           amount: Decimal.parse('40'),
           method: 'cash');
+      expect(settled1, isFalse);
       expect((await db.getPaidBySale(['sale-credit']))['sale-credit'],
           Decimal.parse('40'));
       expect((await db.getPendingCreditPayments()).length, 1);
       expect((await db.getSale('sale-credit'))!.creditSettledAt, isNull);
 
-      // Second payment clears it → settle locally and flag the sale unsynced so
-      // the sale push re-sends it with credit_settled_at.
-      await db.recordLocalCreditPayment(
+      // Second payment clears it → settles atomically, stamps the uniform method,
+      // and flags the sale unsynced so the sale push re-sends the settlement.
+      final settled2 = await db.recordCreditPaymentTxn(
           id: 'pay-2',
           saleId: 'sale-credit',
           customerId: 'c-1',
+          saleTotal: Decimal.parse('100'),
           amount: Decimal.parse('60'),
           method: 'cash');
-      expect((await db.getPaidBySale(['sale-credit']))['sale-credit'],
-          Decimal.parse('100'));
-      await db.markSaleSettledLocal('sale-credit');
+      expect(settled2, isTrue);
       final sale = await db.getSale('sale-credit');
       expect(sale!.creditSettledAt, isNotNull);
+      expect(sale.creditSettlementMethod, 'cash');
       expect(sale.isSynced, isFalse);
+      expect((await db.getPendingCreditPayments()).length, 2);
 
       // After push, payments drop out of the queue.
       await db.markCreditPaymentSynced('pay-1');
