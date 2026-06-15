@@ -24,11 +24,30 @@ class InventoryRepository {
 
   // ── Reference reads (remote) ─────────────────────────────────────────────────
 
-  Future<List<MeasurementUnit>> getMeasurementUnits(String shopId) =>
-      _remote.getMeasurementUnits(shopId);
+  Future<List<MeasurementUnit>> getMeasurementUnits(String shopId) async {
+    // Local-first: system units are always seeded, so non-empty local is
+    // authoritative; empty = pre-seed or web → server.
+    if (_db != null) {
+      final rows = await _db.getUnits();
+      if (rows.isNotEmpty) {
+        return rows
+            .map((r) => MeasurementUnit(
+                id: r.id, name: r.name, abbreviation: r.abbreviation))
+            .toList();
+      }
+    }
+    return _remote.getMeasurementUnits(shopId);
+  }
 
-  Future<List<ProductCategory>> getProductCategories(String shopId) =>
-      _remote.getProductCategories(shopId);
+  Future<List<ProductCategory>> getProductCategories(String shopId) async {
+    // Local-first: categories can legitimately be empty (a shop may have none),
+    // so when the local DB is present we trust it outright — never error offline.
+    if (_db != null) {
+      final rows = await _db.getCategories(shopId);
+      return rows.map((r) => ProductCategory(id: r.id, name: r.name)).toList();
+    }
+    return _remote.getProductCategories(shopId);
+  }
 
   // ── Products ─────────────────────────────────────────────────────────────────
 

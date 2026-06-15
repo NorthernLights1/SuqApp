@@ -160,12 +160,28 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
   just repoints `onPull` at the delta pull. Optional debounced post-write nudge.
 
 **Phase C — Close the observed bugs via the new model**
-- [ ] Point all form lookups (payment methods, categories, units) at local Drift.
-- [ ] Move remaining writes to local-first + outbox: credit settlement, inventory
-  (product create/edit, add/correct stock), expenses, customer edits.
-- [ ] Denormalize customer + cashier names onto local sale rows so detail screens
-  work offline.
-- [ ] Switch any remaining "try Supabase → fallback" reads to local-first.
+- [x] **C1 — form lookups local-first** (bugs #1, #2): `getPaymentMethods`
+  (SalesRepository), `getMeasurementUnits` + `getProductCategories`
+  (InventoryRepository) now read local Drift first; `getCategories`
+  (ExpensesRepository) flipped from server-first to local-first. Pattern:
+  non-empty local is authoritative (system rows always seeded); categories trust
+  local outright (may be legitimately empty); web (`_db==null`) → remote.
+  analyze clean; 125 tests.
+- [ ] **C2 — denormalized names in sales reads** (bug #4): make
+  `getSale`/`getSalesForBranch` local-first and map the B2-populated
+  `customerName`/`cashierName`/`paymentMethodName` into the Sale model so credit
+  detail shows names offline. (Sale model may need a `cashierName` field.)
+- [ ] **C3 — remaining writes local-first + single boundary** (bug #3 + debt):
+  - Credit settlement is still Supabase-direct — move to local-first + outbox.
+  - Stock writes + expenses are ALREADY offline-first but have inline
+    fire-and-forget pushes (`InventoryRepository._queueAdjustment`,
+    `ExpensesRepository.record`) — remove them; SyncService is sole pusher; add a
+    post-write sync nudge (like the sales nudge in B3).
+  - Product create/edit/deactivate + createCustomer are still remote-first —
+    move to local-first (FK-order note in InventoryRepository).
+- [ ] **C4 — remaining server-first reads → local-first**: `getSale` /
+  `getSalesForBranch` (with C2), `getExpenses`, inventory `getProducts` /
+  `getStockLevels` (currently try-server-then-fallback).
 
 **Phase D — Sequenced-in hardening (not blocking)**
 - [ ] Indexes on local Drift: `is_synced`, `updated_at`, `shop_id`, FKs.

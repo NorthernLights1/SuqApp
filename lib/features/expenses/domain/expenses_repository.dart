@@ -32,14 +32,16 @@ class ExpensesRepository implements IExpensesRepository {
 
   @override
   Future<List<ExpenseCategory>> getCategories(String shopId) async {
-    if (_db == null) return _remote.getCategories(shopId);
-    try {
-      return await _remote.getCategories(shopId);
-    } catch (_) {
-      // Offline: serve the downloaded categories so the expense form still works.
+    // Local-first (was server-first): system expense categories are always
+    // seeded, so non-empty local is authoritative; empty = pre-seed or web →
+    // server. Removes the offline timeout that slowed the expense form.
+    if (_db != null) {
       final rows = await _db.getExpenseCategories(shopId);
-      return rows.map((r) => ExpenseCategory(id: r.id, name: r.name)).toList();
+      if (rows.isNotEmpty) {
+        return rows.map((r) => ExpenseCategory(id: r.id, name: r.name)).toList();
+      }
     }
+    return _remote.getCategories(shopId);
   }
 
   @override

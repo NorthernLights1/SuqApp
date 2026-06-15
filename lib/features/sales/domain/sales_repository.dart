@@ -61,8 +61,21 @@ class SalesRepository implements ISalesRepository {
   }
 
   @override
-  Future<List<PaymentMethod>> getPaymentMethods(String shopId) =>
-      _remote.getPaymentMethods(shopId);
+  Future<List<PaymentMethod>> getPaymentMethods(String shopId) async {
+    // Local-first: the seeded cache always holds the system methods (Cash/Bank),
+    // so a non-empty local result is authoritative. Empty = pre-seed or web →
+    // fall through to the server.
+    if (_db != null) {
+      final rows = await _db.getPaymentMethods();
+      if (rows.isNotEmpty) {
+        return rows
+            .map((r) => PaymentMethod(
+                id: r.id, name: r.name, code: r.code, isActive: r.isActive))
+            .toList();
+      }
+    }
+    return _remote.getPaymentMethods(shopId);
+  }
 
   // ── Customers ──────────────────────────────────────────────────────────────
 
