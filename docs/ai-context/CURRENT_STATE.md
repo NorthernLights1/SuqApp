@@ -225,10 +225,15 @@ Auth methods live in `AuthNotifier`: `sendInviteCode()`, `claimInvite()`.
 
 **Local DB**: `lib/data/local/app_database.dart` — tables: LocalProducts, LocalStock, LocalSales, LocalSaleItems, LocalCustomers.
 
-**Write path (sales)**: `SalesRepository.createSale` → write to Drift (`isSynced=false`) + update local stock → fire-and-forget Supabase push → on success `markSaleSynced`.
+**Write path (sales)**: `SalesRepository.createSale` → write to Drift
+(`isSynced=false`) + update local stock. No inline push (offline-first v2 single
+boundary): `SyncService` is the sole pusher; a debounced pending-work watcher
+nudges a sync, which pushes via the `upsert_sale_with_inventory` RPC.
 
-**Read path**: server-resilient — try Supabase, fall back to the local Drift
-cache when offline (offline-first; see branch `offline-first`).
+**Read path**: local-first, not local-fallback (see DECISIONS.md "Offline-first
+v2"). Reads return from the local Drift mirror immediately; the network is never
+on the user-visible path. Remote is consulted only when the local cache can't
+answer (e.g. a sale older than the sync window, or web with no local DB).
 
 **Seed / pull**: `SeedNotifier` watches shop (watched in `dashboard_screen.dart`)
 and seeds on login; `SeedService.seedAll` is a full download (shop, branches,

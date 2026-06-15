@@ -201,14 +201,12 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
   `getSalesForBranch` (with C2), `getExpenses`, inventory `getProducts` /
   `getStockLevels` (currently try-server-then-fallback).
 
-**Phase C — known limitation (deferred)**
-- [ ] Web/online credit settlement (`CustomersRemote.recordCreditPayment`) is a
-  non-atomic insert→read→update — two devices settling the same bill online at
-  once could leave a paid bill marked unsettled (self-heals on next recompute;
-  no payment lost). Mobile path is already atomic. Proper fix: a server-side
-  `record_credit_payment` RPC (insert + recompute + settle in one txn with a row
-  lock) — needs a prod migration (operator authorization). Web isn't the pilot
-  target, so deferred.
+**Phase C — known limitation (RESOLVED)**
+- [x] Web/online credit settlement was a non-atomic insert→read→update. FIXED by
+  migration 024's `record_credit_payment` RPC (insert + recompute + settle in one
+  txn under a sale-row lock, idempotent by id); both web and mobile now call it.
+  Migration 026 added `p_created_at` so offline-recorded payments keep their real
+  recording time on replay. (Migrations 024–027 applied to dev.)
 
 **Phase D — Sequenced-in hardening (not blocking)**
 - [ ] Indexes on local Drift: `is_synced`, `updated_at`, `shop_id`, FKs.
@@ -319,12 +317,20 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
 
 ## Tech Debt (tracked, not urgent)
 
-- Hardcoded strings in screens violate l10n rule (`app_en.arb` unused)
+- Hardcoded strings in screens violate l10n rule. l10n is scaffolded but NOT
+  adopted: `AppLocalizations.delegate` is not registered in `app.dart` and no
+  screen uses it. Adopt l10n app-wide as one dedicated task — do not localize a
+  single feature in isolation (it'd be the lone consumer + risk a runtime null).
 - No error boundaries — raw Supabase exceptions reach snackbars
 - Permission cache TTL not implemented (role changes need app restart)
 - `Decimal.parse()` without try-catch in models — can throw on malformed DB data
 - Inventory writes (create/edit product, stock adjust) not yet write-through to Drift
-- `FilteringTextInputFormatter` allows multiple decimal points — caught by `Decimal.tryParse` at validation but could be rejected earlier
+- Expenses & customers still push as one bulk upsert — a single invalid row blocks
+  that batch. Sales / adjustments / credit payments already push per-row
+  (failure-isolated); give expenses & customers the same treatment.
+- First sales pull caps at 2000 most-recent rows (unsettled credits unbounded);
+  older sales come via delta/on-demand. Fine for the pilot; revisit pagination
+  for very high-volume shops.
 
 ---
 
