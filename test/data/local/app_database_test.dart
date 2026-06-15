@@ -461,4 +461,59 @@ void main() {
       expect((await db.getProductsByShop('s-1')).length, 1);
     });
   });
+
+  // ── Offline credit settlement ───────────────────────────────────────────────
+
+  group('offline credit settlement', () {
+    test('record payments, settle when cleared, queue for push', () async {
+      await db.insertSaleWithItems(
+        LocalSalesCompanion(
+          id: const Value('sale-credit'),
+          branchId: const Value('b-1'),
+          cashierId: const Value('u-1'),
+          paymentMethodId: const Value('pm-1'),
+          subtotal: Value(Decimal.parse('100')),
+          discountAmount: Value(Decimal.zero),
+          total: Value(Decimal.parse('100')),
+          status: const Value('completed'),
+          isCredit: const Value(true),
+          createdAt: Value(DateTime.now()),
+          isSynced: const Value(true),
+        ),
+        [],
+      );
+
+      // Partial payment: queued, summed, sale still open.
+      await db.recordLocalCreditPayment(
+          id: 'pay-1',
+          saleId: 'sale-credit',
+          customerId: 'c-1',
+          amount: Decimal.parse('40'),
+          method: 'cash');
+      expect((await db.getPaidBySale(['sale-credit']))['sale-credit'],
+          Decimal.parse('40'));
+      expect((await db.getPendingCreditPayments()).length, 1);
+      expect((await db.getSale('sale-credit'))!.creditSettledAt, isNull);
+
+      // Second payment clears it → settle locally and flag the sale unsynced so
+      // the sale push re-sends it with credit_settled_at.
+      await db.recordLocalCreditPayment(
+          id: 'pay-2',
+          saleId: 'sale-credit',
+          customerId: 'c-1',
+          amount: Decimal.parse('60'),
+          method: 'cash');
+      expect((await db.getPaidBySale(['sale-credit']))['sale-credit'],
+          Decimal.parse('100'));
+      await db.markSaleSettledLocal('sale-credit');
+      final sale = await db.getSale('sale-credit');
+      expect(sale!.creditSettledAt, isNotNull);
+      expect(sale.isSynced, isFalse);
+
+      // After push, payments drop out of the queue.
+      await db.markCreditPaymentSynced('pay-1');
+      await db.markCreditPaymentSynced('pay-2');
+      expect(await db.getPendingCreditPayments(), isEmpty);
+    });
+  });
 }

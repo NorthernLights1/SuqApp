@@ -174,14 +174,24 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
   last sync) — also removes their offline timeout (bug #5). Web → remote. Note:
   customerPhone + settlement method/notes aren't mirrored locally (minor offline
   degradation; name/cashier — the actual bug — now show). analyze clean; 125 tests.
-- [ ] **C3 — remaining writes local-first + single boundary** (bug #3 + debt):
-  - Credit settlement is still Supabase-direct — move to local-first + outbox.
-  - Stock writes + expenses are ALREADY offline-first but have inline
-    fire-and-forget pushes (`InventoryRepository._queueAdjustment`,
-    `ExpensesRepository.record`) — remove them; SyncService is sole pusher; add a
-    post-write sync nudge (like the sales nudge in B3).
-  - Product create/edit/deactivate + createCustomer are still remote-first —
-    move to local-first (FK-order note in InventoryRepository).
+- [x] **C3a — credit settlement offline** (bug #3): DONE. Local schema v8 adds
+  `isSynced` to `LocalCreditPayments`. `recordCreditPayment` is now local-first
+  (native): records the payment to the local queue, sums `getPaidBySale` (incl.
+  the new row) to decide settlement, `markSaleSettledLocal` stamps
+  `credit_settled_at` + flags the sale unsynced so the sale push re-sends it
+  carrying the settlement; `_pushPendingCreditPayments` bulk-upserts the queue;
+  `_saleJson` now carries `credit_settled_at`. Post-write sync nudge. Web keeps
+  the online flow. DB-level test for the full flow. analyze clean; 126 tests.
+  - Known edge (like stock oversell): two devices settling the same bill offline
+    both record payments → possible overpayment in the ledger, both visible (no
+    loss). Sale-level `credit_settlement_method` not stamped offline (recoverable
+    from `credit_payments`).
+- [ ] **C3b — remove inline pushes** (boundary consistency, no reported bug):
+  `InventoryRepository._queueAdjustment` and `ExpensesRepository.record` and
+  `CustomersRepository.save` still fire their own background push — remove; let
+  SyncService be sole pusher + add post-write nudges.
+- [ ] **C3c — product writes local-first** (debt, no reported bug): product
+  create/edit/deactivate + `createCustomer` are still remote-first.
 - [ ] **C4 — remaining server-first reads → local-first**: `getSale` /
   `getSalesForBranch` (with C2), `getExpenses`, inventory `getProducts` /
   `getStockLevels` (currently try-server-then-fallback).

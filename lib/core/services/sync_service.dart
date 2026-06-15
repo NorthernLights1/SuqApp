@@ -49,6 +49,7 @@ class SyncService implements ISyncService {
       if (_db != null) {
         pushed += await _pushPendingCustomers();
         pushed += await _pushPendingSales();
+        pushed += await _pushPendingCreditPayments();
         pushed += await _pushPendingExpenses();
         pushed += await _pushPendingAdjustments();
       }
@@ -117,6 +118,9 @@ class SyncService implements ISyncService {
         'is_credit': sale.isCredit,
         'notes': sale.notes,
         'created_at': sale.createdAt.toIso8601String(),
+        // Carries an offline settlement up: a bill settled offline re-pushes the
+        // sale with this stamped (null otherwise, which is a no-op).
+        'credit_settled_at': sale.creditSettledAt?.toIso8601String(),
       };
 
   Map<String, dynamic> _saleItemJson(SaleItemRow item) => {
@@ -156,6 +160,38 @@ class SyncService implements ISyncService {
       );
       for (final e in pending) {
         await db.markExpenseSynced(e.id);
+      }
+      return pending.length;
+    } catch (_) {
+      return 0; // leave isSynced=false; next sync retries
+    }
+  }
+
+  /// Pushes pending credit payments (offline settlements) in one bulk upsert.
+  /// Pushed after sales so the payment's sale FK exists. recorded_by is stamped
+  /// from the current user (same device/session as recording).
+  Future<int> _pushPendingCreditPayments() async {
+    final db = _db!;
+    final pending = await db.getPendingCreditPayments();
+    if (pending.isEmpty) return 0;
+    final userId = _supabase.auth.currentUser?.id;
+    try {
+      await _supabase.from('credit_payments').upsert(
+        pending
+            .map((p) => {
+                  'id': p.id,
+                  'sale_id': p.saleId,
+                  'customer_id': p.customerId,
+                  'amount': p.amount.toString(),
+                  'method': p.method,
+                  'notes': p.notes,
+                  'recorded_by': userId,
+                })
+            .toList(),
+        onConflict: 'id',
+      );
+      for (final p in pending) {
+        await db.markCreditPaymentSynced(p.id);
       }
       return pending.length;
     } catch (_) {

@@ -251,7 +251,7 @@ class LocalExpenseCategories extends Table {
 }
 
 /// Recorded credit payments (the dispute audit trail), downloaded for offline
-/// display of payment history. Payment *recording* still goes through Supabase.
+/// display AND offline recording (the push queue picks up unsynced rows).
 @DataClassName('CreditPaymentRow')
 class LocalCreditPayments extends Table {
   TextColumn get id => text()();
@@ -262,6 +262,9 @@ class LocalCreditPayments extends Table {
   TextColumn get notes => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get syncedAt => dateTime()();
+  // Default true: downloaded rows are already on the server. Offline-recorded
+  // payments set this false so the push queue picks them up.
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -310,7 +313,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -346,6 +349,11 @@ class AppDatabase extends _$AppDatabase {
             await m.addColumn(localSales, localSales.customerName);
             await m.addColumn(localSales, localSales.cashierName);
             await m.addColumn(localSales, localSales.paymentMethodName);
+          }
+          // v7 -> v8: offline credit settlement — credit payments can be
+          // recorded offline and queued for push.
+          if (from < 8) {
+            await m.addColumn(localCreditPayments, localCreditPayments.isSynced);
           }
         },
       );
@@ -724,6 +732,46 @@ class AppDatabase extends _$AppDatabase {
     }
     return map;
   }
+
+  /// Record a credit payment locally (offline-first). Flagged unsynced so the
+  /// push queue sends it; `getPaidBySale` already sums it for the running total.
+  Future<void> recordLocalCreditPayment({
+    required String id,
+    required String saleId,
+    String? customerId,
+    required Decimal amount,
+    required String method,
+    String? notes,
+  }) =>
+      into(localCreditPayments).insert(LocalCreditPaymentsCompanion(
+        id: Value(id),
+        saleId: Value(saleId),
+        customerId: Value(customerId),
+        amount: Value(amount),
+        method: Value(method),
+        notes: Value(notes),
+        createdAt: Value(DateTime.now()),
+        syncedAt: Value(DateTime.now()),
+        isSynced: const Value(false),
+      ));
+
+  Future<List<CreditPaymentRow>> getPendingCreditPayments() =>
+      (select(localCreditPayments)..where((t) => t.isSynced.equals(false)))
+          .get();
+
+  Future<void> markCreditPaymentSynced(String id) =>
+      (update(localCreditPayments)..where((t) => t.id.equals(id)))
+          .write(const LocalCreditPaymentsCompanion(isSynced: Value(true)));
+
+  /// Stamp a credit sale settled locally AND flag it unsynced, so the sale push
+  /// re-sends it carrying `credit_settled_at` (the server learns it's settled).
+  Future<void> markSaleSettledLocal(String saleId) =>
+      (update(localSales)..where((t) => t.id.equals(saleId))).write(
+        LocalSalesCompanion(
+          creditSettledAt: Value(DateTime.now()),
+          isSynced: const Value(false),
+        ),
+      );
 
   // ── Sync state (per-table delta-pull cursors) ────────────────────────────────
 

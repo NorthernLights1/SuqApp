@@ -7444,6 +7444,21 @@ class $LocalCreditPaymentsTable extends LocalCreditPayments
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+    'is_synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -7454,6 +7469,7 @@ class $LocalCreditPaymentsTable extends LocalCreditPayments
     notes,
     createdAt,
     syncedAt,
+    isSynced,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -7516,6 +7532,12 @@ class $LocalCreditPaymentsTable extends LocalCreditPayments
     } else if (isInserting) {
       context.missing(_syncedAtMeta);
     }
+    if (data.containsKey('is_synced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta),
+      );
+    }
     return context;
   }
 
@@ -7559,6 +7581,10 @@ class $LocalCreditPaymentsTable extends LocalCreditPayments
         DriftSqlType.dateTime,
         data['${effectivePrefix}synced_at'],
       )!,
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_synced'],
+      )!,
     );
   }
 
@@ -7580,6 +7606,7 @@ class CreditPaymentRow extends DataClass
   final String? notes;
   final DateTime createdAt;
   final DateTime syncedAt;
+  final bool isSynced;
   const CreditPaymentRow({
     required this.id,
     required this.saleId,
@@ -7589,6 +7616,7 @@ class CreditPaymentRow extends DataClass
     this.notes,
     required this.createdAt,
     required this.syncedAt,
+    required this.isSynced,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -7609,6 +7637,7 @@ class CreditPaymentRow extends DataClass
     }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['synced_at'] = Variable<DateTime>(syncedAt);
+    map['is_synced'] = Variable<bool>(isSynced);
     return map;
   }
 
@@ -7626,6 +7655,7 @@ class CreditPaymentRow extends DataClass
           : Value(notes),
       createdAt: Value(createdAt),
       syncedAt: Value(syncedAt),
+      isSynced: Value(isSynced),
     );
   }
 
@@ -7643,6 +7673,7 @@ class CreditPaymentRow extends DataClass
       notes: serializer.fromJson<String?>(json['notes']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
     );
   }
   @override
@@ -7657,6 +7688,7 @@ class CreditPaymentRow extends DataClass
       'notes': serializer.toJson<String?>(notes),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'syncedAt': serializer.toJson<DateTime>(syncedAt),
+      'isSynced': serializer.toJson<bool>(isSynced),
     };
   }
 
@@ -7669,6 +7701,7 @@ class CreditPaymentRow extends DataClass
     Value<String?> notes = const Value.absent(),
     DateTime? createdAt,
     DateTime? syncedAt,
+    bool? isSynced,
   }) => CreditPaymentRow(
     id: id ?? this.id,
     saleId: saleId ?? this.saleId,
@@ -7678,6 +7711,7 @@ class CreditPaymentRow extends DataClass
     notes: notes.present ? notes.value : this.notes,
     createdAt: createdAt ?? this.createdAt,
     syncedAt: syncedAt ?? this.syncedAt,
+    isSynced: isSynced ?? this.isSynced,
   );
   CreditPaymentRow copyWithCompanion(LocalCreditPaymentsCompanion data) {
     return CreditPaymentRow(
@@ -7691,6 +7725,7 @@ class CreditPaymentRow extends DataClass
       notes: data.notes.present ? data.notes.value : this.notes,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
     );
   }
 
@@ -7704,7 +7739,8 @@ class CreditPaymentRow extends DataClass
           ..write('method: $method, ')
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
-          ..write('syncedAt: $syncedAt')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('isSynced: $isSynced')
           ..write(')'))
         .toString();
   }
@@ -7719,6 +7755,7 @@ class CreditPaymentRow extends DataClass
     notes,
     createdAt,
     syncedAt,
+    isSynced,
   );
   @override
   bool operator ==(Object other) =>
@@ -7731,7 +7768,8 @@ class CreditPaymentRow extends DataClass
           other.method == this.method &&
           other.notes == this.notes &&
           other.createdAt == this.createdAt &&
-          other.syncedAt == this.syncedAt);
+          other.syncedAt == this.syncedAt &&
+          other.isSynced == this.isSynced);
 }
 
 class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
@@ -7743,6 +7781,7 @@ class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
   final Value<String?> notes;
   final Value<DateTime> createdAt;
   final Value<DateTime> syncedAt;
+  final Value<bool> isSynced;
   final Value<int> rowid;
   const LocalCreditPaymentsCompanion({
     this.id = const Value.absent(),
@@ -7753,6 +7792,7 @@ class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
     this.notes = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.syncedAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalCreditPaymentsCompanion.insert({
@@ -7764,6 +7804,7 @@ class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
     this.notes = const Value.absent(),
     required DateTime createdAt,
     required DateTime syncedAt,
+    this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        saleId = Value(saleId),
@@ -7780,6 +7821,7 @@ class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
     Expression<String>? notes,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? syncedAt,
+    Expression<bool>? isSynced,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -7791,6 +7833,7 @@ class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
       if (notes != null) 'notes': notes,
       if (createdAt != null) 'created_at': createdAt,
       if (syncedAt != null) 'synced_at': syncedAt,
+      if (isSynced != null) 'is_synced': isSynced,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -7804,6 +7847,7 @@ class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
     Value<String?>? notes,
     Value<DateTime>? createdAt,
     Value<DateTime>? syncedAt,
+    Value<bool>? isSynced,
     Value<int>? rowid,
   }) {
     return LocalCreditPaymentsCompanion(
@@ -7815,6 +7859,7 @@ class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,
       syncedAt: syncedAt ?? this.syncedAt,
+      isSynced: isSynced ?? this.isSynced,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -7848,6 +7893,9 @@ class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
     if (syncedAt.present) {
       map['synced_at'] = Variable<DateTime>(syncedAt.value);
     }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -7865,6 +7913,7 @@ class LocalCreditPaymentsCompanion extends UpdateCompanion<CreditPaymentRow> {
           ..write('notes: $notes, ')
           ..write('createdAt: $createdAt, ')
           ..write('syncedAt: $syncedAt, ')
+          ..write('isSynced: $isSynced, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -12024,6 +12073,7 @@ typedef $$LocalCreditPaymentsTableCreateCompanionBuilder =
       Value<String?> notes,
       required DateTime createdAt,
       required DateTime syncedAt,
+      Value<bool> isSynced,
       Value<int> rowid,
     });
 typedef $$LocalCreditPaymentsTableUpdateCompanionBuilder =
@@ -12036,6 +12086,7 @@ typedef $$LocalCreditPaymentsTableUpdateCompanionBuilder =
       Value<String?> notes,
       Value<DateTime> createdAt,
       Value<DateTime> syncedAt,
+      Value<bool> isSynced,
       Value<int> rowid,
     });
 
@@ -12088,6 +12139,11 @@ class $$LocalCreditPaymentsTableFilterComposer
     column: $table.syncedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$LocalCreditPaymentsTableOrderingComposer
@@ -12138,6 +12194,11 @@ class $$LocalCreditPaymentsTableOrderingComposer
     column: $table.syncedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LocalCreditPaymentsTableAnnotationComposer
@@ -12174,6 +12235,9 @@ class $$LocalCreditPaymentsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get syncedAt =>
       $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
 }
 
 class $$LocalCreditPaymentsTableTableManager
@@ -12227,6 +12291,7 @@ class $$LocalCreditPaymentsTableTableManager
                 Value<String?> notes = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> syncedAt = const Value.absent(),
+                Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalCreditPaymentsCompanion(
                 id: id,
@@ -12237,6 +12302,7 @@ class $$LocalCreditPaymentsTableTableManager
                 notes: notes,
                 createdAt: createdAt,
                 syncedAt: syncedAt,
+                isSynced: isSynced,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -12249,6 +12315,7 @@ class $$LocalCreditPaymentsTableTableManager
                 Value<String?> notes = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime syncedAt,
+                Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalCreditPaymentsCompanion.insert(
                 id: id,
@@ -12259,6 +12326,7 @@ class $$LocalCreditPaymentsTableTableManager
                 notes: notes,
                 createdAt: createdAt,
                 syncedAt: syncedAt,
+                isSynced: isSynced,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
