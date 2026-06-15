@@ -96,6 +96,11 @@ begin
     join public.branches b on b.id = s.branch_id where b.shop_id = shop_a;
   if leaked > 0 then raise exception 'LEAK: credit_payments (% rows)', leaked; end if;
 
+  -- Shop-scoped (direct shop_id); system rows have shop_id null and are shared.
+  select count(*) into leaked from public.expense_categories
+    where shop_id = shop_a;
+  if leaked > 0 then raise exception 'LEAK: expense_categories (% rows)', leaked; end if;
+
   raise notice 'PASS: user B sees no rows of shop A across all checked tables.';
 end;
 $$;

@@ -2,6 +2,7 @@ import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
+import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import 'inventory_provider.dart';
 
 /// An unresolved oversell: a product whose server stock went negative because
@@ -35,9 +36,12 @@ class StockConflict extends Equatable {
         // conflict list / resolution flow.
         observedQuantity:
             Decimal.tryParse(j['observed_quantity'].toString()) ?? Decimal.zero,
+        // Epoch sentinel (not now()) on malformed data: a bad row sorts to the
+        // bottom of the newest-first list and is visibly "old", rather than
+        // masquerading as just-detected.
         detectedAt:
             DateTime.tryParse(j['detected_at'] as String? ?? '')?.toLocal() ??
-                DateTime.now(),
+                DateTime.fromMillisecondsSinceEpoch(0),
       );
 
   @override
@@ -78,6 +82,11 @@ class ResolveConflictNotifier extends AsyncNotifier<void> {
   }) async {
     final userId = ref.read(currentUserIdProvider);
     if (userId == null) return false;
+    // RBAC: resolving a conflict corrects inventory — owner-only (settings.manage).
+    // The server also enforces this (RLS on stock_conflicts + the manual-adjust
+    // RPC), but gate the client too so a non-owner never reaches the mutation.
+    final perms = await ref.read(permissionsProvider.future);
+    if (!perms.contains('settings.manage')) return false;
     final client = ref.read(supabaseClientProvider);
 
     state = const AsyncLoading();
@@ -88,7 +97,7 @@ class ResolveConflictNotifier extends AsyncNotifier<void> {
       final claimed = await client
           .from('stock_conflicts')
           .update({
-            'resolved_at': DateTime.now().toIso8601String(),
+            'resolved_at': DateTime.now().toUtc().toIso8601String(),
             'resolved_by': userId,
             if (note != null && note.isNotEmpty) 'resolution_note': note,
           })

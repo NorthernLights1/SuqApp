@@ -911,16 +911,33 @@ class AppDatabase extends _$AppDatabase {
     ).watch().map((rows) => rows.first.read<int>('has_pending') == 1);
   }
 
-  /// Hard-remove rows by `id` from an id-keyed local table — used by the delta
-  /// pull to apply server soft-deletes (`deleted_at` set). [ids] are bound
-  /// parameters; [sqlTable] is interpolated, so — defence-in-depth, even though
-  /// callers only ever pass a code constant — it is validated against the real
-  /// tables in this schema and rejected otherwise.
+  /// Tables the delta pull may hard-remove rows from by `id` (server
+  /// soft-deletes). Explicit allowlist — not merely "is a real table": every
+  /// entry is single-column `id`-keyed, so a composite-key table (local_stock,
+  /// local_shop_settings, local_sync_state) can never be passed here by mistake,
+  /// and the interpolated table name is bound to a constant set (SQL-injection
+  /// defence in depth). Keep in sync with the `deleteFromTable:` args in
+  /// SeedService.
+  static const _deletableByIdTables = {
+    'local_branches',
+    'local_payment_methods',
+    'local_product_categories',
+    'local_measurement_units',
+    'local_products',
+    'local_customers',
+    'local_expense_categories',
+    'local_expenses',
+    'local_credit_payments',
+  };
+
+  /// Hard-remove rows by `id` from an id-keyed replica table — used by the delta
+  /// pull to apply server soft-deletes. [ids] are bound parameters; [sqlTable]
+  /// is interpolated but validated against [_deletableByIdTables] first.
   Future<void> deleteByIds(String sqlTable, List<String> ids) async {
     if (ids.isEmpty) return;
-    final known = allTables.map((t) => t.actualTableName).toSet();
-    if (!known.contains(sqlTable)) {
-      throw ArgumentError.value(sqlTable, 'sqlTable', 'not a table in this schema');
+    if (!_deletableByIdTables.contains(sqlTable)) {
+      throw ArgumentError.value(
+          sqlTable, 'sqlTable', 'not an id-keyed delta-replica table');
     }
     final placeholders = List.filled(ids.length, '?').join(', ');
     await customStatement('DELETE FROM $sqlTable WHERE id IN ($placeholders)', ids);

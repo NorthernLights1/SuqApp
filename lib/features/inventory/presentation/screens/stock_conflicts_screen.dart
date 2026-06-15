@@ -1,6 +1,7 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/widgets/decimal_input_formatter.dart';
@@ -14,6 +15,24 @@ class StockConflictsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // RBAC: resolving conflicts corrects inventory — owner-only. Gate the screen
+    // so a deep-link can't reach the resolution UI (the banner that links here is
+    // already permission-gated; the server enforces it too).
+    if (!hasPermissionSync(ref, 'settings.manage')) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Stock Conflicts')),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              'You do not have permission to view stock conflicts.',
+              style: AppTextStyles.bodySmall,
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
     final conflicts = ref.watch(stockConflictsProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Stock Conflicts')),
