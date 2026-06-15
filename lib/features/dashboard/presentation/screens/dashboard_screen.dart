@@ -5,7 +5,6 @@ import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../domain/models/sale.dart';
-import '../../../../domain/models/shop.dart';
 import '../../../../features/customers/presentation/screens/credits_screen.dart';
 import '../../../../features/inventory/presentation/providers/conflicts_provider.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
@@ -109,22 +108,12 @@ class _HomeTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final branches = ref.watch(currentShopBranchesProvider);
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Branch selector
-          branches.when(
-            data: (list) => list.isEmpty
-                ? const SizedBox.shrink()
-                : _BranchChip(branches: list),
-            loading: () => const LinearProgressIndicator(),
-            error: (e, st) => const SizedBox.shrink(),
-          ),
-          const SizedBox(height: 20),
+          // One shop = one branch: branch selector removed (multi-branch deferred).
           Text("Today's Summary", style: AppTextStyles.headline3),
           const SizedBox(height: 12),
           _TodayTotalsRow(),
@@ -150,45 +139,6 @@ class _HomeTab extends ConsumerWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _BranchChip extends ConsumerWidget {
-  const _BranchChip({required this.branches});
-  final List<Branch> branches;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final active = ref.watch(activeBranchProvider);
-    final display = active ?? (branches.isNotEmpty ? branches.first : null);
-
-    if (display == null) return const SizedBox.shrink();
-
-    return PopupMenuButton<Branch>(
-      onSelected: ref.read(activeBranchProvider.notifier).set,
-      itemBuilder: (_) => [
-        for (final branch in branches)
-          PopupMenuItem(value: branch, child: Text(branch.name)),
-      ],
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: AppColors.primaryLight,
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.location_on, size: 14, color: AppColors.primary),
-            const SizedBox(width: 4),
-            Text(display.name,
-                style: AppTextStyles.label.copyWith(color: AppColors.primary)),
-            const Icon(Icons.arrow_drop_down,
-                size: 18, color: AppColors.primary),
-          ],
-        ),
       ),
     );
   }
