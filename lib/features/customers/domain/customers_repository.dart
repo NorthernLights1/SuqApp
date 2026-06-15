@@ -93,17 +93,14 @@ class CustomersRepository {
     required Decimal amount,
     required String method,
     String? notes,
-    String? recordedBy,
   }) {
     if (_db == null) {
       return _remote.recordCreditPayment(
         saleId: saleId,
         customerId: customerId,
-        saleTotal: saleTotal,
         amount: amount,
         method: method,
         notes: notes,
-        recordedBy: recordedBy,
       );
     }
     return _db.recordCreditPaymentTxn(

@@ -27,11 +27,9 @@ class _ThrowingRemote implements CustomersRemote {
   Future<bool> recordCreditPayment({
     required String saleId,
     required String customerId,
-    required Decimal saleTotal,
     required Decimal amount,
     required String method,
     String? notes,
-    String? recordedBy,
   }) async =>
       throw Exception('offline');
 }
@@ -56,11 +54,9 @@ class _CapturingRemote implements CustomersRemote {
   Future<bool> recordCreditPayment({
     required String saleId,
     required String customerId,
-    required Decimal saleTotal,
     required Decimal amount,
     required String method,
     String? notes,
-    String? recordedBy,
   }) async =>
       false;
 }

@@ -179,10 +179,13 @@ Future<List<Sale>> _localReportSales(
     if (shopId != null)
       for (final p in await db.getProductsByShop(shopId)) p.id: p.categoryId,
   };
+  // Batch the items for all sales in one query (avoids N+1 across the period).
+  final itemsBySale =
+      await db.getSaleItemsForSales(rows.map((r) => r.id).toList());
 
   final result = <Sale>[];
   for (final r in rows) {
-    final items = await db.getSaleItems(r.id);
+    final items = itemsBySale[r.id] ?? const [];
     if (categoryFilter != null &&
         !items.any((i) => prodCat[i.productId] == categoryFilter)) {
       continue;
@@ -398,6 +401,11 @@ Future<ReportSummary> _localReportSummary(
     if (shopId != null)
       for (final p in await db.getProductsByShop(shopId)) p.id: p.categoryId,
   };
+  // Batch items + payments for all completed sales (avoids two N+1 loops).
+  final completedIds =
+      sales.where((s) => s.status == 'completed').map((s) => s.id).toList();
+  final itemsBySale = await db.getSaleItemsForSales(completedIds);
+  final paidBySale = await db.getPaidBySale(completedIds);
 
   Decimal salesTotal = Decimal.zero;
   Decimal creditTotal = Decimal.zero;
@@ -408,12 +416,8 @@ Future<ReportSummary> _localReportSummary(
 
   for (final s in sales) {
     if (s.status != 'completed') continue;
-    final items = await db.getSaleItems(s.id);
-    final payments = await db.getCreditPaymentsForSale(s.id);
-    final paid = payments.fold<Decimal>(
-      Decimal.zero,
-      (sum, payment) => sum + payment.amount,
-    );
+    final items = itemsBySale[s.id] ?? const [];
+    final paid = paidBySale[s.id] ?? Decimal.zero;
     final remainingCredit = s.total > paid ? s.total - paid : Decimal.zero;
     final isOutstandingCredit = s.isCredit && remainingCredit > Decimal.zero;
 

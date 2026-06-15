@@ -36,7 +36,8 @@ class StockConflict extends Equatable {
       );
 
   @override
-  List<Object?> get props => [id, observedQuantity];
+  List<Object?> get props =>
+      [id, branchId, productId, productName, observedQuantity, detectedAt];
 }
 
 /// Open (unresolved) stock conflicts for the current shop. RLS scopes the

@@ -325,11 +325,11 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
     String? notes,
   }) async {
     if (amount <= Decimal.zero) return false;
-    final userId = ref.read(currentUserIdProvider);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       // Data access lives in the repository (native: local-first + atomic settle
       // + queued push; web: online). The provider only orchestrates + refreshes.
+      // recorded_by is stamped server-side (auth.uid()) by the RPC.
       await ref.read(customersRepositoryProvider).recordCreditPayment(
             saleId: saleId,
             customerId: customerId,
@@ -337,7 +337,6 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
             amount: amount,
             method: method,
             notes: notes,
-            recordedBy: userId,
           );
       // Nudge a sync so an offline-recorded payment pushes promptly (no-op on
       // web / when offline).

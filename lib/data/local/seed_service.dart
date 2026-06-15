@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app_database.dart';
 
@@ -65,8 +66,11 @@ class SeedService {
   Future<void> _guard(Future<void> Function() op) async {
     try {
       await op();
-    } catch (_) {
-      // Offline or a transient error — keep whatever is already cached.
+    } catch (e, st) {
+      // Offline or a transient error — keep whatever is already cached. Logged
+      // at debug level so a failing table's pull is diagnosable without
+      // changing the fail-open behavior.
+      debugPrint('SeedService pull failed: $e\n$st');
     }
   }
 
@@ -453,6 +457,11 @@ class SeedService {
                 .subtract(const Duration(days: 366))
                 .toUtc()
                 .toIso8601String();
+            // Cap the first bulk download for sync performance. A shop with
+            // >2000 sales in the last year keeps the most recent 2000 here;
+            // older ones are pulled on demand / by the delta cursor as they
+            // change. Unsettled credit sales are fetched separately below with
+            // NO limit, so credit management is always complete offline.
             final recent = await _client
                 .from('sales')
                 .select(_salesSelect)

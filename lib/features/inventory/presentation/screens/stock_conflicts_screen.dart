@@ -1,9 +1,9 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/widgets/decimal_input_formatter.dart';
 import '../providers/conflicts_provider.dart';
 
 /// Lists oversell conflicts and lets the owner resolve each by confirming the
@@ -148,9 +148,7 @@ class _ConflictCardState extends ConsumerState<_ConflictCard> {
                     controller: _countCtrl,
                     keyboardType:
                         const TextInputType.numberWithOptions(decimal: true),
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                    ],
+                    inputFormatters: [decimalInputFormatter],
                     decoration: const InputDecoration(
                       labelText: 'Actual quantity on hand',
                       isDense: true,

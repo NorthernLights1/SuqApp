@@ -36,14 +36,14 @@ class CustomersRemote {
 
   /// Records an installment and settles the credit sale in one server-side
   /// transaction. Returns true when this payment clears the bill.
+  /// saleTotal / recordedBy are intentionally absent: the RPC recomputes the
+  /// paid total server-side and stamps recorded_by = auth.uid().
   Future<bool> recordCreditPayment({
     required String saleId,
     required String customerId,
-    required Decimal saleTotal,
     required Decimal amount,
     required String method,
     String? notes,
-    String? recordedBy,
   }) async {
     final result = await _client.rpc(
       'record_credit_payment',
