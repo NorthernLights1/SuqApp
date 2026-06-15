@@ -252,20 +252,18 @@ class SalesRepository implements ISalesRepository {
 
   @override
   Future<Sale> getSale(String saleId) async {
-    // Server-first: the server row carries the customer, payment-method, and
-    // cashier names (via joins) that the local mirror doesn't store, and
-    // reflects settlement/void changes made on other devices. Fall back to the
-    // local copy only when offline.
-    try {
-      return await _remote.getSale(saleId);
-    } catch (_) {
-      final row = await _db?.getSale(saleId);
+    // Local-first: the delta pull mirrors the whole shop's sales (every cashier)
+    // with denormalized customer/cashier/payment names, so the local row is
+    // complete. Only reach the server when the sale isn't in the local cache
+    // (e.g. older than the sync window) or on web.
+    if (_db != null) {
+      final row = await _db.getSale(saleId);
       if (row != null) {
-        final items = await _db!.getSaleItems(saleId);
+        final items = await _db.getSaleItems(saleId);
         return _saleFromRows(row, items);
       }
-      rethrow;
     }
+    return _remote.getSale(saleId);
   }
 
   @override
@@ -274,15 +272,9 @@ class SalesRepository implements ISalesRepository {
     required DateTime from,
     required DateTime to,
   }) async {
-    // Server-first so the list shows the WHOLE shop's sales (every cashier),
-    // not just those created on this device, and includes the joined customer
-    // / cashier / payment names. Offline → fall back to the local mirror
-    // (this device's own sales).
-    try {
-      return await _remote.getSalesForBranch(
-          branchId: branchId, from: from, to: to);
-    } catch (_) {
-      if (_db == null) rethrow;
+    // Local-first: the mirror holds the whole shop's sales (all cashiers, with
+    // names) as of the last sync — no network on the critical path. Web → remote.
+    if (_db != null) {
       final rows = await _db.getSalesByBranch(branchId, from, to);
       final result = <Sale>[];
       for (final row in rows) {
@@ -291,6 +283,7 @@ class SalesRepository implements ISalesRepository {
       }
       return result;
     }
+    return _remote.getSalesForBranch(branchId: branchId, from: from, to: to);
   }
 
   @override
@@ -336,6 +329,11 @@ class SalesRepository implements ISalesRepository {
         id: r.id,
         branchId: r.branchId,
         customerId: r.customerId,
+        // Denormalized names stored on the local row (filled by the delta pull),
+        // so offline detail screens show them without a Supabase join.
+        customerName: r.customerName,
+        cashierName: r.cashierName,
+        paymentMethodName: r.paymentMethodName,
         cashierId: r.cashierId,
         paymentMethodId: r.paymentMethodId,
         subtotal: r.subtotal,

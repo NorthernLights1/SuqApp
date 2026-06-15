@@ -167,10 +167,13 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
   non-empty local is authoritative (system rows always seeded); categories trust
   local outright (may be legitimately empty); web (`_db==null`) → remote.
   analyze clean; 125 tests.
-- [ ] **C2 — denormalized names in sales reads** (bug #4): make
-  `getSale`/`getSalesForBranch` local-first and map the B2-populated
-  `customerName`/`cashierName`/`paymentMethodName` into the Sale model so credit
-  detail shows names offline. (Sale model may need a `cashierName` field.)
+- [x] **C2 — denormalized names in sales reads** (bug #4): `_saleFromRows` now
+  maps the B2-populated `customerName`/`cashierName`/`paymentMethodName`; Sale
+  model already had the fields. `getSale`/`getSalesForBranch` flipped from
+  server-first to local-first (mirror holds the whole shop's sales + names as of
+  last sync) — also removes their offline timeout (bug #5). Web → remote. Note:
+  customerPhone + settlement method/notes aren't mirrored locally (minor offline
+  degradation; name/cashier — the actual bug — now show). analyze clean; 125 tests.
 - [ ] **C3 — remaining writes local-first + single boundary** (bug #3 + debt):
   - Credit settlement is still Supabase-direct — move to local-first + outbox.
   - Stock writes + expenses are ALREADY offline-first but have inline
