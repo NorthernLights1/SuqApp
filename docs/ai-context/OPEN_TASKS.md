@@ -201,6 +201,15 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
   `getSalesForBranch` (with C2), `getExpenses`, inventory `getProducts` /
   `getStockLevels` (currently try-server-then-fallback).
 
+**Phase C — known limitation (deferred)**
+- [ ] Web/online credit settlement (`CustomersRemote.recordCreditPayment`) is a
+  non-atomic insert→read→update — two devices settling the same bill online at
+  once could leave a paid bill marked unsettled (self-heals on next recompute;
+  no payment lost). Mobile path is already atomic. Proper fix: a server-side
+  `record_credit_payment` RPC (insert + recompute + settle in one txn with a row
+  lock) — needs a prod migration (operator authorization). Web isn't the pilot
+  target, so deferred.
+
 **Phase D — Sequenced-in hardening (not blocking)**
 - [ ] Indexes on local Drift: `is_synced`, `updated_at`, `shop_id`, FKs.
 - [ ] First-pull pagination + on-device retention policy (don't keep all history).

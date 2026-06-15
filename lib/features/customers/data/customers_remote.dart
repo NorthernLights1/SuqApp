@@ -37,6 +37,13 @@ class CustomersRemote {
   /// recomputes the total paid from the server, and stamps the sale settled when
   /// the bill is cleared (claiming a single method only when every payment used
   /// the same one). Returns true if it settled.
+  ///
+  /// NOTE: insert→read→update is NOT atomic. Two devices settling the SAME bill
+  /// online at the same instant could each read before the other's insert lands,
+  /// so neither crosses the threshold — leaving a fully-paid bill marked
+  /// unsettled (self-heals on the next payment/recompute; no payment is lost).
+  /// The mobile path settles atomically (AppDatabase.recordCreditPaymentTxn);
+  /// the proper web fix is a server-side atomic RPC (deferred — see OPEN_TASKS).
   Future<bool> recordCreditPayment({
     required String saleId,
     required String customerId,
