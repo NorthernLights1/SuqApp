@@ -231,55 +231,6 @@ class InventoryRemote {
       'p_notes': notes,
       'p_expiry_date': expiryDate?.toIso8601String().substring(0, 10),
     });
-    if (id.isNotEmpty) return;
-
-    final already = await _client
-        .from('inventory_adjustments')
-        .select('id')
-        .eq('id', id)
-        .maybeSingle();
-    if (already != null) return;
-
-    final existing = await _client
-        .from('inventory')
-        .select('quantity')
-        .eq('branch_id', branchId)
-        .eq('product_id', productId)
-        .maybeSingle();
-    final serverBefore = existing != null
-        ? Decimal.parse(existing['quantity'].toString())
-        : Decimal.zero;
-
-    final Decimal serverAfter;
-    if (type == 'manual') {
-      serverAfter = quantityAfter; // absolute override
-    } else {
-      serverAfter = serverBefore + (quantityAfter - quantityBefore); // delta
-    }
-
-    // Map to a type the inventory_adjustments CHECK constraint accepts. Legacy
-    // queued rows may carry 'restock', which is not permitted.
-    final dbType = type == 'restock' ? 'supply_received' : type;
-
-    // Ledger first (carries the idempotency id), then the quantity.
-    await _client.from('inventory_adjustments').insert({
-      'id': id,
-      'branch_id': branchId,
-      'product_id': productId,
-      'adjusted_by': adjustedBy,
-      'type': dbType,
-      'quantity_before': serverBefore.toString(),
-      'quantity_after': serverAfter.toString(),
-      'notes': ?notes,
-    });
-    await _client.from('inventory').upsert({
-      'branch_id': branchId,
-      'product_id': productId,
-      'quantity': serverAfter.toString(),
-      if (expiryDate != null)
-        'expiry_date': expiryDate.toIso8601String().substring(0, 10),
-      'updated_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'branch_id,product_id');
   }
 
   // ─── Measurement units ─────────────────────────────────────────────────────
