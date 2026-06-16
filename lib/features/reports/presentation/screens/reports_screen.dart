@@ -79,7 +79,7 @@ class ReportsScreen extends ConsumerWidget {
                   icon: const Icon(Icons.date_range_outlined, size: 16),
                   label: Text(
                     period == ReportPeriod.custom && customRange != null
-                        ? "${DateFormat('MMM d').format(customRange.start)} – ${DateFormat('MMM d').format(customRange.end)}"
+                        ? "${DateFormat('MMM d, y').format(customRange.start)} – ${DateFormat('MMM d, y').format(customRange.end)}"
                         : 'Custom Range',
                     style: AppTextStyles.bodySmall,
                   ),

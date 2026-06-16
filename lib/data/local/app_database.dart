@@ -113,6 +113,10 @@ class LocalCustomers extends Table {
   TextColumn get phone => text().nullable()();
   TextColumn get creditBalance => text().map(const _Dec())();
   DateTimeColumn get updatedAt => dateTime()();
+  // Default true: downloaded rows are already on the server. Offline-created
+  // customers set this false (see customers_repository) so the push queue picks
+  // them up. Keep the default true so server-pulled rows (seed) and the column
+  // retrofit mark themselves synced without each call site repeating it.
   BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
 
   @override

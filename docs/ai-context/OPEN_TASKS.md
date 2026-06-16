@@ -84,7 +84,7 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
   `Uuid().v4()`; push is idempotent (select-before-insert). Converting to a single
   `upsert(onConflict:'id')` is folded into Phase B batching (removes the extra
   round trip) — no separate change needed now.
-- [~] Local Drift schema migration: DEFERRED into Phase B/C by design — Phase A's
+- [ ] Local Drift schema migration (DEFERRED into Phase B/C by design) — Phase A's
   server change does not alter the local schema. The local columns (store server
   `updated_at`, delta cursor) land when Phase B's pull *consumes* them, and the
   denormalized-name columns land in Phase C; both bump `schemaVersion` together

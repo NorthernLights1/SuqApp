@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/constants/setting_keys.dart';
 import '../../../../data/local/database_provider.dart';
@@ -67,8 +68,11 @@ final notificationSettingsProvider =
           int.tryParse((map[SettingKeys.overdueCreditDays] as String?) ?? '') ??
               7,
     );
-  } catch (_) {
+  } catch (e) {
     // Offline: read from the local settings cache (values are JSON-encoded).
+    // Log so a real failure (auth/permission/malformed) is distinguishable
+    // from a genuine offline read during development.
+    debugPrint('Notification settings fetch failed, using local cache: $e');
     final db = ref.read(appDatabaseProvider);
     if (db == null) return const NotificationSettings();
     final cached = {

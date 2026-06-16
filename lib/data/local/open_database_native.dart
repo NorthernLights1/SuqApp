@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
@@ -22,8 +23,11 @@ QueryExecutor openDatabase(String userId) => LazyDatabase(() async {
   if (!await userFile.exists() && await legacyFile.exists()) {
     try {
       await legacyFile.rename(userFile.path);
-    } catch (_) {
-      // Intentionally swallowed — proceed with an empty per-user database.
+    } catch (e, st) {
+      // Proceed with an empty per-user database rather than blocking startup,
+      // but surface the failure: any unsynced writes left in the legacy file
+      // are lost (synced data re-pulls), so this must be visible for recovery.
+      debugPrint('Legacy DB migration failed; unsynced writes may be lost: $e\n$st');
     }
   }
   return NativeDatabase(userFile);

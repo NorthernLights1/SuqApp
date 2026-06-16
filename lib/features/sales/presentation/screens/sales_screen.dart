@@ -107,7 +107,8 @@ class _SalesSummaryBanner extends ConsumerWidget {
             _BannerStat(
                 label: 'Revenue',
                 value: formatCurrency(
-                    Decimal.parse((t['total'] ?? 0).toString()))),
+                    Decimal.tryParse((t['total'] ?? 0).toString()) ??
+                        Decimal.zero)),
             const SizedBox(width: 24),
             _BannerStat(
                 label: 'Transactions',

@@ -1,5 +1,6 @@
 import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
@@ -64,7 +65,11 @@ final stockConflictsProvider =
     return (data as List)
         .map((e) => StockConflict.fromJson(e as Map<String, dynamic>))
         .toList();
-  } catch (_) {
+  } catch (e) {
+    // Offline or query failure — conflicts are a sync concern, so surface an
+    // empty list rather than an error state. Log so a real fetch failure is
+    // distinguishable from "no conflicts" during development.
+    debugPrint('stockConflictsProvider fetch failed (returning empty): $e');
     return const [];
   }
 });
