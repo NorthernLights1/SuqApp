@@ -53,6 +53,14 @@ declare
   shop_a constant uuid := 'REPLACE_WITH_SHOP_A_ID';
   leaked int;
 begin
+  -- Fail fast on unreplaced placeholders. The shop_a uuid cast above already
+  -- errors if left as 'REPLACE_…'; the JWT sub is a bare string, so an
+  -- unreplaced one would silently scope to a non-existent user and FALSE-PASS.
+  if current_setting('request.jwt.claims', true)::json ->> 'sub' like 'REPLACE%'
+  then
+    raise exception 'Set the JWT sub (user B UUID) on the set-local line before running';
+  end if;
+
   -- Direct shop_id-scoped tables
   select count(*) into leaked from public.products            where shop_id = shop_a;
   if leaked > 0 then raise exception 'LEAK: products (% rows of shop A visible)', leaked; end if;
@@ -68,6 +76,9 @@ begin
 
   select count(*) into leaked from public.branches            where shop_id = shop_a;
   if leaked > 0 then raise exception 'LEAK: branches (% rows)', leaked; end if;
+
+  select count(*) into leaked from public.shops               where id = shop_a;
+  if leaked > 0 then raise exception 'LEAK: shops (% rows of shop A visible)', leaked; end if;
 
   -- Branch-scoped tables (joined back to shop A via branch)
   select count(*) into leaked from public.sales s
@@ -100,6 +111,14 @@ begin
   select count(*) into leaked from public.expense_categories
     where shop_id = shop_a;
   if leaked > 0 then raise exception 'LEAK: expense_categories (% rows)', leaked; end if;
+
+  -- payment_methods / measurement_units: system rows (shop_id null) are shared
+  -- by design; only shop-owned (non-null shop_id) rows must stay isolated.
+  select count(*) into leaked from public.payment_methods   where shop_id = shop_a;
+  if leaked > 0 then raise exception 'LEAK: payment_methods (% rows)', leaked; end if;
+
+  select count(*) into leaked from public.measurement_units where shop_id = shop_a;
+  if leaked > 0 then raise exception 'LEAK: measurement_units (% rows)', leaked; end if;
 
   raise notice 'PASS: user B sees no rows of shop A across all checked tables.';
 end;

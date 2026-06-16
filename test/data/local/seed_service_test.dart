@@ -74,6 +74,10 @@ void main() {
   test('guardrail: SeedService never pulls operator/admin tables', () {
     // Enforces the documented boundary — license/operator tables must never be
     // replicated. Checks actual table-access calls, not the doc comment.
+    // NOTE: lightweight guardrail, not a security boundary — a literal-string
+    // scan can be bypassed by dynamic table-name construction. The real wall is
+    // server-side RLS (see rls_isolation_test.sql); this just catches the
+    // obvious mistake of adding from('license_keys') during a refactor.
     final src =
         File('lib/data/local/seed_service.dart').readAsStringSync();
     expect(src.contains("from('license_keys')"), isFalse,

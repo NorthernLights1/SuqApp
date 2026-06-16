@@ -155,8 +155,7 @@ class _TodayTotalsRow extends ConsumerWidget {
         children: [
           _SummaryCard(
             label: 'Sales',
-            value: formatCurrency(
-                Decimal.tryParse((t['total'] ?? 0).toString()) ?? Decimal.zero),
+            value: formatCurrency(t['total'] ?? Decimal.zero),
             icon: Icons.trending_up,
             color: AppColors.success,
           ),

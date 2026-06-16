@@ -265,7 +265,8 @@ class CustomerDetailScreen extends ConsumerWidget {
                           ),
                           title: Text(
                             formatCurrency(
-                                Decimal.parse(s['total'].toString())),
+                                Decimal.tryParse(s['total'].toString()) ??
+                                    Decimal.zero),
                             style: AppTextStyles.body,
                           ),
                           subtitle: Row(

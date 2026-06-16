@@ -746,9 +746,7 @@ class AppDatabase extends _$AppDatabase {
         await into(localSales).insertOnConflictUpdate(sale);
         await (delete(localSaleItems)..where((t) => t.saleId.equals(saleId)))
             .go();
-        for (final item in items) {
-          await into(localSaleItems).insert(item);
-        }
+        await batch((b) => b.insertAll(localSaleItems, items));
       });
 
   // ── Credit payments (offline payment history) ────────────────────────────────

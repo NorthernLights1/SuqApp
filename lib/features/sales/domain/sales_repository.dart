@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../../../data/local/app_database.dart';
 import '../../../domain/models/product.dart';
@@ -297,7 +298,9 @@ class SalesRepository implements ISalesRepository {
       // fall back to the (zero) local total when offline instead of throwing.
       try {
         return await _remote.getTodayTotals(branchId);
-      } catch (_) {
+      } catch (e) {
+        // Log so auth/permission failures are distinguishable from offline.
+        debugPrint('getTodayTotals remote fetch failed, using local: $e');
         return local;
       }
     }

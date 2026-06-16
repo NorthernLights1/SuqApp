@@ -1,5 +1,6 @@
 import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../data/local/app_database.dart';
@@ -145,9 +146,11 @@ final reportSalesProvider = FutureProvider<List<Sale>>((ref) async {
           }).toList();
 
     return filtered.map((e) => Sale.fromJson(e)).toList();
-  } catch (_) {
-    // Offline: build the drill-down list from the local cache, enriching with
-    // local customer/cashier/payment names.
+  } catch (e) {
+    // Offline or fetch failure: build the drill-down list from the local cache.
+    // Log so a real failure (auth/permission/malformed) is distinguishable
+    // from a genuine offline read during development.
+    debugPrint('Report sales list fetch failed, using local cache: $e');
     final db = ref.read(appDatabaseProvider);
     if (db == null) rethrow;
     final shop = await ref.read(currentShopProvider.future);
@@ -379,8 +382,9 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
     grossProfit: grossProfit,
     profitItemCount: profitItemCount,
   );
-  } catch (_) {
-    // Offline: compute the same summary from the local cache.
+  } catch (e) {
+    // Offline or fetch failure: compute the same summary from the local cache.
+    debugPrint('Report summary fetch failed, using local cache: $e');
     final db = ref.read(appDatabaseProvider);
     if (db == null) rethrow;
     return _localReportSummary(db, branch.id, shop?.id, range, categoryFilter);
