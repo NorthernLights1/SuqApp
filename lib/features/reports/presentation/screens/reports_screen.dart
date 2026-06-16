@@ -1,10 +1,12 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/utils/currency_formatter.dart';
 import '../providers/reports_provider.dart';
 import 'report_sales_list_screen.dart';
 
@@ -77,7 +79,7 @@ class ReportsScreen extends ConsumerWidget {
                   icon: const Icon(Icons.date_range_outlined, size: 16),
                   label: Text(
                     period == ReportPeriod.custom && customRange != null
-                        ? '${_fmtDate(customRange.start)} – ${_fmtDate(customRange.end)}'
+                        ? "${DateFormat('MMM d').format(customRange.start)} – ${DateFormat('MMM d').format(customRange.end)}"
                         : 'Custom Range',
                     style: AppTextStyles.bodySmall,
                   ),
@@ -244,10 +246,6 @@ class ReportsScreen extends ConsumerWidget {
     );
   }
 
-  String _fmtDate(DateTime d) {
-    const m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    return '${m[d.month - 1]} ${d.day}';
-  }
 }
 
 class _SummaryBody extends StatelessWidget {
@@ -271,7 +269,7 @@ class _SummaryBody extends StatelessWidget {
         const SizedBox(height: 8),
         _StatRow(
           label: isCategoryFiltered ? 'Category Revenue' : 'Revenue',
-          value: 'ETB ${summary.salesTotal.toStringAsFixed(2)}',
+          value: formatCurrency(summary.salesTotal),
           icon: Icons.trending_up,
           color: AppColors.success,
         ),
@@ -301,7 +299,7 @@ class _SummaryBody extends StatelessWidget {
           const SizedBox(height: 6),
           _StatRow(
             label: 'Credit Total',
-            value: 'ETB ${summary.creditTotal.toStringAsFixed(2)}',
+            value: formatCurrency(summary.creditTotal),
             icon: Icons.account_balance_wallet_outlined,
             color: AppColors.warning,
           ),
@@ -310,7 +308,7 @@ class _SummaryBody extends StatelessWidget {
           const SizedBox(height: 6),
           _StatRow(
             label: 'Gross Profit (costed items)',
-            value: 'ETB ${summary.grossProfit.toStringAsFixed(2)}',
+            value: formatCurrency(summary.grossProfit),
             icon: Icons.show_chart,
             color: summary.grossProfit >= Decimal.zero
                 ? AppColors.success
@@ -322,7 +320,7 @@ class _SummaryBody extends StatelessWidget {
         const SizedBox(height: 8),
         _StatRow(
           label: 'Total Expenses',
-          value: 'ETB ${summary.expenseTotal.toStringAsFixed(2)}',
+          value: formatCurrency(summary.expenseTotal),
           icon: Icons.money_off_outlined,
           color: AppColors.error,
         ),
@@ -338,7 +336,7 @@ class _SummaryBody extends StatelessWidget {
                       child: Text(e.key, style: AppTextStyles.bodySmall),
                     ),
                     Text(
-                      'ETB ${e.value.toStringAsFixed(2)}',
+                      formatCurrency(e.value),
                       style: AppTextStyles.bodySmall
                           .copyWith(fontWeight: FontWeight.w600),
                     ),
@@ -371,7 +369,7 @@ class _SummaryBody extends StatelessWidget {
                     style: AppTextStyles.bodySmall),
               ),
               Text(
-                'ETB ${summary.net.toStringAsFixed(2)}',
+                formatCurrency(summary.net),
                 style: AppTextStyles.body.copyWith(
                   fontWeight: FontWeight.w700,
                   color: netPositive ? AppColors.success : AppColors.error,

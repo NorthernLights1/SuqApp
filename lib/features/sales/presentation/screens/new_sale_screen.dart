@@ -8,6 +8,7 @@ import '../../../../domain/models/sale.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/utils/currency_formatter.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../providers/sales_provider.dart';
 import '../../../../shared/widgets/decimal_input_formatter.dart';
@@ -161,7 +162,8 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('Total: ETB ${sale.total}', style: AppTextStyles.amount),
+            Text('Total: ${formatCurrency(sale.total)}',
+                style: AppTextStyles.amount),
             const SizedBox(height: 4),
             Text('${sale.items.length} item(s)', style: AppTextStyles.bodySmall),
           ],
@@ -539,7 +541,7 @@ class _SaleFooter extends ConsumerWidget {
                 children: [
                   Text('Total', style: AppTextStyles.label),
                   Text(
-                    'ETB ${subtotal.toStringAsFixed(2)}',
+                    formatCurrency(subtotal),
                     style: AppTextStyles.amount,
                   ),
                 ],

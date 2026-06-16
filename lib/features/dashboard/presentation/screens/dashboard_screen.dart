@@ -1,3 +1,4 @@
+import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +12,7 @@ import '../../../../features/inventory/presentation/providers/inventory_provider
 import '../../../../features/licensing/presentation/widgets/license_banner.dart';
 import '../../../../features/sales/presentation/providers/sales_provider.dart';
 import '../../../../features/sales/presentation/screens/sales_screen.dart';
+import '../../../../shared/utils/currency_formatter.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/router/app_routes.dart';
 import '../../../../shared/theme/app_colors.dart';
@@ -153,7 +155,7 @@ class _TodayTotalsRow extends ConsumerWidget {
         children: [
           _SummaryCard(
             label: 'Sales',
-            value: 'ETB ${t['total']?.toStringAsFixed(2) ?? '0.00'}',
+            value: formatCurrency(Decimal.parse((t['total'] ?? 0).toString())),
             icon: Icons.trending_up,
             color: AppColors.success,
           ),
@@ -172,7 +174,7 @@ class _TodayTotalsRow extends ConsumerWidget {
       ),
       error: (e, st) => Row(
         children: [
-          _SummaryCard(label: 'Sales', value: 'ETB 0.00', icon: Icons.trending_up, color: AppColors.success),
+          _SummaryCard(label: 'Sales', value: formatCurrency(Decimal.zero), icon: Icons.trending_up, color: AppColors.success),
           const SizedBox(width: 12),
           _SummaryCard(label: 'Transactions', value: '0', icon: Icons.receipt_outlined, color: AppColors.primary),
         ],
@@ -299,7 +301,7 @@ class _SalesTab extends ConsumerWidget {
                     backgroundColor: iconBg,
                     child: Icon(iconData, color: iconColor, size: 20),
                   ),
-                  title: Text('ETB ${s.total.toStringAsFixed(2)}',
+                  title: Text(formatCurrency(s.total),
                       style: AppTextStyles.body.copyWith(
                         fontWeight: FontWeight.w600,
                         decoration: isVoided ? TextDecoration.lineThrough : null,

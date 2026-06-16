@@ -4,17 +4,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../features/sales/presentation/providers/sales_provider.dart';
 import '../../../../features/sales/presentation/screens/sales_screen.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/utils/currency_formatter.dart';
+import '../../../../shared/utils/date_formatter.dart';
 import '../providers/customers_provider.dart';
 import '../widgets/payment_history.dart';
-
-const _months = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-
-String _fmt(DateTime dt) => '${_months[dt.month - 1]} ${dt.day}, ${dt.year}';
 
 // Accepts only a valid decimal: digits with at most one dot (rejects "1.2.3").
 final _decimalFormatter = TextInputFormatter.withFunction((oldValue, newValue) {
@@ -116,7 +112,7 @@ class CreditsScreen extends ConsumerWidget {
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('ETB ${grandTotal.toStringAsFixed(2)}',
+                      Text(formatCurrency(grandTotal),
                           style: AppTextStyles.body.copyWith(
                               color: AppColors.warning,
                               fontWeight: FontWeight.w700)),
@@ -179,7 +175,7 @@ class _CustomerSection extends StatelessWidget {
                       AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
             ),
             Text(
-              'ETB ${total.toStringAsFixed(2)}',
+              formatCurrency(total),
               style: AppTextStyles.bodySmall.copyWith(
                   color: AppColors.warning, fontWeight: FontWeight.w600),
             ),
@@ -213,14 +209,14 @@ class _SaleBillCard extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'ETB ${sale.remaining.toStringAsFixed(2)}',
+                    formatCurrency(sale.remaining),
                     style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     sale.paid > Decimal.zero
-                        ? '${_fmt(sale.createdAt)} · paid ETB ${sale.paid.toStringAsFixed(2)} of ${sale.total.toStringAsFixed(2)}'
-                        : _fmt(sale.createdAt),
+                        ? '${formatDate(sale.createdAt)} · paid ${formatCurrency(sale.paid)} of ${formatCurrency(sale.total)}'
+                        : formatDate(sale.createdAt),
                     style: AppTextStyles.bodySmall,
                   ),
                 ],
@@ -312,7 +308,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
     if (amount > widget.sale.remaining) {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(
-            'Only ETB ${widget.sale.remaining.toStringAsFixed(2)} is left on this bill'),
+            'Only ${formatCurrency(widget.sale.remaining)} is left on this bill'),
       ));
       return;
     }
@@ -372,18 +368,18 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
                   style: AppTextStyles.bodySmall
                       .copyWith(fontWeight: FontWeight.w600)),
               const Text(' · ', style: TextStyle(color: AppColors.textSecondary)),
-              Text(_fmt(widget.sale.createdAt),
+              Text(formatDate(widget.sale.createdAt),
                   style: AppTextStyles.bodySmall),
             ],
           ),
           const SizedBox(height: 4),
           Text(
-            'ETB ${widget.sale.remaining.toStringAsFixed(2)} remaining',
+            '${formatCurrency(widget.sale.remaining)} remaining',
             style: AppTextStyles.amount.copyWith(color: AppColors.warning),
           ),
           if (widget.sale.paid > Decimal.zero)
             Text(
-              'Paid ETB ${widget.sale.paid.toStringAsFixed(2)} of ${widget.sale.total.toStringAsFixed(2)}',
+              'Paid ${formatCurrency(widget.sale.paid)} of ${formatCurrency(widget.sale.total)}',
               style: AppTextStyles.bodySmall,
             ),
           const SizedBox(height: 16),
@@ -394,7 +390,7 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             inputFormatters: [_decimalFormatter],
             decoration: const InputDecoration(
-              labelText: 'Amount paid (ETB)',
+              labelText: 'Amount paid (${AppConstants.defaultCurrency})',
               helperText: 'Lower this to record a partial payment',
               border: OutlineInputBorder(),
               isDense: true,

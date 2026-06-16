@@ -2,9 +2,12 @@ import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../domain/models/product.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/utils/currency_formatter.dart';
+import '../../../../shared/utils/date_formatter.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_text_field.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
@@ -202,7 +205,7 @@ class _ProductStockTile extends ConsumerWidget {
               if (product.sellingPrice != null) ...[
                 const SizedBox(width: 8),
                 Text(
-                  'ETB ${product.sellingPrice!.toStringAsFixed(2)}',
+                  formatCurrency(product.sellingPrice!),
                   style: AppTextStyles.label,
                 ),
               ],
@@ -226,7 +229,7 @@ class _ProductStockTile extends ConsumerWidget {
                       fontWeight: FontWeight.w700))
             else if (isExpiringSoon)
               Text(
-                'Expires ${_formatDate(stockEntry!.expiryDate!)}',
+                'Expires ${formatDate(stockEntry!.expiryDate!)}',
                 style: const TextStyle(color: AppColors.warning, fontSize: 10),
               ),
           ],
@@ -236,14 +239,6 @@ class _ProductStockTile extends ConsumerWidget {
       trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
       onTap: () => _showStockSheet(context, ref, product, stockEntry),
     );
-  }
-
-  String _formatDate(DateTime d) {
-    const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${m[d.month - 1]} ${d.day}';
   }
 }
 
@@ -526,7 +521,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
                   suffixIcon: Icon(Icons.calendar_today_outlined, size: 16),
                 ),
                 child: Text(
-                  _expiryDate != null ? _formatDate(_expiryDate!) : 'Not set',
+                  _expiryDate != null ? formatDate(_expiryDate!) : 'Not set',
                   style: AppTextStyles.body.copyWith(
                     color:
                         _expiryDate == null ? AppColors.textDisabled : null,
@@ -555,14 +550,6 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
         ),
       ],
     );
-  }
-
-  String _formatDate(DateTime d) {
-    const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${m[d.month - 1]} ${d.day}, ${d.year}';
   }
 }
 
@@ -960,14 +947,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     }
   }
 
-  String _formatDate(DateTime d) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${months[d.month - 1]} ${d.day}, ${d.year}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final units = ref.watch(measurementUnitsProvider);
@@ -1118,7 +1097,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [decimalInputFormatter],
                 textInputAction: TextInputAction.next,
-                prefixText: 'ETB ',
+                prefixText: '${AppConstants.defaultCurrency} ',
               ),
               const SizedBox(height: 16),
               AppTextField(
@@ -1128,7 +1107,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [decimalInputFormatter],
                 textInputAction: TextInputAction.next,
-                prefixText: 'ETB ',
+                prefixText: '${AppConstants.defaultCurrency} ',
               ),
               const SizedBox(height: 16),
               AppTextField(
@@ -1211,7 +1190,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       ),
                       child: Text(
                         _expiryDate != null
-                            ? _formatDate(_expiryDate!)
+                            ? formatDate(_expiryDate!)
                             : 'Not set',
                         style: AppTextStyles.body.copyWith(
                           color: _expiryDate == null

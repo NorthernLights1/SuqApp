@@ -3,18 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/utils/currency_formatter.dart';
+import '../../../../shared/utils/date_formatter.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_text_field.dart';
 import '../providers/customers_provider.dart';
 import 'credits_screen.dart' show showCreditSettleSheet;
-
-const _months = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-
-String _fmtDate(DateTime dt) =>
-    '${_months[dt.month - 1]} ${dt.day}, ${dt.year}';
 
 class CustomersScreen extends ConsumerWidget {
   const CustomersScreen({super.key});
@@ -100,7 +94,7 @@ class _CustomerTile extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  'ETB ${owed.toStringAsFixed(2)}',
+                  formatCurrency(owed),
                   style: AppTextStyles.bodySmall
                       .copyWith(color: AppColors.warning, fontWeight: FontWeight.w600),
                 ),
@@ -171,7 +165,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                         children: [
                           Text('Total Outstanding', style: AppTextStyles.label),
                           Text(
-                            'ETB ${outstanding.toStringAsFixed(2)}',
+                            formatCurrency(outstanding),
                             style: AppTextStyles.amount
                                 .copyWith(color: AppColors.warning),
                           ),
@@ -270,14 +264,15 @@ class CustomerDetailScreen extends ConsumerWidget {
                                     : AppColors.primary,
                           ),
                           title: Text(
-                            'ETB ${Decimal.parse(s['total'].toString()).toStringAsFixed(2)}',
+                            formatCurrency(
+                                Decimal.parse(s['total'].toString())),
                             style: AppTextStyles.body,
                           ),
                           subtitle: Row(
                             children: [
                               Flexible(
                                 child: Text(
-                                  _fmtDate(DateTime.parse(
+                                  formatDate(DateTime.parse(
                                       s['created_at'] as String)),
                                   style: AppTextStyles.bodySmall,
                                 ),
@@ -346,14 +341,14 @@ class _CreditSaleTile extends ConsumerWidget {
         leading: const Icon(Icons.credit_card_outlined,
             color: AppColors.warning),
         title: Text(
-          'ETB ${creditSale.remaining.toStringAsFixed(2)}',
+          formatCurrency(creditSale.remaining),
           style: AppTextStyles.body
               .copyWith(fontWeight: FontWeight.w600, color: AppColors.warning),
         ),
         subtitle: Text(
           creditSale.paid > Decimal.zero
-              ? '${_fmtDate(creditSale.createdAt)} · paid ETB ${creditSale.paid.toStringAsFixed(2)} of ${creditSale.total.toStringAsFixed(2)}'
-              : _fmtDate(creditSale.createdAt),
+              ? '${formatDate(creditSale.createdAt)} · paid ${formatCurrency(creditSale.paid)} of ${formatCurrency(creditSale.total)}'
+              : formatDate(creditSale.createdAt),
           style: AppTextStyles.bodySmall,
         ),
         trailing: loading
