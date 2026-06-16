@@ -1,6 +1,7 @@
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../data/local/app_database.dart';
 import '../data/expenses_remote.dart';
 import 'expense.dart';
@@ -47,7 +48,10 @@ class ExpensesRepository implements IExpensesRepository {
   Future<List<Expense>> getExpenses(String branchId, DateTime day) async {
     if (_db == null) return _remote.getExpenses(branchId, day);
     try {
-      final remote = await _remote.getExpenses(branchId, day);
+      // Bounded so an offline read fails fast to the local cache below.
+      final remote = await _remote
+          .getExpenses(branchId, day)
+          .timeout(AppConstants.remoteReadTimeout);
       // Surface any local rows the server hasn't received yet (offline-created
       // or push still in flight) so they show immediately. Dedupe by id.
       final pending = await _db.getPendingExpensesByBranch(branchId, day);

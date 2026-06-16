@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../data/local/app_database.dart';
 import '../data/customers_remote.dart';
 import 'customer.dart';
@@ -24,26 +27,37 @@ class CustomersRepository {
 
   Future<List<Customer>> getCustomers(String shopId) async {
     if (_db == null) return _remote.getCustomers(shopId);
+    // Local-first: the mirror holds all customers — synced and offline-created
+    // (isSynced=false) alike — so it's authoritative for display and works
+    // offline. Refresh in the background. Only an empty mirror hits the server.
+    final rows = await _db.getCustomersByShop(shopId);
+    if (rows.isNotEmpty) {
+      unawaited(_refreshCustomers(shopId));
+      return rows.map(_fromRow).toList();
+    }
     try {
-      final remote = await _remote.getCustomers(shopId);
-      // Refresh the mirror, but don't clobber rows with unpushed local edits.
+      final remote =
+          await _remote.getCustomers(shopId).timeout(AppConstants.remoteReadTimeout);
+      await _db.upsertCustomers(
+          [for (final c in remote) _toCompanion(c, synced: true)]);
+      return remote;
+    } catch (_) {
+      return rows.map(_fromRow).toList(); // empty cache, offline
+    }
+  }
+
+  Future<void> _refreshCustomers(String shopId) async {
+    try {
+      final remote =
+          await _remote.getCustomers(shopId).timeout(AppConstants.remoteReadTimeout);
+      // Don't clobber rows with unpushed local edits.
       final pendingIds =
-          (await _db.getPendingCustomers()).map((r) => r.id).toSet();
+          (await _db!.getPendingCustomers()).map((r) => r.id).toSet();
       await _db.upsertCustomers([
         for (final c in remote)
           if (!pendingIds.contains(c.id)) _toCompanion(c, synced: true),
       ]);
-      // Surface offline-created customers the server doesn't have yet.
-      final remoteIds = remote.map((c) => c.id).toSet();
-      final extras = (await _db.getPendingCustomers())
-          .where((r) => r.shopId == shopId && !remoteIds.contains(r.id))
-          .map(_fromRow);
-      final all = [...remote, ...extras]..sort((a, b) => a.name.compareTo(b.name));
-      return all;
-    } catch (_) {
-      final rows = await _db.getCustomersByShop(shopId);
-      return rows.map(_fromRow).toList();
-    }
+    } catch (_) {/* offline / transient — keep the local mirror */}
   }
 
   /// Create (when [customerId] is null) or edit a customer. Returns the id.

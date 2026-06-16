@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../data/local/app_database.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../domain/models/sale.dart';
@@ -133,7 +134,8 @@ final reportSalesProvider = FutureProvider<List<Sale>>((ref) async {
         .order('created_at', ascending: false)
         // Cap the drill-down list; a shop won't review more than this at once
         // and it keeps the query bounded for long periods (e.g. Year).
-        .limit(500);
+        .limit(500)
+        .timeout(AppConstants.remoteReadTimeout);
 
     final rows = (data as List).cast<Map<String, dynamic>>();
     final filtered = categoryFilter == null
@@ -274,7 +276,8 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
           'total, status, is_credit, credit_settled_at, credit_payments(amount), sale_items(quantity, unit_price, discount_amount, cost_price_snapshot, products(category_id))')
       .eq('branch_id', branch.id)
       .gte('created_at', range.start.toUtc().toIso8601String())
-      .lt('created_at', range.end.toUtc().toIso8601String());
+      .lt('created_at', range.end.toUtc().toIso8601String())
+      .timeout(AppConstants.remoteReadTimeout);
 
   Decimal salesTotal = Decimal.zero;
   Decimal creditTotal = Decimal.zero;
@@ -354,7 +357,8 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
       .select('amount, expense_categories(name)')
       .eq('branch_id', branch.id)
       .gte('date', range.start.toIso8601String().substring(0, 10))
-      .lt('date', range.end.toIso8601String().substring(0, 10));
+      .lt('date', range.end.toIso8601String().substring(0, 10))
+      .timeout(AppConstants.remoteReadTimeout);
 
   Decimal expenseTotal = Decimal.zero;
   final expByCategory = <String, Decimal>{};

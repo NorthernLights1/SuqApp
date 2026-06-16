@@ -141,18 +141,10 @@ final customersProvider = FutureProvider<List<Customer>>((ref) async {
 
 final customerSalesProvider =
     FutureProvider.family<List<Map<String, dynamic>>, String>((ref, customerId) async {
-  final client = ref.read(supabaseClientProvider);
-  try {
-    final data = await client
-        .from('sales')
-        .select('id, total, status, created_at, is_credit, credit_settled_at')
-        .eq('customer_id', customerId)
-        .order('created_at', ascending: false)
-        .limit(20);
-    return (data as List).cast<Map<String, dynamic>>();
-  } catch (_) {
-    final db = ref.read(appDatabaseProvider);
-    if (db == null) return [];
+  // Local-first: the mirror (seeded + synced, incl. the user's own writes) is
+  // authoritative and works offline. Web (no local DB) reads from the server.
+  final db = ref.read(appDatabaseProvider);
+  if (db != null) {
     final rows = await db.getSalesByCustomer(customerId);
     return rows
         .map((r) => <String, dynamic>{
@@ -165,27 +157,24 @@ final customerSalesProvider =
             })
         .toList();
   }
+  final client = ref.read(supabaseClientProvider);
+  final data = await client
+      .from('sales')
+      .select('id, total, status, created_at, is_credit, credit_settled_at')
+      .eq('customer_id', customerId)
+      .order('created_at', ascending: false)
+      .limit(20);
+  return (data as List).cast<Map<String, dynamic>>();
 });
 
 // Unsettled credit sales for a customer — no date filter; only disappear when
 // fully paid. Embeds credit_payments so each bill knows how much is left.
 final customerCreditSalesProvider =
     FutureProvider.family<List<CreditSale>, String>((ref, customerId) async {
-  final client = ref.read(supabaseClientProvider);
-  try {
-    final data = await client
-        .from('sales')
-        .select('id, total, created_at, credit_payments(amount)')
-        .eq('customer_id', customerId)
-        .eq('is_credit', true)
-        .eq('status', 'completed')
-        .filter('credit_settled_at', 'is', null)
-        .order('created_at', ascending: false);
-    return (data as List).map((e) => CreditSale.fromJson(e)).toList();
-  } catch (_) {
-    // Offline: read the unsettled credits + payments from the local cache.
-    final db = ref.read(appDatabaseProvider);
-    if (db == null) return [];
+  // Local-first: unsettled credits + payments come from the mirror, so a
+  // just-recorded payment is reflected immediately (and offline). Web → server.
+  final db = ref.read(appDatabaseProvider);
+  if (db != null) {
     final rows = (await db.getUnsettledCreditSales())
         .where((r) => r.customerId == customerId)
         .toList();
@@ -199,6 +188,16 @@ final customerCreditSalesProvider =
             ))
         .toList();
   }
+  final client = ref.read(supabaseClientProvider);
+  final data = await client
+      .from('sales')
+      .select('id, total, created_at, credit_payments(amount)')
+      .eq('customer_id', customerId)
+      .eq('is_credit', true)
+      .eq('status', 'completed')
+      .filter('credit_settled_at', 'is', null)
+      .order('created_at', ascending: false);
+  return (data as List).map((e) => CreditSale.fromJson(e)).toList();
 });
 
 // All unsettled credit sales across every customer for the current shop.
@@ -206,25 +205,10 @@ final outstandingCreditProvider =
     FutureProvider<List<CreditSaleWithCustomer>>((ref) async {
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
-  final client = ref.read(supabaseClientProvider);
-  try {
-    final data = await client
-        .from('sales')
-        .select(
-            'id, total, created_at, customer_id, customers(id, name), credit_payments(amount)')
-        .eq('is_credit', true)
-        .eq('status', 'completed')
-        .filter('credit_settled_at', 'is', null)
-        .not('customer_id', 'is', null)
-        .order('created_at', ascending: false);
-    return (data as List)
-        .where((e) => (e as Map<String, dynamic>)['customers'] != null)
-        .map((e) => CreditSaleWithCustomer.fromJson(e as Map<String, dynamic>))
-        .toList();
-  } catch (_) {
-    // Offline: assemble from the local cache (sales + payments + customers).
-    final db = ref.read(appDatabaseProvider);
-    if (db == null) return [];
+  // Local-first: assemble unsettled credits from the mirror (sales + payments +
+  // customers) so balances reflect own writes instantly and work offline.
+  final db = ref.read(appDatabaseProvider);
+  if (db != null) {
     final rows = (await db.getUnsettledCreditSales())
         .where((r) => r.customerId != null)
         .toList();
@@ -243,6 +227,20 @@ final outstandingCreditProvider =
             ))
         .toList();
   }
+  final client = ref.read(supabaseClientProvider);
+  final data = await client
+      .from('sales')
+      .select(
+          'id, total, created_at, customer_id, customers(id, name), credit_payments(amount)')
+      .eq('is_credit', true)
+      .eq('status', 'completed')
+      .filter('credit_settled_at', 'is', null)
+      .not('customer_id', 'is', null)
+      .order('created_at', ascending: false);
+  return (data as List)
+      .where((e) => (e as Map<String, dynamic>)['customers'] != null)
+      .map((e) => CreditSaleWithCustomer.fromJson(e as Map<String, dynamic>))
+      .toList();
 });
 
 // customerId -> total still owed (sum of remaining across their unsettled
@@ -260,22 +258,12 @@ final customerOutstandingMapProvider =
 // Payment history for one credit sale (newest first), for the dispute trail.
 final creditPaymentsProvider =
     FutureProvider.family<List<CreditPayment>, String>((ref, saleId) async {
-  final client = ref.read(supabaseClientProvider);
-  try {
-    final data = await client
-        .from('credit_payments')
-        .select('id, amount, method, notes, created_at')
-        .eq('sale_id', saleId)
-        .order('created_at', ascending: false);
-    return (data as List)
-        .map((e) => CreditPayment.fromJson(e as Map<String, dynamic>))
-        .toList();
-  } catch (_) {
-    // Offline: read the downloaded payment history from the local cache.
-    final db = ref.read(appDatabaseProvider);
-    if (db == null) return [];
+  // Local-first: payment history (incl. a just-recorded payment) comes from the
+  // mirror; newest-first to match the dispute trail. Web (no DB) → server.
+  final db = ref.read(appDatabaseProvider);
+  if (db != null) {
     final rows = await db.getCreditPaymentsForSale(saleId);
-    return rows
+    final payments = rows
         .map((r) => CreditPayment(
               id: r.id,
               amount: r.amount,
@@ -283,8 +271,19 @@ final creditPaymentsProvider =
               notes: r.notes,
               createdAt: r.createdAt,
             ))
-        .toList();
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return payments;
   }
+  final client = ref.read(supabaseClientProvider);
+  final data = await client
+      .from('credit_payments')
+      .select('id, amount, method, notes, created_at')
+      .eq('sale_id', saleId)
+      .order('created_at', ascending: false);
+  return (data as List)
+      .map((e) => CreditPayment.fromJson(e as Map<String, dynamic>))
+      .toList();
 });
 
 class CustomerFormNotifier extends AsyncNotifier<void> {

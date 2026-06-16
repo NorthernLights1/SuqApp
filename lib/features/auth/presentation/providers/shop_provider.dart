@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../domain/models/shop.dart';
 import 'auth_provider.dart';
@@ -18,12 +19,14 @@ final currentShopProvider = FutureProvider<Shop?>((ref) async {
   final db = ref.read(appDatabaseProvider);
 
   try {
-    // Try owned shop first
+    // Try owned shop first. Bounded so an offline cold start fails fast to the
+    // local cache below instead of hanging on a request that never returns.
     final ownedData = await client
         .from('shops')
         .select('id, name, config, created_at')
         .eq('owner_id', userId)
-        .maybeSingle();
+        .maybeSingle()
+        .timeout(AppConstants.remoteReadTimeout);
 
     if (ownedData != null) return Shop.fromJson(ownedData);
 
@@ -33,7 +36,8 @@ final currentShopProvider = FutureProvider<Shop?>((ref) async {
         .select('shops(id, name, config, created_at)')
         .eq('user_id', userId)
         .eq('status', 'active')
-        .maybeSingle();
+        .maybeSingle()
+        .timeout(AppConstants.remoteReadTimeout);
 
     if (memberData != null) {
       final shopJson = memberData['shops'] as Map<String, dynamic>?;
@@ -73,7 +77,8 @@ final currentShopBranchesProvider = FutureProvider<List<Branch>>((ref) async {
         .from('branches')
         .select('id, shop_id, name, address, is_active, created_at')
         .eq('shop_id', shop.id)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .timeout(AppConstants.remoteReadTimeout);
     return (data as List).map((e) => Branch.fromJson(e)).toList();
   } catch (_) {
     if (db == null) return [];

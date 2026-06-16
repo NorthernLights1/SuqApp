@@ -135,10 +135,21 @@ void main() {
       expect(list.first.creditBalance, Decimal.parse('50'));
     });
 
-    test('online unions an offline-created customer with the server list',
+    test('local-first read returns synced and offline-created customers alike',
         () async {
-      final remote = _CapturingRemote()..remoteRows = [_cust('server-1', 'Server Cust')];
-      // A pending local customer the server doesn't have yet.
+      // Local-first: the mirror is the source of truth. A prior sync put the
+      // server customer here (isSynced=true); an offline-created one is pending
+      // (isSynced=false). getCustomers returns both from the mirror; the server
+      // list is merged in via a background refresh, not at read time.
+      final remote = _CapturingRemote()..remoteRows = [];
+      await db.upsertCustomer(LocalCustomersCompanion(
+        id: const Value('server-1'),
+        shopId: const Value('shop-1'),
+        name: const Value('Server Cust'),
+        creditBalance: Value(Decimal.zero),
+        updatedAt: Value(DateTime(2026, 6, 1)),
+        isSynced: const Value(true),
+      ));
       await db.upsertCustomer(LocalCustomersCompanion(
         id: const Value('local-1'),
         shopId: const Value('shop-1'),

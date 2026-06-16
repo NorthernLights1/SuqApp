@@ -2,6 +2,7 @@ import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import 'inventory_provider.dart';
@@ -61,7 +62,8 @@ final stockConflictsProvider =
         .select(
             'id, branch_id, product_id, observed_quantity, detected_at, products(name)')
         .isFilter('resolved_at', null)
-        .order('detected_at', ascending: false);
+        .order('detected_at', ascending: false)
+        .timeout(AppConstants.remoteReadTimeout);
     return (data as List)
         .map((e) => StockConflict.fromJson(e as Map<String, dynamic>))
         .toList();
