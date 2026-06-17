@@ -1,7 +1,9 @@
 import 'dart:async';
+
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:uuid/uuid.dart';
+import '../../../core/constants/app_constants.dart';
 import '../../../data/local/app_database.dart';
 import '../../../domain/models/product.dart';
 import '../data/inventory_remote.dart';
@@ -24,25 +26,76 @@ class InventoryRepository {
 
   // ── Reference reads (remote) ─────────────────────────────────────────────────
 
-  Future<List<MeasurementUnit>> getMeasurementUnits(String shopId) =>
-      _remote.getMeasurementUnits(shopId);
+  Future<List<MeasurementUnit>> getMeasurementUnits(String shopId) async {
+    // Local-first: system units are always seeded, so non-empty local is
+    // authoritative; empty = pre-seed or web → server.
+    if (_db != null) {
+      final rows = await _db.getUnits();
+      if (rows.isNotEmpty) {
+        return rows
+            .map((r) => MeasurementUnit(
+                id: r.id, name: r.name, abbreviation: r.abbreviation))
+            .toList();
+      }
+    }
+    return _remote.getMeasurementUnits(shopId);
+  }
 
-  Future<List<ProductCategory>> getProductCategories(String shopId) =>
-      _remote.getProductCategories(shopId);
+  Future<List<ProductCategory>> getProductCategories(String shopId) async {
+    // Local-first: categories can legitimately be empty (a shop may have none),
+    // so when the local DB is present we trust it outright — never error offline.
+    if (_db != null) {
+      final rows = await _db.getCategories(shopId);
+      return rows.map((r) => ProductCategory(id: r.id, name: r.name)).toList();
+    }
+    return _remote.getProductCategories(shopId);
+  }
+
+  Future<ProductCategory> createProductCategory({
+    required String shopId,
+    required String name,
+  }) async {
+    final category =
+        await _remote.createProductCategory(shopId: shopId, name: name);
+    await _db?.upsertCategories([
+      LocalProductCategoriesCompanion(
+        id: Value(category.id),
+        shopId: Value(shopId),
+        name: Value(category.name),
+        syncedAt: Value(DateTime.now()),
+      ),
+    ]);
+    return category;
+  }
 
   // ── Products ─────────────────────────────────────────────────────────────────
 
   Future<List<Product>> getProducts(String shopId) async {
     if (_db == null) return _remote.getProducts(shopId);
+    // Local-first: the mirror is seeded at login and kept current by sync and by
+    // local writes, so it's authoritative for display and works offline. Refresh
+    // it in the background. Only an empty mirror falls through to the server.
+    final rows = await _db.getProductsByShop(shopId);
+    if (rows.isNotEmpty) {
+      unawaited(_refreshProducts(shopId));
+      return rows.map(_productFromRow).toList();
+    }
     try {
-      final remote = await _remote.getProducts(shopId);
-      // Keep the mirror warm for offline use.
+      final remote =
+          await _remote.getProducts(shopId).timeout(AppConstants.remoteReadTimeout);
       await _db.upsertProducts(remote.map(_toProductCompanion).toList());
       return remote;
     } catch (_) {
-      final rows = await _db.getProductsByShop(shopId);
-      return rows.map(_productFromRow).toList();
+      return rows.map(_productFromRow).toList(); // empty cache, offline
     }
+  }
+
+  Future<void> _refreshProducts(String shopId) async {
+    try {
+      final remote =
+          await _remote.getProducts(shopId).timeout(AppConstants.remoteReadTimeout);
+      await _db!.upsertProducts(remote.map(_toProductCompanion).toList());
+    } catch (_) {/* offline / transient — keep the local mirror */}
   }
 
   Future<Product> createProduct({
@@ -54,17 +107,21 @@ class InventoryRepository {
     Decimal? costPrice,
     String? categoryId,
     String? description,
-  }) =>
-      _remote.createProduct(
-        shopId: shopId,
-        name: name,
-        measurementUnitId: measurementUnitId,
-        lowStockThreshold: lowStockThreshold,
-        sellingPrice: sellingPrice,
-        costPrice: costPrice,
-        categoryId: categoryId,
-        description: description,
-      );
+  }) async {
+    final product = await _remote.createProduct(
+      shopId: shopId,
+      name: name,
+      measurementUnitId: measurementUnitId,
+      lowStockThreshold: lowStockThreshold,
+      sellingPrice: sellingPrice,
+      costPrice: costPrice,
+      categoryId: categoryId,
+      description: description,
+    );
+    // Mirror locally so local-first reads show it immediately (before sync).
+    await _db?.upsertProducts([_toProductCompanion(product)]);
+    return product;
+  }
 
   Future<Product> updateProduct({
     required String productId,
@@ -75,17 +132,20 @@ class InventoryRepository {
     Decimal? costPrice,
     String? categoryId,
     String? description,
-  }) =>
-      _remote.updateProduct(
-        productId: productId,
-        name: name,
-        measurementUnitId: measurementUnitId,
-        lowStockThreshold: lowStockThreshold,
-        sellingPrice: sellingPrice,
-        costPrice: costPrice,
-        categoryId: categoryId,
-        description: description,
-      );
+  }) async {
+    final product = await _remote.updateProduct(
+      productId: productId,
+      name: name,
+      measurementUnitId: measurementUnitId,
+      lowStockThreshold: lowStockThreshold,
+      sellingPrice: sellingPrice,
+      costPrice: costPrice,
+      categoryId: categoryId,
+      description: description,
+    );
+    await _db?.upsertProducts([_toProductCompanion(product)]);
+    return product;
+  }
 
   Future<void> deactivateProduct(String productId) =>
       _remote.deactivateProduct(productId);
@@ -94,15 +154,47 @@ class InventoryRepository {
 
   Future<List<StockEntry>> getStockLevels(String branchId) async {
     if (_db == null) return _remote.getStockLevels(branchId);
+    // Local-first: the local stock mirror already reflects every local write
+    // (opening / add / manual / correction) and newly-created products, so it
+    // shows the true current quantity instantly and offline. Refresh from the
+    // server in the background. Only an empty mirror falls through to the server.
+    final local = await _localStockEntries(branchId);
+    if (local.isNotEmpty) {
+      unawaited(_refreshStock(branchId));
+      return local;
+    }
     try {
-      final remote = await _remote.getStockLevels(branchId);
-      final pendingIds = (await _db.getPendingInventoryAdjustments())
+      final remote = await _remote
+          .getStockLevels(branchId)
+          .timeout(AppConstants.remoteReadTimeout);
+      await _db.upsertStock([
+        for (final s in remote)
+          LocalStockCompanion(
+            productId: Value(s.productId),
+            branchId: Value(branchId),
+            quantity: Value(s.quantity),
+            expiryDate: Value(s.expiryDate),
+            syncedAt: Value(DateTime.now()),
+          ),
+      ]);
+      return remote;
+    } catch (_) {
+      return local; // empty cache, offline
+    }
+  }
+
+  /// Background refresh of the stock mirror from the server, preserving any
+  /// optimistic local quantity for products with an in-flight (unpushed)
+  /// adjustment so we never clobber a write that hasn't synced yet.
+  Future<void> _refreshStock(String branchId) async {
+    try {
+      final remote = await _remote
+          .getStockLevels(branchId)
+          .timeout(AppConstants.remoteReadTimeout);
+      final pendingIds = (await _db!.getPendingInventoryAdjustments())
           .where((a) => a.branchId == branchId)
           .map((a) => a.productId)
           .toSet();
-
-      // Refresh the mirror for products with no in-flight op (don't clobber
-      // an optimistic local quantity that hasn't pushed yet).
       final toCache = remote.where((s) => !pendingIds.contains(s.productId));
       await _db.upsertStock([
         for (final s in toCache)
@@ -110,25 +202,11 @@ class InventoryRepository {
             productId: Value(s.productId),
             branchId: Value(branchId),
             quantity: Value(s.quantity),
+            expiryDate: Value(s.expiryDate),
             syncedAt: Value(DateTime.now()),
           ),
       ]);
-
-      if (pendingIds.isEmpty) return remote;
-      // Overlay the optimistic local quantity for in-flight products.
-      final result = <StockEntry>[];
-      for (final e in remote) {
-        if (pendingIds.contains(e.productId)) {
-          final localQty = await _db.getStockLevel(branchId, e.productId);
-          result.add(localQty == null ? e : e.withQuantity(localQty));
-        } else {
-          result.add(e);
-        }
-      }
-      return result;
-    } catch (_) {
-      return _localStockEntries(branchId);
-    }
+    } catch (_) {/* offline / transient — keep the local mirror */}
   }
 
   Future<List<StockEntry>> _localStockEntries(String branchId) async {
@@ -149,7 +227,7 @@ class InventoryRepository {
         lowStockThreshold: p.lowStockThreshold,
         sellingPrice: p.sellingPrice,
         unitAbbr: p.measurementUnitAbbr,
-        expiryDate: null, // not mirrored locally
+        expiryDate: s.expiryDate,
         updatedAt: s.syncedAt,
       ));
     }
@@ -272,8 +350,15 @@ class InventoryRepository {
       return;
     }
 
-    // Native: optimistic mirror update + queue, then background push.
-    await _db.setStockLevel(branchId, productId, after);
+    // Native: optimistic mirror update + queue. No inline push (single
+    // boundary): the adjustment stays isSynced=false and SyncService is the
+    // sole pusher; the pending-work watcher nudges a sync.
+    await _db.setStockLevel(
+      branchId,
+      productId,
+      after,
+      expiryDate: expiryDate,
+    );
     await _db.insertInventoryAdjustment(LocalInventoryAdjustmentsCompanion(
       id: Value(id),
       branchId: Value(branchId),
@@ -287,23 +372,6 @@ class InventoryRepository {
       createdAt: Value(DateTime.now()),
       isSynced: const Value(false),
     ));
-
-    unawaited(
-      _remote
-          .applyAdjustment(
-            id: id,
-            type: type,
-            branchId: branchId,
-            productId: productId,
-            quantityBefore: before,
-            quantityAfter: after,
-            adjustedBy: adjustedBy,
-            notes: notes,
-            expiryDate: expiryDate,
-          )
-          .then((_) => _db.markInventoryAdjustmentSynced(id))
-          .catchError((_) {}),
-    );
   }
 
   // ── Mappers ──────────────────────────────────────────────────────────────────

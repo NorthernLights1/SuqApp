@@ -1,3 +1,4 @@
+import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,10 +7,12 @@ import '../../../../features/auth/presentation/providers/permissions_provider.da
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/customers/presentation/screens/credits_screen.dart';
+import '../../../../features/inventory/presentation/providers/conflicts_provider.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../../../features/licensing/presentation/widgets/license_banner.dart';
 import '../../../../features/sales/presentation/providers/sales_provider.dart';
 import '../../../../features/sales/presentation/screens/sales_screen.dart';
+import '../../../../shared/utils/currency_formatter.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/router/app_routes.dart';
 import '../../../../shared/theme/app_colors.dart';
@@ -65,6 +68,8 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen> {
         children: [
           // Trial/license countdown — appears in the last warning days.
           const LicenseWarningBanner(),
+          // Oversell conflicts needing the owner's attention.
+          const _ConflictBanner(),
           Expanded(child: _buildBody()),
         ],
       ),
@@ -105,22 +110,12 @@ class _HomeTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final branches = ref.watch(currentShopBranchesProvider);
-
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Branch selector
-          branches.when(
-            data: (list) => list.isEmpty
-                ? const SizedBox.shrink()
-                : _BranchChip(branches: list),
-            loading: () => const LinearProgressIndicator(),
-            error: (e, st) => const SizedBox.shrink(),
-          ),
-          const SizedBox(height: 20),
+          // One shop = one branch: branch selector removed (multi-branch deferred).
           Text("Today's Summary", style: AppTextStyles.headline3),
           const SizedBox(height: 12),
           _TodayTotalsRow(),
@@ -151,36 +146,6 @@ class _HomeTab extends ConsumerWidget {
   }
 }
 
-class _BranchChip extends ConsumerWidget {
-  const _BranchChip({required this.branches});
-  final List branches;
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final active = ref.watch(activeBranchProvider);
-    final display = active ?? (branches.isNotEmpty ? branches.first : null);
-
-    if (display == null) return const SizedBox.shrink();
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.primaryLight,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.location_on, size: 14, color: AppColors.primary),
-          const SizedBox(width: 4),
-          Text(display.name as String, style: AppTextStyles.label.copyWith(color: AppColors.primary)),
-          const Icon(Icons.arrow_drop_down, size: 18, color: AppColors.primary),
-        ],
-      ),
-    );
-  }
-}
-
 class _TodayTotalsRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -190,7 +155,7 @@ class _TodayTotalsRow extends ConsumerWidget {
         children: [
           _SummaryCard(
             label: 'Sales',
-            value: 'ETB ${t['total']?.toStringAsFixed(2) ?? '0.00'}',
+            value: formatCurrency(t['total'] ?? Decimal.zero),
             icon: Icons.trending_up,
             color: AppColors.success,
           ),
@@ -209,7 +174,7 @@ class _TodayTotalsRow extends ConsumerWidget {
       ),
       error: (e, st) => Row(
         children: [
-          _SummaryCard(label: 'Sales', value: 'ETB 0.00', icon: Icons.trending_up, color: AppColors.success),
+          _SummaryCard(label: 'Sales', value: formatCurrency(Decimal.zero), icon: Icons.trending_up, color: AppColors.success),
           const SizedBox(width: 12),
           _SummaryCard(label: 'Transactions', value: '0', icon: Icons.receipt_outlined, color: AppColors.primary),
         ],
@@ -336,7 +301,7 @@ class _SalesTab extends ConsumerWidget {
                     backgroundColor: iconBg,
                     child: Icon(iconData, color: iconColor, size: 20),
                   ),
-                  title: Text('ETB ${s.total.toStringAsFixed(2)}',
+                  title: Text(formatCurrency(s.total),
                       style: AppTextStyles.body.copyWith(
                         fontWeight: FontWeight.w600,
                         decoration: isVoided ? TextDecoration.lineThrough : null,
@@ -425,6 +390,49 @@ class _InventoryQuickTab extends ConsumerWidget {
 
 
 
+// ─── Conflict banner (owner only) ────────────────────────────────────────────
+
+class _ConflictBanner extends ConsumerWidget {
+  const _ConflictBanner();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Only the owner resolves conflicts (settings.manage is owner-exclusive).
+    if (!hasPermissionSync(ref, 'settings.manage')) {
+      return const SizedBox.shrink();
+    }
+    final conflicts = ref.watch(stockConflictsProvider).asData?.value ?? const [];
+    if (conflicts.isEmpty) return const SizedBox.shrink();
+
+    return Material(
+      color: AppColors.warning.withValues(alpha: 0.15),
+      child: InkWell(
+        onTap: () => context.push(AppRoutes.stockConflicts),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              const Icon(Icons.warning_amber_outlined,
+                  size: 18, color: AppColors.warning),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${conflicts.length} stock conflict${conflicts.length > 1 ? 's' : ''} need attention',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(fontWeight: FontWeight.w600),
+                ),
+              ),
+              Text('Review',
+                  style: AppTextStyles.bodySmall.copyWith(
+                      color: AppColors.primary, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 // ─── More Tab ───────────────────────────────────────────────────────────────
 
 class _MoreTab extends ConsumerWidget {
@@ -435,13 +443,17 @@ class _MoreTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        _MoreTile(icon: Icons.people_outline, label: 'Customers', route: AppRoutes.customers),
-        _MoreTile(icon: Icons.money_off_outlined, label: 'Expenses', route: AppRoutes.expenses),
+        if (hasPermissionSync(ref, 'customers.view'))
+          _MoreTile(icon: Icons.people_outline, label: 'Customers', route: AppRoutes.customers),
+        if (hasPermissionSync(ref, 'expenses.view'))
+          _MoreTile(icon: Icons.money_off_outlined, label: 'Expenses', route: AppRoutes.expenses),
         // Reports are owner/manager only (cashiers lack reports.view).
         if (hasPermissionSync(ref, 'reports.view'))
           _MoreTile(icon: Icons.bar_chart, label: 'Reports', route: AppRoutes.reports),
-        _MoreTile(icon: Icons.manage_accounts_outlined, label: 'Staff', route: AppRoutes.staff),
-        _MoreTile(icon: Icons.settings_outlined, label: 'Settings', route: AppRoutes.settings),
+        if (hasPermissionSync(ref, 'staff.view'))
+          _MoreTile(icon: Icons.manage_accounts_outlined, label: 'Staff', route: AppRoutes.staff),
+        if (hasPermissionSync(ref, 'settings.view'))
+          _MoreTile(icon: Icons.settings_outlined, label: 'Settings', route: AppRoutes.settings),
         const Divider(),
         ListTile(
           leading: const Icon(Icons.logout, color: AppColors.error),

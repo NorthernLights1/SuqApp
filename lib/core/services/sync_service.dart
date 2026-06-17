@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/constants/app_constants.dart';
 import '../../data/local/app_database.dart';
 import '../../domain/interfaces/sync_service_interface.dart';
-import '../../features/customers/data/customers_remote.dart';
 import '../../features/inventory/data/inventory_remote.dart';
 
 class SyncService implements ISyncService {
@@ -49,9 +48,9 @@ class SyncService implements ISyncService {
       var pushed = 0;
       if (_db != null) {
         pushed += await _pushPendingCustomers();
-        pushed += await _pushPendingSales();
+        pushed += await _pushPendingInventoryWork();
+        pushed += await _pushPendingCreditPayments();
         pushed += await _pushPendingExpenses();
-        pushed += await _pushPendingAdjustments();
       }
 
       // The sync_logs heartbeat records "this device reached the server" for
@@ -63,8 +62,7 @@ class SyncService implements ISyncService {
           pushed > 0 ||
           _lastLogAt == null ||
           now.difference(_lastLogAt!) >= _logHeartbeatInterval) {
-        await _upsertSyncLog(userId);
-        _lastLogAt = now;
+        if (await _writeSyncLog(userId)) _lastLogAt = now;
       }
       _emit(SyncStatus.success);
     } catch (_) {
@@ -72,161 +70,206 @@ class SyncService implements ISyncService {
     }
   }
 
-  /// Pushes all pending local sales. Returns how many reached the server.
-  Future<int> _pushPendingSales() async {
+  /// Sales and stock operations share one inventory timeline. Replaying them
+  /// by creation time preserves sequences such as restock-then-sale and avoids
+  /// creating a false negative-stock conflict on the server.
+  Future<int> _pushPendingInventoryWork() async {
     final db = _db!;
-    final pending = await db.getPendingSales();
+    final sales = await db.getPendingSales();
+    final adjustments = await db.getPendingInventoryAdjustments();
+    final operations =
+        <
+            ({
+              DateTime createdAt,
+              SaleRow? sale,
+              InventoryAdjustmentRow? adjustment,
+            })
+          >[
+            for (final sale in sales)
+              (createdAt: sale.createdAt, sale: sale, adjustment: null),
+            for (final adjustment in adjustments)
+              (
+                createdAt: adjustment.createdAt,
+                sale: null,
+                adjustment: adjustment,
+              ),
+          ]
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    final inventoryRemote = InventoryRemote(_supabase);
     var pushed = 0;
-    for (final sale in pending) {
-      try {
-        await _pushSale(sale, db);
-        pushed++;
-      } catch (_) {
-        // Leave isSynced=false; next sync will retry
+    for (final operation in operations) {
+      final sale = operation.sale;
+      if (sale != null) {
+        final items = (await db.getSaleItems(
+          sale.id,
+        )).map(_saleItemJson).toList();
+        await _supabase.rpc(
+          'upsert_sale_with_inventory',
+          params: {
+            'p_sale': _saleJson(sale),
+            'p_items': items,
+            'p_allow_oversell': true,
+            'p_discount_reason': null,
+          },
+        );
+        await db.markSaleSynced(sale.id);
+      } else {
+        final adjustment = operation.adjustment!;
+        await inventoryRemote.applyAdjustment(
+          id: adjustment.id,
+          type: adjustment.type,
+          branchId: adjustment.branchId,
+          productId: adjustment.productId,
+          quantityBefore: adjustment.quantityBefore,
+          quantityAfter: adjustment.quantityAfter,
+          adjustedBy: adjustment.adjustedBy,
+          notes: adjustment.notes,
+          expiryDate: adjustment.expiryDate,
+          createdAt: adjustment.createdAt,
+        );
+        await db.markInventoryAdjustmentSynced(adjustment.id);
       }
+      pushed++;
     }
     return pushed;
   }
 
-  Future<void> _pushSale(SaleRow sale, AppDatabase db) async {
-    // If sale already reached Supabase (online push succeeded but markSynced failed),
-    // just mark it synced locally and return.
-    final existing = await _supabase
-        .from('sales')
-        .select('id')
-        .eq('id', sale.id)
-        .maybeSingle();
-    if (existing != null) {
-      await db.markSaleSynced(sale.id);
-      return;
-    }
+  Map<String, dynamic> _saleJson(SaleRow sale) => {
+    'id': sale.id,
+    'branch_id': sale.branchId,
+    'customer_id': sale.customerId,
+    'cashier_id': sale.cashierId,
+    'payment_method_id': sale.paymentMethodId,
+    'subtotal': sale.subtotal.toString(),
+    'discount_amount': sale.discountAmount.toString(),
+    'total': sale.total.toString(),
+    'status': sale.status,
+    'void_reason': sale.voidReason,
+    'voided_by': sale.voidedBy,
+    'voided_at': sale.voidedAt?.toIso8601String(),
+    'is_credit': sale.isCredit,
+    'notes': sale.notes,
+    'created_at': sale.createdAt.toIso8601String(),
+    // Carries an offline settlement up: a bill settled offline re-pushes the
+    // sale with these stamped (null otherwise, which is a no-op).
+    'credit_settled_at': sale.creditSettledAt?.toIso8601String(),
+    'credit_settlement_method': sale.creditSettlementMethod,
+  };
 
-    await _supabase.from('sales').insert({
-      'id': sale.id,
-      'branch_id': sale.branchId,
-      'customer_id': sale.customerId,
-      'cashier_id': sale.cashierId,
-      'payment_method_id': sale.paymentMethodId,
-      'subtotal': sale.subtotal.toString(),
-      'discount_amount': sale.discountAmount.toString(),
-      'total': sale.total.toString(),
-      'status': sale.status,
-      'void_reason': sale.voidReason,
-      'voided_by': sale.voidedBy,
-      'voided_at': sale.voidedAt?.toIso8601String(),
-      'is_credit': sale.isCredit,
-      'notes': sale.notes,
-      'created_at': sale.createdAt.toIso8601String(),
-    });
+  Map<String, dynamic> _saleItemJson(SaleItemRow item) => {
+    'id': item.id,
+    'sale_id': item.saleId,
+    'product_id': item.productId,
+    'product_name_snapshot': item.productNameSnapshot,
+    'measurement_unit_id': item.measurementUnitId,
+    'quantity': item.quantity.toString(),
+    'unit_price': item.unitPrice.toString(),
+    'discount_amount': item.discountAmount.toString(),
+    'total': item.total.toString(),
+    'inventory_status': item.inventoryStatus,
+    'cost_price_snapshot': item.costPriceSnapshot?.toString(),
+  };
 
-    final items = await db.getSaleItems(sale.id);
-    for (final item in items) {
-      await _supabase.from('sale_items').insert({
-        'id': item.id,
-        'sale_id': item.saleId,
-        'product_id': item.productId,
-        'product_name_snapshot': item.productNameSnapshot,
-        'measurement_unit_id': item.measurementUnitId,
-        'quantity': item.quantity.toString(),
-        'unit_price': item.unitPrice.toString(),
-        'discount_amount': item.discountAmount.toString(),
-        'total': item.total.toString(),
-        'inventory_status': item.inventoryStatus,
-        'cost_price_snapshot': item.costPriceSnapshot?.toString(),
-      });
-    }
-
-    await db.markSaleSynced(sale.id);
-  }
-
-  /// Pushes all pending local expenses. Returns how many reached the server.
+  /// Pushes all pending local expenses in one bulk upsert (idempotent by id).
   Future<int> _pushPendingExpenses() async {
     final db = _db!;
     final pending = await db.getPendingExpenses();
-    var pushed = 0;
-    for (final e in pending) {
-      try {
-        // Idempotent: if it already reached the server, just flag it locally.
-        final existing = await _supabase
-            .from('expenses')
-            .select('id')
-            .eq('id', e.id)
-            .maybeSingle();
-        if (existing == null) {
-          await _supabase.from('expenses').insert({
-            'id': e.id,
-            'branch_id': e.branchId,
-            'category_id': e.categoryId,
-            'amount': e.amount.toString(),
-            'description': e.description,
-            'recorded_by': e.recordedBy,
-            'date': e.date.toIso8601String().substring(0, 10),
-            'created_at': e.createdAt.toIso8601String(),
-          });
-        }
+    if (pending.isEmpty) return 0;
+    try {
+      await _supabase
+          .from('expenses')
+          .upsert(
+            pending
+                .map(
+                  (e) => {
+                    'id': e.id,
+                    'branch_id': e.branchId,
+                    'category_id': e.categoryId,
+                    'amount': e.amount.toString(),
+                    'description': e.description,
+                    'recorded_by': e.recordedBy,
+                    'date': e.date.toIso8601String().substring(0, 10),
+                    'created_at': e.createdAt.toIso8601String(),
+                  },
+                )
+                .toList(),
+            onConflict: 'id',
+          );
+      for (final e in pending) {
         await db.markExpenseSynced(e.id);
-        pushed++;
-      } catch (_) {
-        // Leave isSynced=false; next sync will retry
       }
+      return pending.length;
+    } catch (_) {
+      rethrow;
     }
-    return pushed;
   }
 
-  /// Pushes pending customer identity rows (offline-created or edited).
-  /// Pushed before sales so a credit sale's customer FK is satisfied. Only
-  /// identity fields go up — never the locally-mirrored credit balance.
+  /// Pushes pending credit payments (offline settlements) in one bulk upsert.
+  /// Pushed after sales so the payment's sale FK exists. recorded_by is stamped
+  /// from the current user (same device/session as recording).
+  Future<int> _pushPendingCreditPayments() async {
+    final db = _db!;
+    final pending = await db.getPendingCreditPayments();
+    if (pending.isEmpty) return 0;
+    final userId = _supabase.auth.currentUser?.id;
+    // recorded_by references a real user; if we somehow lost the session, leave
+    // the payments queued rather than push a null attribution.
+    if (userId == null) return 0;
+    try {
+      for (final p in pending) {
+        await _supabase.rpc(
+          'record_credit_payment',
+          params: {
+            'p_id': p.id,
+            'p_sale_id': p.saleId,
+            'p_customer_id': p.customerId,
+            'p_amount': p.amount.toString(),
+            'p_method': p.method,
+            'p_notes': p.notes,
+            // Preserve when the payment was actually recorded offline, not the
+            // (possibly days-later) push time.
+            'p_created_at': p.createdAt.toUtc().toIso8601String(),
+          },
+        );
+        await db.markCreditPaymentSynced(p.id);
+      }
+      return pending.length;
+    } catch (_) {
+      rethrow;
+    }
+  }
+
+  /// Pushes pending customer identity rows (offline-created or edited) in one
+  /// bulk upsert. Pushed before sales so a credit sale's customer FK exists.
+  /// Only identity fields go up — never the locally-mirrored credit balance.
   Future<int> _pushPendingCustomers() async {
     final db = _db!;
     final pending = await db.getPendingCustomers();
     if (pending.isEmpty) return 0;
-    final remote = CustomersRemote(_supabase);
-    var pushed = 0;
-    for (final c in pending) {
-      try {
-        await remote.upsertIdentity(
-          id: c.id,
-          shopId: c.shopId,
-          name: c.name,
-          phone: c.phone,
-        );
+    try {
+      await _supabase
+          .from('customers')
+          .upsert(
+            pending
+                .map(
+                  (c) => {
+                    'id': c.id,
+                    'shop_id': c.shopId,
+                    'name': c.name,
+                    'phone': c.phone,
+                  },
+                )
+                .toList(),
+            onConflict: 'id',
+          );
+      for (final c in pending) {
         await db.markCustomerSynced(c.id);
-        pushed++;
-      } catch (_) {
-        // Leave isSynced=false; next sync will retry
       }
+      return pending.length;
+    } catch (_) {
+      rethrow;
     }
-    return pushed;
-  }
-
-  /// Pushes all pending stock adjustments (replayed in creation order via the
-  /// idempotent, delta-aware [InventoryRemote.applyAdjustment]).
-  Future<int> _pushPendingAdjustments() async {
-    final db = _db!;
-    final pending = await db.getPendingInventoryAdjustments();
-    if (pending.isEmpty) return 0;
-    final remote = InventoryRemote(_supabase);
-    var pushed = 0;
-    for (final a in pending) {
-      try {
-        await remote.applyAdjustment(
-          id: a.id,
-          type: a.type,
-          branchId: a.branchId,
-          productId: a.productId,
-          quantityBefore: a.quantityBefore,
-          quantityAfter: a.quantityAfter,
-          adjustedBy: a.adjustedBy,
-          notes: a.notes,
-          expiryDate: a.expiryDate,
-        );
-        await db.markInventoryAdjustmentSynced(a.id);
-        pushed++;
-      } catch (_) {
-        // Leave isSynced=false; next sync will retry
-      }
-    }
-    return pushed;
   }
 
   @override
@@ -255,14 +298,32 @@ class SyncService implements ISyncService {
         AppConstants.defaultSyncWarningHours;
   }
 
-  Future<void> _upsertSyncLog(String userId) async {
-    await _supabase.from('sync_logs').upsert({
+  /// Writes the device heartbeat row for overdue-sync detection. Returns false
+  /// (and writes nothing) when no local branch is available yet — sync_logs
+  /// requires a non-null branch_id, but the heartbeat itself isn't
+  /// branch-specific, so any local branch serves. (device_id is a coarse label;
+  /// a stable per-device id is future cleanup.)
+  Future<bool> _writeSyncLog(String userId) async {
+    final branchId = (await _db?.getAnyBranch())?.id;
+    if (branchId == null) return false;
+    await _supabase.from('sync_logs').insert({
       'user_id': userId,
-      'branch_id': '',
+      'branch_id': branchId,
       'device_id': 'mobile',
       'last_synced_at': DateTime.now().toIso8601String(),
       'status': 'success',
     });
+    // Bounded retention: drop this user's stale heartbeats so the append-only
+    // log can't grow without limit (RLS scopes the delete to own rows).
+    final cutoff = DateTime.now()
+        .subtract(const Duration(days: AppConstants.syncLogRetentionDays))
+        .toIso8601String();
+    await _supabase
+        .from('sync_logs')
+        .delete()
+        .eq('user_id', userId)
+        .lt('last_synced_at', cutoff);
+    return true;
   }
 
   void _emit(SyncStatus s) {

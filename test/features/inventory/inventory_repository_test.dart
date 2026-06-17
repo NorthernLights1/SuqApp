@@ -29,6 +29,7 @@ class _StubInventoryRemote implements InventoryRemote {
     required String adjustedBy,
     String? notes,
     DateTime? expiryDate,
+    DateTime? createdAt,
   }) async =>
       throw Exception('offline'); // keep the queued row pending
 

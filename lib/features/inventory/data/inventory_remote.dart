@@ -84,123 +84,11 @@ class InventoryRemote {
     return (data as List).map((e) => StockEntry.fromJson(e)).toList();
   }
 
-  Future<void> setOpeningStock({
-    required String branchId,
-    required String productId,
-    required Decimal quantity,
-    required String adjustedBy,
-    DateTime? expiryDate,
-  }) async {
-    await _client.from('inventory').upsert({
-      'branch_id': branchId,
-      'product_id': productId,
-      'quantity': quantity.toString(),
-      'expiry_date': expiryDate?.toIso8601String().substring(0, 10),
-      'updated_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'branch_id,product_id');
-
-    await _client.from('inventory_adjustments').insert({
-      'branch_id': branchId,
-      'product_id': productId,
-      'adjusted_by': adjustedBy,
-      'type': 'opening_stock',
-      'quantity_before': '0',
-      'quantity_after': quantity.toString(),
-    });
-  }
-
-  Future<void> manualAdjustment({
-    required String branchId,
-    required String productId,
-    required Decimal newQuantity,
-    required Decimal currentQuantity,
-    required String adjustedBy,
-    required String notes,
-    DateTime? expiryDate,
-  }) async {
-    await _client.from('inventory').upsert({
-      'branch_id': branchId,
-      'product_id': productId,
-      'quantity': newQuantity.toString(),
-      'expiry_date': expiryDate?.toIso8601String().substring(0, 10),
-      'updated_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'branch_id,product_id');
-
-    await _client.from('inventory_adjustments').insert({
-      'branch_id': branchId,
-      'product_id': productId,
-      'adjusted_by': adjustedBy,
-      'type': 'manual',
-      'quantity_before': currentQuantity.toString(),
-      'quantity_after': newQuantity.toString(),
-      'notes': notes,
-    });
-  }
-
-  // Additive restock — type is 'opening_stock' for first entry, 'restock' otherwise.
-  Future<void> addStock({
-    required String branchId,
-    required String productId,
-    required Decimal quantityToAdd,
-    required String adjustedBy,
-    DateTime? expiryDate,
-  }) async {
-    final existing = await _client
-        .from('inventory')
-        .select('quantity')
-        .eq('branch_id', branchId)
-        .eq('product_id', productId)
-        .maybeSingle();
-    final before = existing != null
-        ? Decimal.parse(existing['quantity'].toString())
-        : Decimal.zero;
-    final after = before + quantityToAdd;
-    await _client.from('inventory').upsert({
-      'branch_id': branchId,
-      'product_id': productId,
-      'quantity': after.toString(),
-      if (expiryDate != null)
-        'expiry_date': expiryDate.toIso8601String().substring(0, 10),
-      'updated_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'branch_id,product_id');
-    await _client.from('inventory_adjustments').insert({
-      'branch_id': branchId,
-      'product_id': productId,
-      'adjusted_by': adjustedBy,
-      'type': existing == null ? 'opening_stock' : 'restock',
-      'quantity_before': before.toString(),
-      'quantity_after': after.toString(),
-    });
-  }
-
-  // Owner-only absolute correction — requires prior password verification by caller.
-  Future<void> correctStock({
-    required String branchId,
-    required String productId,
-    required Decimal newQuantity,
-    required Decimal currentQuantity,
-    required String adjustedBy,
-    required String notes,
-    DateTime? expiryDate,
-  }) async {
-    await _client.from('inventory').upsert({
-      'branch_id': branchId,
-      'product_id': productId,
-      'quantity': newQuantity.toString(),
-      if (expiryDate != null)
-        'expiry_date': expiryDate.toIso8601String().substring(0, 10),
-      'updated_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'branch_id,product_id');
-    await _client.from('inventory_adjustments').insert({
-      'branch_id': branchId,
-      'product_id': productId,
-      'adjusted_by': adjustedBy,
-      'type': 'manual',
-      'quantity_before': currentQuantity.toString(),
-      'quantity_after': newQuantity.toString(),
-      'notes': notes,
-    });
-  }
+  // Stock writes (opening / restock / manual / correction) are owned by
+  // InventoryRepository, which queues an adjustment and replays it through the
+  // atomic `apply_inventory_adjustment` RPC (see [applyAdjustment]). Direct
+  // table writes were removed: migration 024 makes inventory writable only via
+  // that RPC.
 
   // ─── Replay a queued adjustment ─────────────────────────────────────────────
 
@@ -220,54 +108,20 @@ class InventoryRemote {
     required String adjustedBy,
     String? notes,
     DateTime? expiryDate,
+    DateTime? createdAt,
   }) async {
-    final already = await _client
-        .from('inventory_adjustments')
-        .select('id')
-        .eq('id', id)
-        .maybeSingle();
-    if (already != null) return;
-
-    final existing = await _client
-        .from('inventory')
-        .select('quantity')
-        .eq('branch_id', branchId)
-        .eq('product_id', productId)
-        .maybeSingle();
-    final serverBefore = existing != null
-        ? Decimal.parse(existing['quantity'].toString())
-        : Decimal.zero;
-
-    final Decimal serverAfter;
-    if (type == 'manual') {
-      serverAfter = quantityAfter; // absolute override
-    } else {
-      serverAfter = serverBefore + (quantityAfter - quantityBefore); // delta
-    }
-
-    // Map to a type the inventory_adjustments CHECK constraint accepts. Legacy
-    // queued rows may carry 'restock', which is not permitted.
-    final dbType = type == 'restock' ? 'supply_received' : type;
-
-    // Ledger first (carries the idempotency id), then the quantity.
-    await _client.from('inventory_adjustments').insert({
-      'id': id,
-      'branch_id': branchId,
-      'product_id': productId,
-      'adjusted_by': adjustedBy,
-      'type': dbType,
-      'quantity_before': serverBefore.toString(),
-      'quantity_after': serverAfter.toString(),
-      'notes': ?notes,
+    await _client.rpc('apply_inventory_adjustment', params: {
+      'p_id': id,
+      'p_type': type,
+      'p_branch_id': branchId,
+      'p_product_id': productId,
+      'p_quantity_before': quantityBefore.toString(),
+      'p_quantity_after': quantityAfter.toString(),
+      'p_notes': notes,
+      'p_expiry_date': expiryDate?.toIso8601String().substring(0, 10),
+      // Preserve the offline recording time on replay (null online → now()).
+      'p_created_at': createdAt?.toUtc().toIso8601String(),
     });
-    await _client.from('inventory').upsert({
-      'branch_id': branchId,
-      'product_id': productId,
-      'quantity': serverAfter.toString(),
-      if (expiryDate != null)
-        'expiry_date': expiryDate.toIso8601String().substring(0, 10),
-      'updated_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'branch_id,product_id');
   }
 
   // ─── Measurement units ─────────────────────────────────────────────────────

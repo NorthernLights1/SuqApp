@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:decimal/decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/services/sync_providers.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../data/local/seed_service.dart';
 import '../../../../domain/models/product.dart';
@@ -14,7 +17,6 @@ import '../../../../features/customers/presentation/providers/customers_provider
         customerOutstandingMapProvider;
 import '../../../../features/reports/presentation/providers/reports_provider.dart'
     show reportSummaryProvider;
-import '../../../../features/inventory/data/inventory_remote.dart';
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
 import '../../data/sales_remote.dart';
 import '../../domain/sales_repository.dart';
@@ -23,7 +25,7 @@ import '../../domain/sales_repository.dart';
 
 final salesRepositoryProvider = Provider<SalesRepository>((ref) {
   final client = ref.read(supabaseClientProvider);
-  final db = ref.read(appDatabaseProvider);
+  final db = ref.watch(appDatabaseProvider);
   return SalesRepository(SalesRemote(client), db);
 });
 
@@ -44,7 +46,7 @@ class SeedNotifier extends AsyncNotifier<void> {
     if (existing.isNotEmpty) return; // already seeded this session
 
     final client = ref.read(supabaseClientProvider);
-    await SeedService(client, InventoryRemote(client), db)
+    await SeedService(client, db)
         .seedAll(shopId: shop.id, branchId: branches.first.id);
   }
 
@@ -57,7 +59,7 @@ class SeedNotifier extends AsyncNotifier<void> {
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final client = ref.read(supabaseClientProvider);
-      await SeedService(client, InventoryRemote(client), db)
+      await SeedService(client, db)
           .seedAll(shopId: shop.id, branchId: branches.first.id);
     });
   }
@@ -251,6 +253,10 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
       ref.invalidate(reportSummaryProvider);
       if (isCredit) ref.invalidate(outstandingCreditProvider);
       if (customerId != null) ref.invalidate(customerSalesProvider(customerId));
+      // Single-boundary sync: nudge the sync service to push this sale (then
+      // pull). Non-blocking so checkout stays instant; offline it's a no-op and
+      // the reconnect/backstop trigger pushes it later.
+      unawaited(ref.read(syncSchedulerProvider).syncNow());
       // Low-stock alerts are no longer fired per-sale (that was spammy). They
       // now run as a scheduled server-side sweep (Supabase cron, 9am & 9pm).
       return sale;
@@ -309,18 +315,16 @@ class VoidSaleNotifier extends AsyncNotifier<void> {
     required String reason,
   }) async {
     final userId = ref.read(currentUserIdProvider);
-    final branches = await ref.read(currentShopBranchesProvider.future);
-    final activeBranch = ref.read(activeBranchProvider) ?? (branches.isNotEmpty ? branches.first : null);
-
-    if (userId == null || activeBranch == null) throw Exception('Missing context');
+    if (userId == null) throw Exception('Missing user context');
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
+      final sale = await ref.read(salesRepositoryProvider).getSale(saleId);
       await ref.read(salesRepositoryProvider).voidSale(
             saleId: saleId,
             voidedBy: userId,
             reason: reason,
-            branchId: activeBranch.id,
+            branchId: sale.branchId,
           );
       ref.invalidate(salesListProvider);
       ref.invalidate(todaySalesTotalsProvider);

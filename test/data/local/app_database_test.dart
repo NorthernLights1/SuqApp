@@ -95,6 +95,19 @@ void main() {
       final qty = await db.getStockLevel('b-1', 'p-1');
       expect(qty, Decimal.parse('15'));
     });
+
+    test('stock expiry date survives the local cache', () async {
+      final expiry = DateTime(2026, 7, 1);
+      await db.setStockLevel(
+        'b-1',
+        'p-1',
+        Decimal.parse('12'),
+        expiryDate: expiry,
+      );
+
+      final row = (await db.getStockByBranch('b-1')).single;
+      expect(row.expiryDate, expiry);
+    });
   });
 
   // ── Sales ─────────────────────────────────────────────────────────────────
@@ -161,6 +174,48 @@ void main() {
       await db.markSaleSynced('sale-1');
       final pending = await db.getPendingSales();
       expect(pending, isEmpty);
+    });
+
+    test('pending tracked sales protect optimistic stock from pulls', () async {
+      await db.insertSaleWithItems(
+        LocalSalesCompanion(
+          id: const Value('sale-tracked'),
+          branchId: const Value('b-1'),
+          cashierId: const Value('user-1'),
+          paymentMethodId: const Value('pm-1'),
+          subtotal: Value(Decimal.parse('20')),
+          discountAmount: Value(Decimal.zero),
+          total: Value(Decimal.parse('20')),
+          status: const Value('completed'),
+          isCredit: const Value(false),
+          createdAt: Value(DateTime.now()),
+          isSynced: const Value(false),
+        ),
+        [
+          LocalSaleItemsCompanion(
+            id: const Value('item-tracked'),
+            saleId: const Value('sale-tracked'),
+            productId: const Value('p-tracked'),
+            productNameSnapshot: const Value('Tracked product'),
+            quantity: Value(Decimal.one),
+            unitPrice: Value(Decimal.parse('20')),
+            discountAmount: Value(Decimal.zero),
+            total: Value(Decimal.parse('20')),
+            inventoryStatus: const Value('tracked'),
+          ),
+        ],
+      );
+
+      expect(
+        await db.getPendingStockProductIds('b-1'),
+        contains('p-tracked'),
+      );
+
+      await db.markSaleSynced('sale-tracked');
+      expect(
+        await db.getPendingStockProductIds('b-1'),
+        isNot(contains('p-tracked')),
+      );
     });
 
     test('markSaleVoided updates status', () async {
@@ -364,7 +419,8 @@ void main() {
       expect(pending.length, 2);
     });
 
-    test('getTodayTotals excludes voided sales', () async {
+    test('getTodayTotals excludes voided sales from revenue but still counts them',
+        () async {
       // Completed sale
       await db.insertSaleWithItems(
         LocalSalesCompanion(
@@ -382,7 +438,8 @@ void main() {
         ),
         [],
       );
-      // Voided sale — should not count
+      // Voided sale — excluded from revenue, but a voided sale still happened
+      // so it stays in the day's transaction tally (see getTodayTotals).
       await db.insertSaleWithItems(
         LocalSalesCompanion(
           id: const Value('s-voided'),
@@ -400,8 +457,121 @@ void main() {
         [],
       );
       final totals = await db.getTodayTotals('b-1', DateTime.now());
-      expect(totals['total'], Decimal.parse('100'));
-      expect(totals['count'], Decimal.parse('1'));
+      expect(totals['total'], Decimal.parse('100')); // revenue excludes voided
+      expect(totals['count'], Decimal.parse('2')); // tally keeps voided
+    });
+  });
+
+  // ── Sync state (delta-pull cursors) ─────────────────────────────────────────
+
+  group('sync state cursors', () {
+    test('getPullCursor is null before any pull', () async {
+      expect(await db.getPullCursor('sales'), isNull);
+    });
+
+    test('setPullCursor round-trips and advances per table', () async {
+      // Drift stores DateTime as a Unix instant and reads it back in local
+      // representation, so compare by moment (isAtSameMomentAs), not ==.
+      final t1 = DateTime.utc(2026, 6, 14, 10, 0, 0);
+      final t2 = DateTime.utc(2026, 6, 14, 12, 30, 0);
+
+      await db.setPullCursor('sales', t1);
+      expect((await db.getPullCursor('sales'))!.isAtSameMomentAs(t1), isTrue);
+      // Other tables stay independent (null until set).
+      expect(await db.getPullCursor('customers'), isNull);
+
+      // Advancing the same table overwrites, not duplicates.
+      await db.setPullCursor('sales', t2);
+      expect((await db.getPullCursor('sales'))!.isAtSameMomentAs(t2), isTrue);
+    });
+  });
+
+  // ── deleteByIds (delta soft-delete removal) ─────────────────────────────────
+
+  group('deleteByIds', () {
+    Future<void> seed(String id) => db.upsertProducts([
+          LocalProductsCompanion(
+            id: Value(id),
+            shopId: const Value('s-1'),
+            name: Value('P-$id'),
+            measurementUnitId: const Value('mu-1'),
+            measurementUnitAbbr: const Value('pc'),
+            lowStockThreshold: Value(Decimal.zero),
+            isActive: const Value(true),
+            syncedAt: Value(DateTime.now()),
+          )
+        ]);
+
+    test('removes only the given ids (and maps the Drift table name)', () async {
+      await seed('a');
+      await seed('b');
+      await db.deleteByIds('local_products', ['a']);
+      final rows = await db.getProductsByShop('s-1');
+      expect(rows.map((r) => r.id).toList(), ['b']);
+    });
+
+    test('empty id list is a no-op', () async {
+      await seed('a');
+      await db.deleteByIds('local_products', []);
+      expect((await db.getProductsByShop('s-1')).length, 1);
+    });
+  });
+
+  // ── Offline credit settlement ───────────────────────────────────────────────
+
+  group('offline credit settlement', () {
+    test('record payments, settle when cleared, queue for push', () async {
+      await db.insertSaleWithItems(
+        LocalSalesCompanion(
+          id: const Value('sale-credit'),
+          branchId: const Value('b-1'),
+          cashierId: const Value('u-1'),
+          paymentMethodId: const Value('pm-1'),
+          subtotal: Value(Decimal.parse('100')),
+          discountAmount: Value(Decimal.zero),
+          total: Value(Decimal.parse('100')),
+          status: const Value('completed'),
+          isCredit: const Value(true),
+          createdAt: Value(DateTime.now()),
+          isSynced: const Value(true),
+        ),
+        [],
+      );
+
+      // Partial payment: not settled, queued, summed.
+      final settled1 = await db.recordCreditPaymentTxn(
+          id: 'pay-1',
+          saleId: 'sale-credit',
+          customerId: 'c-1',
+          saleTotal: Decimal.parse('100'),
+          amount: Decimal.parse('40'),
+          method: 'cash');
+      expect(settled1, isFalse);
+      expect((await db.getPaidBySale(['sale-credit']))['sale-credit'],
+          Decimal.parse('40'));
+      expect((await db.getPendingCreditPayments()).length, 1);
+      expect((await db.getSale('sale-credit'))!.creditSettledAt, isNull);
+
+      // Second payment clears it → settles atomically, stamps the uniform method,
+      // and flags the sale unsynced so the sale push re-sends the settlement.
+      final settled2 = await db.recordCreditPaymentTxn(
+          id: 'pay-2',
+          saleId: 'sale-credit',
+          customerId: 'c-1',
+          saleTotal: Decimal.parse('100'),
+          amount: Decimal.parse('60'),
+          method: 'cash');
+      expect(settled2, isTrue);
+      final sale = await db.getSale('sale-credit');
+      expect(sale!.creditSettledAt, isNotNull);
+      expect(sale.creditSettlementMethod, 'cash');
+      expect(sale.isSynced, isFalse);
+      expect((await db.getPendingCreditPayments()).length, 2);
+
+      // After push, payments drop out of the queue.
+      await db.markCreditPaymentSynced('pay-1');
+      await db.markCreditPaymentSynced('pay-2');
+      expect(await db.getPendingCreditPayments(), isEmpty);
     });
   });
 }

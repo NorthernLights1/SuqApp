@@ -3,10 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../domain/models/sale.dart';
+import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/customers/presentation/widgets/payment_history.dart';
 import '../../../../shared/router/app_routes.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/utils/currency_formatter.dart';
+import '../../../../shared/utils/date_formatter.dart';
 import '../providers/sales_provider.dart';
 
 class SalesScreen extends ConsumerWidget {
@@ -16,6 +19,9 @@ class SalesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sales = ref.watch(salesListProvider);
     final date = ref.watch(selectedSalesDateProvider);
+    final now = DateTime.now();
+    final isToday =
+        date.year == now.year && date.month == now.month && date.day == now.day;
 
     return Scaffold(
       appBar: AppBar(
@@ -35,7 +41,7 @@ class SalesScreen extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             color: AppColors.surfaceLight,
             child: Text(
-              _formatDate(date),
+              isToday ? 'Today — ${formatDate(date)}' : formatDate(date),
               style: AppTextStyles.label,
             ),
           ),
@@ -86,20 +92,6 @@ class SalesScreen extends ConsumerWidget {
     }
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    if (date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day) {
-      return 'Today — ${_monthName(date.month)} ${date.day}, ${date.year}';
-    }
-    return '${_monthName(date.month)} ${date.day}, ${date.year}';
-  }
-
-  String _monthName(int m) => const [
-        '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-        'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-      ][m];
 }
 
 class _SalesSummaryBanner extends ConsumerWidget {
@@ -114,7 +106,7 @@ class _SalesSummaryBanner extends ConsumerWidget {
           children: [
             _BannerStat(
                 label: 'Revenue',
-                value: 'ETB ${t['total']?.toStringAsFixed(2) ?? '0.00'}'),
+                value: formatCurrency(t['total'] ?? Decimal.zero)),
             const SizedBox(width: 24),
             _BannerStat(
                 label: 'Transactions',
@@ -213,7 +205,7 @@ class _SaleTile extends StatelessWidget {
         child: Icon(iconData, color: iconColor, size: 20),
       ),
       title: Text(
-        'ETB ${sale.total.toStringAsFixed(2)}',
+        formatCurrency(sale.total),
         style: AppTextStyles.body.copyWith(
           fontWeight: FontWeight.w600,
           decoration: isVoided ? TextDecoration.lineThrough : null,
@@ -301,7 +293,7 @@ class SaleDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Sale Details'),
         actions: [
-          if (!isVoided)
+          if (!isVoided && hasPermissionSync(ref, 'sales.void'))
             TextButton.icon(
               icon: const Icon(Icons.cancel_outlined, color: AppColors.error),
               label: const Text('Void', style: TextStyle(color: AppColors.error)),
@@ -361,7 +353,7 @@ class SaleDetailScreen extends ConsumerWidget {
               child: Column(
                 children: [
                   _DetailRow(label: 'Ref', value: txRef),
-                  _DetailRow(label: 'Date', value: _formatDateTime(sale.createdAt)),
+                  _DetailRow(label: 'Date', value: formatDateTime(sale.createdAt)),
                   if (sale.cashierName != null)
                     _DetailRow(label: 'Sold by', value: sale.cashierName!),
                   _DetailRow(
@@ -371,16 +363,16 @@ class SaleDetailScreen extends ConsumerWidget {
                   ),
                   _DetailRow(label: 'Items', value: '${sale.items.length}'),
                   _DetailRow(label: 'Subtotal',
-                      value: 'ETB ${sale.subtotal.toStringAsFixed(2)}'),
+                      value: formatCurrency(sale.subtotal)),
                   if (sale.discountAmount > Decimal.zero)
                     _DetailRow(
                         label: 'Discount',
-                        value: '- ETB ${sale.discountAmount.toStringAsFixed(2)}',
+                        value: '- ${formatCurrency(sale.discountAmount.abs())}',
                         valueColor: AppColors.warning),
                   const Divider(),
                   _DetailRow(
                     label: 'Total',
-                    value: 'ETB ${sale.total.toStringAsFixed(2)}',
+                    value: formatCurrency(sale.total),
                     bold: true,
                   ),
                 ],
@@ -457,11 +449,11 @@ class SaleDetailScreen extends ConsumerWidget {
                 child: ListTile(
                   title: Text(item.productNameSnapshot, style: AppTextStyles.body),
                   subtitle: Text(
-                    '${item.quantity} × ETB ${item.unitPrice.toStringAsFixed(2)}',
+                    '${item.quantity} × ${formatCurrency(item.unitPrice)}',
                     style: AppTextStyles.bodySmall,
                   ),
                   trailing: Text(
-                    'ETB ${item.total.toStringAsFixed(2)}',
+                    formatCurrency(item.total),
                     style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -520,15 +512,6 @@ class SaleDetailScreen extends ConsumerWidget {
         ],
       ),
     );
-  }
-
-  String _formatDateTime(DateTime dt) {
-    final months = ['Jan','Feb','Mar','Apr','May','Jun',
-        'Jul','Aug','Sep','Oct','Nov','Dec'];
-    final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-    final m = dt.minute.toString().padLeft(2, '0');
-    final period = dt.hour >= 12 ? 'PM' : 'AM';
-    return '${months[dt.month - 1]} ${dt.day}, ${dt.year} $h:$m $period';
   }
 }
 

@@ -2,19 +2,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/utils/currency_formatter.dart';
+import '../../../../shared/utils/date_formatter.dart';
 import '../providers/customers_provider.dart';
-
-const _months = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
-];
-
-String _fmtDateTime(DateTime dt) {
-  final h = dt.hour % 12 == 0 ? 12 : dt.hour % 12;
-  final m = dt.minute.toString().padLeft(2, '0');
-  final ampm = dt.hour < 12 ? 'AM' : 'PM';
-  return '${_months[dt.month - 1]} ${dt.day}, ${dt.year} · $h:$m $ampm';
-}
 
 /// Timestamped list of payments recorded against one credit sale (the dispute
 /// audit trail). Renders nothing while loading or when there are no payments.
@@ -53,12 +43,12 @@ class PaymentHistory extends ConsumerWidget {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'ETB ${p.amount.toStringAsFixed(2)}',
+                      formatCurrency(p.amount),
                       style: AppTextStyles.bodySmall
                           .copyWith(fontWeight: FontWeight.w600),
                     ),
                     const Spacer(),
-                    Text(_fmtDateTime(p.createdAt), style: AppTextStyles.label),
+                    Text(formatDateTime(p.createdAt), style: AppTextStyles.label),
                   ],
                 ),
               ),

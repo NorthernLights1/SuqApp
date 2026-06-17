@@ -9,9 +9,9 @@ Last updated: 2026-06-12 (session 17)
 **Suq** — mobile ERP for small shop owners. Flutter + Supabase.
 Package: `com.temesgen.suq` | Repo: `NorthernLights1/SuqApp`
 Flutter app root: `c:/Projects/SuqApp/`
-Active branch: `main` (sole working branch). `security` branch published but
-NOT merged — holds trial/serial licensing + remote shop-block.
-Push: `git push origin main`
+Active branch: `offline-first` (in progress). `security` merged to `main` (PR #1)
+then deleted. `main` holds the licensing system + session-17 fixes.
+Push: `git push origin <branch>`
 
 ## Build & Distribution
 - APK built on GitHub Actions (`.github/workflows/build-apk.yml`, manual
@@ -48,7 +48,8 @@ Push: `git push origin main`
 | Session 14 — CodeRabbit review: null-safety fix + explicit branch_id in settings upsert | ✅ Done |
 | Session 15 — Auto-sync triggers, per-credit partial settlement + payment history (mig 017/018), add-stock fields | ✅ Done |
 | Session 16 — GitHub Actions APK build, APK debug-build fixes (env secrets, INTERNET perm), security branch (licensing) | ✅ Done |
-| Session 17 — Test-feedback batch (12 items): server-first sales reads, cashier name, reports RBAC + drill-downs, offline boot, inventory refresh, honest overdue-email, email-all recipients (fn v5) | ✅ Done (on main, pending push) |
+| Session 17 — Test-feedback batch (12 items): server-first sales reads, cashier name, reports RBAC + drill-downs, offline boot, inventory refresh, honest overdue-email, email-all recipients (fn v5) | ✅ Done (merged to main) |
+| Session 18 — Licensing merged to main; overdue-email = all unpaid (fn v6); offline-first Phases 1–3 (download/pull sync, all reads local-first, oversell conflict detection+resolution+email) | 🚧 Built, pending on-device verify + merge (branch `offline-first`) |
 | Session 15 — Code review: 9 findings fixed (atomic upsert, CHECK constraint, false-success snackbar, unsafe cast, INotificationService wiring, Telegram flag, stale controllers, regex, raw error) | ✅ Done |
 | Session 16 — service_role grant fix, UTC date fix, code-based staff invite, profiles shopmate read, scheduled 9am/9pm notifications (low-stock + overdue) | ✅ Done |
 
@@ -224,11 +225,21 @@ Auth methods live in `AuthNotifier`: `sendInviteCode()`, `claimInvite()`.
 
 **Local DB**: `lib/data/local/app_database.dart` — tables: LocalProducts, LocalStock, LocalSales, LocalSaleItems, LocalCustomers.
 
-**Write path (sales)**: `SalesRepository.createSale` → write to Drift (`isSynced=false`) + update local stock → fire-and-forget Supabase push → on success `markSaleSynced`.
+**Write path (sales)**: `SalesRepository.createSale` → write to Drift
+(`isSynced=false`) + update local stock. No inline push (offline-first v2 single
+boundary): `SyncService` is the sole pusher; a debounced pending-work watcher
+nudges a sync, which pushes via the `upsert_sale_with_inventory` RPC.
 
-**Read path (sales)**: Drift first, fallback to Supabase if local is empty.
+**Read path**: local-first, not local-fallback (see DECISIONS.md "Offline-first
+v2"). Reads return from the local Drift mirror immediately; the network is never
+on the user-visible path. Remote is consulted only when the local cache can't
+answer (e.g. a sale older than the sync window, or web with no local DB).
 
-**Seed**: `SeedNotifier` watches shop, seeds products/stock/customers to Drift on first load. NOTE: `seedNotifierProvider` is defined but never watched in the UI — seeding does not trigger automatically yet.
+**Seed / pull**: `SeedNotifier` watches shop (watched in `dashboard_screen.dart`)
+and seeds on login; `SeedService.seedAll` is a full download (shop, branches,
+settings, payment methods, categories, units, profiles, products, stock,
+customers, sales+items, expenses, credit payments) and also runs on every sync
+trigger via `SyncScheduler` (push then pull).
 
 **Sync**: `SyncService._pushPendingSales` pushes unsynced sales to Supabase; handles duplicate-key gracefully.
 
@@ -256,7 +267,9 @@ Auth methods live in `AuthNotifier`: `sendInviteCode()`, `claimInvite()`.
 - Inventory writes (create/edit product, stock adjust) not write-through to Drift
 - Hardcoded strings throughout screens violate l10n rule (`app_en.arb` not used)
 - No error boundaries — raw Supabase exceptions reach snackbars
-- `SyncService` not auto-triggered on connectivity change (must call `.sync()` manually)
+- ~~`SyncService` not auto-triggered on connectivity change~~ STALE — `SyncScheduler`
+  already fires on offline→online edge + 15-min backstop + cold start (verified
+  2026-06-14 reading the code)
 - Permission cache TTL not implemented (role changes need app restart)
 - `Decimal.parse()` without try-catch in models — can throw on malformed DB data
 - Inventory writes (create/edit product, stock adjust) not write-through to Drift

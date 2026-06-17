@@ -15,7 +15,7 @@ final inventoryRemoteProvider = Provider<InventoryRemote>(
 final inventoryRepositoryProvider = Provider<InventoryRepository>(
   (ref) => InventoryRepository(
     ref.read(inventoryRemoteProvider),
-    ref.read(appDatabaseProvider),
+    ref.watch(appDatabaseProvider),
   ),
 );
 

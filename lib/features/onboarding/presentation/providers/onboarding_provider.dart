@@ -43,25 +43,14 @@ class OnboardingNotifier extends Notifier<OnboardingState> {
   }
 
   SupabaseClient get _client => ref.read(supabaseClientProvider);
-  String get _userId => ref.read(currentUserIdProvider)!;
 
   Future<bool> createShop(String name) async {
     state = state.copyWith(loading: true, error: null);
     try {
-      final result = await _client.from('shops').insert({
-        'owner_id': _userId,
-        'name': name.trim(),
-      }).select('id').single();
-
-      final shopId = result['id'] as String;
-
-      // Assign owner role in shop_users
-      await _client.from('shop_users').insert({
-        'shop_id': shopId,
-        'user_id': _userId,
-        'role_id': '00000000-0000-0000-0000-000000000001', // system owner role
-        'status': 'active',
-      });
+      final shopId = await _client.rpc(
+        'create_shop_with_owner',
+        params: {'p_name': name.trim()},
+      ) as String;
 
       state = state.copyWith(
         loading: false,
@@ -89,16 +78,14 @@ class OnboardingNotifier extends Notifier<OnboardingState> {
   Future<bool> createBranch(String name, {String? address}) async {
     state = state.copyWith(loading: true, error: null);
     try {
-      final result = await _client.from('branches').insert({
-        'shop_id': state.shopId,
-        'name': name.trim(),
-        'address': address?.trim(),
-      }).select('id').single();
-
-      final branchId = result['id'] as String;
-
-      // Write default shop settings
-      await _writeDefaultSettings(state.shopId!, branchId);
+      final branchId = await _client.rpc(
+        'create_branch_with_defaults',
+        params: {
+          'p_shop_id': state.shopId,
+          'p_name': name.trim(),
+          'p_address': address?.trim(),
+        },
+      ) as String;
 
       state = state.copyWith(
         loading: false,
@@ -116,24 +103,6 @@ class OnboardingNotifier extends Notifier<OnboardingState> {
     state = state.copyWith(step: step);
   }
 
-  Future<void> _writeDefaultSettings(String shopId, String branchId) async {
-    final defaults = [
-      {'key': 'inventory_mode', 'value': '"strict"'},
-      {'key': 'sync_warning_hours', 'value': '12'},
-      {'key': 'low_stock_notify', 'value': 'true'},
-      {'key': 'currency_code', 'value': '"ETB"'},
-      {'key': 'locale', 'value': '"en"'},
-    ];
-    for (final s in defaults) {
-      await _client.from('shop_settings').upsert({
-        'shop_id': shopId,
-        'branch_id': null,
-        'key': s['key'],
-        'value': s['value'],
-        'updated_by': _userId,
-      });
-    }
-  }
 }
 
 final onboardingProvider =

@@ -187,8 +187,8 @@ class _CreateBranchStepState extends ConsumerState<_CreateBranchStep> {
     return _StepScaffold(
       stepNumber: 2,
       totalSteps: 4,
-      title: 'Add your first branch',
-      subtitle: 'You can add more branches later in Settings.',
+      title: 'Add your shop location',
+      subtitle: 'Where you sell from. You can rename it later in Settings.',
       child: Form(
         key: _formKey,
         child: Column(

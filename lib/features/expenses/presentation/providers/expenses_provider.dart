@@ -15,7 +15,7 @@ export '../../domain/expense.dart' show Expense, ExpenseCategory;
 final expensesRepositoryProvider = Provider<IExpensesRepository>((ref) {
   return ExpensesRepository(
     ExpensesRemote(ref.read(supabaseClientProvider)),
-    ref.read(appDatabaseProvider),
+    ref.watch(appDatabaseProvider),
   );
 });
 

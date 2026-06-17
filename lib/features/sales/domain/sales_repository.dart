@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import '../../../data/local/app_database.dart';
 import '../../../domain/models/product.dart';
@@ -61,8 +62,23 @@ class SalesRepository implements ISalesRepository {
   }
 
   @override
-  Future<List<PaymentMethod>> getPaymentMethods(String shopId) =>
-      _remote.getPaymentMethods(shopId);
+  Future<List<PaymentMethod>> getPaymentMethods(String shopId) async {
+    // Local-first: the seeded cache always holds the system methods (Cash/Bank),
+    // so a non-empty local result is authoritative. Empty = pre-seed or web →
+    // fall through to the server. No shop filter needed: the cache is seeded
+    // with this shop's + system methods only (single-shop-per-device replica;
+    // cleared on shop switch — same model as the delta cursor).
+    if (_db != null) {
+      final rows = await _db.getPaymentMethods();
+      if (rows.isNotEmpty) {
+        return rows
+            .map((r) => PaymentMethod(
+                id: r.id, name: r.name, code: r.code, isActive: r.isActive))
+            .toList();
+      }
+    }
+    return _remote.getPaymentMethods(shopId);
+  }
 
   // ── Customers ──────────────────────────────────────────────────────────────
 
@@ -213,25 +229,9 @@ class SalesRepository implements ISalesRepository {
       }
     }
 
-    // Fire-and-forget push to Supabase; SyncService handles retries on failure
-    unawaited(
-      _remote
-          .createSale(
-            id: saleId,
-            branchId: branchId,
-            shopId: shopId,
-            cashierId: cashierId,
-            paymentMethodId: paymentMethodId,
-            items: items,
-            customerId: customerId,
-            isCredit: isCredit,
-            notes: notes,
-            discountReason: discountReason,
-          )
-          .then((_) => _db.markSaleSynced(saleId))
-          .catchError((_) {}),
-    );
-
+    // No inline push (offline-first v2 absolute boundary): the sale stays
+    // isSynced=false and SyncService is the sole pusher. The caller nudges a
+    // sync after a successful write (see CreateSaleNotifier.submit).
     final itemRows = await _db.getSaleItems(saleId);
     return _saleFromRows(saleRow, itemRows);
   }
@@ -255,20 +255,18 @@ class SalesRepository implements ISalesRepository {
 
   @override
   Future<Sale> getSale(String saleId) async {
-    // Server-first: the server row carries the customer, payment-method, and
-    // cashier names (via joins) that the local mirror doesn't store, and
-    // reflects settlement/void changes made on other devices. Fall back to the
-    // local copy only when offline.
-    try {
-      return await _remote.getSale(saleId);
-    } catch (_) {
-      final row = await _db?.getSale(saleId);
+    // Local-first: the delta pull mirrors the whole shop's sales (every cashier)
+    // with denormalized customer/cashier/payment names, so the local row is
+    // complete. Only reach the server when the sale isn't in the local cache
+    // (e.g. older than the sync window) or on web.
+    if (_db != null) {
+      final row = await _db.getSale(saleId);
       if (row != null) {
-        final items = await _db!.getSaleItems(saleId);
+        final items = await _db.getSaleItems(saleId);
         return _saleFromRows(row, items);
       }
-      rethrow;
     }
+    return _remote.getSale(saleId);
   }
 
   @override
@@ -277,23 +275,18 @@ class SalesRepository implements ISalesRepository {
     required DateTime from,
     required DateTime to,
   }) async {
-    // Server-first so the list shows the WHOLE shop's sales (every cashier),
-    // not just those created on this device, and includes the joined customer
-    // / cashier / payment names. Offline → fall back to the local mirror
-    // (this device's own sales).
-    try {
-      return await _remote.getSalesForBranch(
-          branchId: branchId, from: from, to: to);
-    } catch (_) {
-      if (_db == null) rethrow;
+    // Local-first: the mirror holds the whole shop's sales (all cashiers, with
+    // names) as of the last sync — no network on the critical path. Web → remote.
+    if (_db != null) {
       final rows = await _db.getSalesByBranch(branchId, from, to);
-      final result = <Sale>[];
-      for (final row in rows) {
-        final items = await _db.getSaleItems(row.id);
-        result.add(_saleFromRows(row, items));
-      }
-      return result;
+      // One query for all items (avoids N+1 across the day's sales).
+      final itemsBySale =
+          await _db.getSaleItemsForSales(rows.map((r) => r.id).toList());
+      return rows
+          .map((row) => _saleFromRows(row, itemsBySale[row.id] ?? const []))
+          .toList();
     }
+    return _remote.getSalesForBranch(branchId: branchId, from: from, to: to);
   }
 
   @override
@@ -301,6 +294,15 @@ class SalesRepository implements ISalesRepository {
     if (_db != null) {
       final local = await _db.getTodayTotals(branchId, DateTime.now());
       if (local['count']! > Decimal.zero) return local;
+      // No local sales today: the server may have some from other devices, but
+      // fall back to the (zero) local total when offline instead of throwing.
+      try {
+        return await _remote.getTodayTotals(branchId);
+      } catch (e) {
+        // Log so auth/permission failures are distinguishable from offline.
+        debugPrint('getTodayTotals remote fetch failed, using local: $e');
+        return local;
+      }
     }
     return _remote.getTodayTotals(branchId);
   }
@@ -332,12 +334,17 @@ class SalesRepository implements ISalesRepository {
         id: r.id,
         branchId: r.branchId,
         customerId: r.customerId,
+        // Denormalized names stored on the local row (filled by the delta pull),
+        // so offline detail screens show them without a Supabase join.
+        customerName: r.customerName,
+        cashierName: r.cashierName,
+        paymentMethodName: r.paymentMethodName,
         cashierId: r.cashierId,
         paymentMethodId: r.paymentMethodId,
         subtotal: r.subtotal,
         discountAmount: r.discountAmount,
         total: r.total,
-        status: SaleStatus.values.byName(r.status),
+        status: saleStatusFromName(r.status),
         voidReason: r.voidReason,
         voidedBy: r.voidedBy,
         voidedAt: r.voidedAt,
@@ -345,6 +352,7 @@ class SalesRepository implements ISalesRepository {
         notes: r.notes,
         createdAt: r.createdAt,
         creditSettledAt: r.creditSettledAt,
+        creditSettlementMethod: r.creditSettlementMethod,
         items: items.map(_saleItemFromRow).toList(),
       );
 
@@ -358,6 +366,6 @@ class SalesRepository implements ISalesRepository {
         unitPrice: r.unitPrice,
         discountAmount: r.discountAmount,
         total: r.total,
-        inventoryStatus: InventoryStatus.values.byName(r.inventoryStatus),
+        inventoryStatus: inventoryStatusFromName(r.inventoryStatus),
       );
 }

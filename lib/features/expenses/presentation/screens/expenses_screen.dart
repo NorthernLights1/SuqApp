@@ -1,11 +1,14 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/utils/currency_formatter.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_text_field.dart';
+import '../../../../shared/widgets/decimal_input_formatter.dart';
 import '../providers/expenses_provider.dart';
 
 class ExpensesScreen extends ConsumerWidget {
@@ -36,10 +39,11 @@ class ExpensesScreen extends ConsumerWidget {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(_formatDate(date), style: AppTextStyles.label),
+                Text(DateFormat('MMMM d, y').format(date),
+                    style: AppTextStyles.label),
                 total.when(
                   data: (t) => Text(
-                    'Total: ETB ${t.toStringAsFixed(2)}',
+                    'Total: ${formatCurrency(t)}',
                     style: AppTextStyles.body.copyWith(
                         color: AppColors.error, fontWeight: FontWeight.w600),
                   ),
@@ -113,11 +117,6 @@ class ExpensesScreen extends ConsumerWidget {
     }
   }
 
-  String _formatDate(DateTime date) {
-    const months = ['Jan','Feb','Mar','Apr','May','Jun',
-        'Jul','Aug','Sep','Oct','Nov','Dec'];
-    return '${months[date.month - 1]} ${date.day}, ${date.year}';
-  }
 }
 
 class _ExpenseTile extends StatelessWidget {
@@ -137,7 +136,7 @@ class _ExpenseTile extends StatelessWidget {
           ? Text(expense.description!, style: AppTextStyles.bodySmall)
           : null,
       trailing: Text(
-        'ETB ${expense.amount.toStringAsFixed(2)}',
+        formatCurrency(expense.amount),
         style: AppTextStyles.body
             .copyWith(color: AppColors.error, fontWeight: FontWeight.w600),
       ),
@@ -236,12 +235,10 @@ class _RecordExpenseScreenState extends ConsumerState<RecordExpenseScreen> {
               const SizedBox(height: 16),
               AppTextField(
                 controller: _amountCtrl,
-                label: 'Amount (ETB)',
+                label: 'Amount (${AppConstants.defaultCurrency})',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
-                ],
+                inputFormatters: [decimalInputFormatter],
                 prefixIcon: const Icon(Icons.attach_money),
                 textInputAction: TextInputAction.next,
                 autofocus: true,
@@ -261,7 +258,8 @@ class _RecordExpenseScreenState extends ConsumerState<RecordExpenseScreen> {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.calendar_today_outlined,
                     color: AppColors.primary),
-                title: Text(_formatDate(_date), style: AppTextStyles.body),
+                title: Text(DateFormat('MMMM d, y').format(_date),
+                    style: AppTextStyles.body),
                 subtitle: Text('Tap to change date',
                     style: AppTextStyles.bodySmall),
                 onTap: () async {
@@ -287,9 +285,4 @@ class _RecordExpenseScreenState extends ConsumerState<RecordExpenseScreen> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    const months = ['January','February','March','April','May','June',
-        'July','August','September','October','November','December'];
-    return '${months[date.month - 1]} ${date.day}, ${date.year}';
-  }
 }

@@ -7,6 +7,24 @@ enum SaleStatus { completed, voided, refunded }
 
 enum InventoryStatus { tracked, untracked, flagged }
 
+/// Tolerant enum parsing for values read from the local cache / server: an
+/// unexpected string falls back to a sane default instead of throwing.
+SaleStatus saleStatusFromName(String s) {
+  try {
+    return SaleStatus.values.byName(s);
+  } catch (_) {
+    return SaleStatus.completed;
+  }
+}
+
+InventoryStatus inventoryStatusFromName(String s) {
+  try {
+    return InventoryStatus.values.byName(s);
+  } catch (_) {
+    return InventoryStatus.untracked;
+  }
+}
+
 enum DiscountType { percentage, fixed }
 
 // ─── Sale ───────────────────────────────────────────────────────────────────
@@ -81,7 +99,7 @@ class Sale extends Equatable {
       subtotal: Decimal.parse(json['subtotal'].toString()),
       discountAmount: Decimal.parse(json['discount_amount'].toString()),
       total: Decimal.parse(json['total'].toString()),
-      status: SaleStatus.values.byName(json['status'] as String),
+      status: saleStatusFromName(json['status'] as String),
       voidReason: json['void_reason'] as String?,
       voidedBy: json['voided_by'] as String?,
       voidedAt: json['voided_at'] != null
@@ -144,7 +162,7 @@ class SaleItem extends Equatable {
         discountAmount: Decimal.parse(json['discount_amount'].toString()),
         total: Decimal.parse(json['total'].toString()),
         inventoryStatus:
-            InventoryStatus.values.byName(json['inventory_status'] as String),
+            inventoryStatusFromName(json['inventory_status'] as String),
       );
 
   @override

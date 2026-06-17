@@ -15,6 +15,7 @@ import '../../features/expenses/presentation/screens/expenses_screen.dart';
 import '../../features/reports/presentation/screens/reports_screen.dart';
 import '../../features/settings/presentation/screens/settings_screen.dart';
 import '../../features/staff/presentation/screens/staff_screen.dart';
+import '../../features/inventory/presentation/screens/stock_conflicts_screen.dart';
 import 'app_routes.dart';
 
 /// Notifies GoRouter whenever Supabase auth state changes.
@@ -119,6 +120,7 @@ GoRouter createRouter() {
       GoRoute(path: AppRoutes.reports,   builder: (context, state) => const ReportsScreen()),
       GoRoute(path: AppRoutes.settings,  builder: (context, state) => const SettingsScreen()),
       GoRoute(path: AppRoutes.staff,     builder: (context, state) => const StaffScreen()),
+      GoRoute(path: AppRoutes.stockConflicts, builder: (context, state) => const StockConflictsScreen()),
     ],
   );
 }

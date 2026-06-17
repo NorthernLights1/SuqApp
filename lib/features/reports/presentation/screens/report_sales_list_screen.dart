@@ -6,6 +6,7 @@ import '../../../../features/inventory/presentation/providers/inventory_provider
 import '../../../../features/sales/presentation/screens/sales_screen.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/utils/currency_formatter.dart';
 import '../providers/reports_provider.dart';
 
 /// Drill-down list reached by tapping the Transactions or Credits figure on
@@ -116,7 +117,7 @@ class ReportSalesListScreen extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 8),
                       child: Text(
-                        '${sales.length} ${creditsOnly ? "credit" : "transaction"}${sales.length == 1 ? "" : "s"} • ETB ${total.toStringAsFixed(2)}',
+                        '${sales.length} ${creditsOnly ? "credit" : "transaction"}${sales.length == 1 ? "" : "s"} • ${formatCurrency(total)}',
                         style: AppTextStyles.label,
                       ),
                     ),
@@ -169,7 +170,7 @@ class _SaleRow extends StatelessWidget {
           size: 20,
         ),
       ),
-      title: Text('ETB ${sale.total.toStringAsFixed(2)}',
+      title: Text(formatCurrency(sale.total),
           style: AppTextStyles.body.copyWith(fontWeight: FontWeight.w600)),
       subtitle: Text(subtitleParts.join(' • '), style: AppTextStyles.bodySmall),
       trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),

@@ -1,20 +1,21 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/constants/app_constants.dart';
 import '../../../../domain/models/product.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
+import '../../../../shared/utils/currency_formatter.dart';
+import '../../../../shared/utils/date_formatter.dart';
 import '../../../../shared/widgets/app_button.dart';
 import '../../../../shared/widgets/app_text_field.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
+import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../data/inventory_remote.dart';
 import '../providers/inventory_provider.dart';
-
-// Allows digits and a single decimal separator — nothing else.
-final _numericFormatter = FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'));
+import '../../../../shared/widgets/decimal_input_formatter.dart';
 
 class InventoryScreen extends ConsumerWidget {
   const InventoryScreen({super.key});
@@ -137,7 +138,8 @@ class InventoryScreen extends ConsumerWidget {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: hasPermissionSync(ref, 'inventory.edit')
+          ? FloatingActionButton(
         onPressed: () async {
           await Navigator.of(context).push(
             MaterialPageRoute(
@@ -154,7 +156,8 @@ class InventoryScreen extends ConsumerWidget {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         child: const Icon(Icons.add),
-      ),
+      )
+          : null,
     );
   }
 }
@@ -202,7 +205,7 @@ class _ProductStockTile extends ConsumerWidget {
               if (product.sellingPrice != null) ...[
                 const SizedBox(width: 8),
                 Text(
-                  'ETB ${product.sellingPrice!.toStringAsFixed(2)}',
+                  formatCurrency(product.sellingPrice!),
                   style: AppTextStyles.label,
                 ),
               ],
@@ -226,7 +229,7 @@ class _ProductStockTile extends ConsumerWidget {
                       fontWeight: FontWeight.w700))
             else if (isExpiringSoon)
               Text(
-                'Expires ${_formatDate(stockEntry!.expiryDate!)}',
+                'Expires ${formatDate(stockEntry!.expiryDate!)}',
                 style: const TextStyle(color: AppColors.warning, fontSize: 10),
               ),
           ],
@@ -234,23 +237,18 @@ class _ProductStockTile extends ConsumerWidget {
       ),
       isThreeLine: true,
       trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-      onTap: () => _showStockSheet(context, product, stockEntry),
+      onTap: () => _showStockSheet(context, ref, product, stockEntry),
     );
-  }
-
-  String _formatDate(DateTime d) {
-    const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${m[d.month - 1]} ${d.day}';
   }
 }
 
 // ─── Stock action sheet ───────────────────────────────────────────────────────
 
 void _showStockSheet(
-    BuildContext context, Product product, StockEntry? entry) {
+    BuildContext context, WidgetRef ref, Product product, StockEntry? entry) {
+  final canAdjust = hasPermissionSync(ref, 'inventory.adjust');
+  final canCorrect = hasPermissionSync(ref, 'settings.manage');
+  final canEdit = hasPermissionSync(ref, 'inventory.edit');
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -275,22 +273,23 @@ void _showStockSheet(
               ),
             ),
             const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                icon: const Icon(Icons.add),
-                label: const Text('Add Stock'),
-                onPressed: () {
-                  Navigator.pop(sheetCtx);
-                  showDialog(
-                    context: context,
-                    builder: (_) =>
-                        _AddStockDialog(product: product, currentEntry: entry),
-                  );
-                },
+            if (canAdjust)
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add Stock'),
+                  onPressed: () {
+                    Navigator.pop(sheetCtx);
+                    showDialog(
+                      context: context,
+                      builder: (_) =>
+                          _AddStockDialog(product: product, currentEntry: entry),
+                    );
+                  },
+                ),
               ),
-            ),
-            if (entry != null) ...[
+            if (entry != null && canCorrect) ...[
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -310,20 +309,22 @@ void _showStockSheet(
                 ),
               ),
             ],
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: TextButton(
-                onPressed: () {
-                  Navigator.pop(sheetCtx);
-                  Navigator.of(context).push(MaterialPageRoute(
-                    builder: (_) => ProductFormScreen(product: product),
-                    fullscreenDialog: true,
-                  ));
-                },
-                child: const Text('Edit Product Details'),
+            if (canEdit) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () {
+                    Navigator.pop(sheetCtx);
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ProductFormScreen(product: product),
+                      fullscreenDialog: true,
+                    ));
+                  },
+                  child: const Text('Edit Product Details'),
+                ),
               ),
-            ),
+            ],
           ],
         ),
       ),
@@ -454,7 +455,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               autofocus: true,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_numericFormatter],
+              inputFormatters: [decimalInputFormatter],
               decoration: InputDecoration(
                 labelText: 'Quantity received ($unitAbbr)',
                 isDense: true,
@@ -466,7 +467,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               controller: _sellPriceCtrl,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_numericFormatter],
+              inputFormatters: [decimalInputFormatter],
               decoration: InputDecoration(
                 labelText: 'Sale price (optional)',
                 hintText: _priceHint(p.sellingPrice),
@@ -479,7 +480,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               controller: _costPriceCtrl,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_numericFormatter],
+              inputFormatters: [decimalInputFormatter],
               decoration: InputDecoration(
                 labelText: 'Purchase price (optional)',
                 hintText: _priceHint(p.costPrice),
@@ -492,7 +493,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               controller: _thresholdCtrl,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_numericFormatter],
+              inputFormatters: [decimalInputFormatter],
               decoration: InputDecoration(
                 labelText: 'Low stock threshold (optional)',
                 hintText: _priceHint(p.lowStockThreshold),
@@ -520,7 +521,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
                   suffixIcon: Icon(Icons.calendar_today_outlined, size: 16),
                 ),
                 child: Text(
-                  _expiryDate != null ? _formatDate(_expiryDate!) : 'Not set',
+                  _expiryDate != null ? formatDate(_expiryDate!) : 'Not set',
                   style: AppTextStyles.body.copyWith(
                     color:
                         _expiryDate == null ? AppColors.textDisabled : null,
@@ -549,14 +550,6 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
         ),
       ],
     );
-  }
-
-  String _formatDate(DateTime d) {
-    const m = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${m[d.month - 1]} ${d.day}, ${d.year}';
   }
 }
 
@@ -673,7 +666,7 @@ class _CorrectStockDialogState extends ConsumerState<_CorrectStockDialog> {
               autofocus: true,
               keyboardType:
                   const TextInputType.numberWithOptions(decimal: true),
-              inputFormatters: [_numericFormatter],
+              inputFormatters: [decimalInputFormatter],
               decoration: InputDecoration(
                 labelText: 'Correct quantity ($unitAbbr)',
                 isDense: true,
@@ -938,7 +931,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     if (name == null || name.isEmpty || !mounted) return;
     try {
       final cat = await ref
-          .read(inventoryRemoteProvider)
+          .read(inventoryRepositoryProvider)
           .createProductCategory(shopId: shop.id, name: name);
       ref.invalidate(productCategoriesProvider);
       if (mounted) setState(() => _selectedCategoryId = cat.id);
@@ -952,14 +945,6 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
         );
       }
     }
-  }
-
-  String _formatDate(DateTime d) {
-    const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-    ];
-    return '${months[d.month - 1]} ${d.day}, ${d.year}';
   }
 
   @override
@@ -1110,9 +1095,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 label: 'Selling Price — optional',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [_numericFormatter],
+                inputFormatters: [decimalInputFormatter],
                 textInputAction: TextInputAction.next,
-                prefixText: 'ETB ',
+                prefixText: '${AppConstants.defaultCurrency} ',
               ),
               const SizedBox(height: 16),
               AppTextField(
@@ -1120,9 +1105,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 label: 'Cost / Purchase Price — optional',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [_numericFormatter],
+                inputFormatters: [decimalInputFormatter],
                 textInputAction: TextInputAction.next,
-                prefixText: 'ETB ',
+                prefixText: '${AppConstants.defaultCurrency} ',
               ),
               const SizedBox(height: 16),
               AppTextField(
@@ -1130,7 +1115,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                 label: 'Low Stock Alert Threshold',
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                inputFormatters: [_numericFormatter],
+                inputFormatters: [decimalInputFormatter],
                 textInputAction: TextInputAction.done,
                 prefixIcon: const Icon(Icons.warning_amber_outlined),
               ),
@@ -1156,7 +1141,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   label: 'Quantity',
                   keyboardType:
                       const TextInputType.numberWithOptions(decimal: true),
-                  inputFormatters: [_numericFormatter],
+                  inputFormatters: [decimalInputFormatter],
                   textInputAction: TextInputAction.done,
                   prefixIcon: const Icon(Icons.inventory_outlined),
                 ),
@@ -1205,7 +1190,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                       ),
                       child: Text(
                         _expiryDate != null
-                            ? _formatDate(_expiryDate!)
+                            ? formatDate(_expiryDate!)
                             : 'Not set',
                         style: AppTextStyles.body.copyWith(
                           color: _expiryDate == null

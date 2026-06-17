@@ -1,4 +1,6 @@
+import 'package:decimal/decimal.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../domain/customer.dart';
 
 /// Supabase access for customer identity (name/phone). Credit-balance mutation
@@ -30,5 +32,30 @@ class CustomersRemote {
       'name': name,
       'phone': phone,
     }, onConflict: 'id');
+  }
+
+  /// Records an installment and settles the credit sale in one server-side
+  /// transaction. Returns true when this payment clears the bill.
+  /// saleTotal / recordedBy are intentionally absent: the RPC recomputes the
+  /// paid total server-side and stamps recorded_by = auth.uid().
+  Future<bool> recordCreditPayment({
+    required String saleId,
+    required String customerId,
+    required Decimal amount,
+    required String method,
+    String? notes,
+  }) async {
+    final result = await _client.rpc(
+      'record_credit_payment',
+      params: {
+        'p_id': const Uuid().v4(),
+        'p_sale_id': saleId,
+        'p_customer_id': customerId,
+        'p_amount': amount.toString(),
+        'p_method': method,
+        'p_notes': notes,
+      },
+    );
+    return result == true;
   }
 }

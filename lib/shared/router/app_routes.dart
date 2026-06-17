@@ -12,4 +12,5 @@ abstract class AppRoutes {
   static const reports = '/reports';
   static const settings = '/settings';
   static const staff = '/staff';
+  static const stockConflicts = '/stock-conflicts';
 }

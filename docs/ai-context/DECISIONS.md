@@ -2,6 +2,135 @@
 
 ---
 
+## Decision: Offline-first — local DB is the read source; Supabase is sync only
+Date: 2026-06-12 | Status: Active (branch `offline-first`, in progress)
+
+The app must be fully usable with no internet; Supabase exists only for
+multi-device sync. Every read screen reads the local Drift DB, and sync both
+pushes local writes AND pulls server state down (was push-only).
+- Pull cadence stays the existing 15-min backstop + reconnect/resume/cold-start
+  triggers. NO Supabase Realtime (Temesgen: keep Supabase idle). Offline reads
+  are "as of last sync" — a manager won't see another cashier's unsynced sales
+  until reconnect (accepted).
+- Conflict policy (two offline phones oversell same stock): both sales kept,
+  stock may go negative; detect on sync → email the owner → in-app resolution
+  screen explaining what happened (best-practice, edge case). [Phase 3]
+
+---
+
+## Decision: Offline-first v2 — absolute boundary + device-as-replica sync engine
+Date: 2026-06-13 | Status: Active (supersedes the partial migration; branch `offline-first`)
+
+**Why now:** the partial migration left bugs — payment-method and category dropdowns
+fail offline, credit settlement can't run offline, credit detail shows no
+customer/cashier offline, and *everything* is slower offline. Root cause: list-reads
+were moved local, but form lookups, several writes, and join-derived fields still hit
+Supabase, and the read pattern is "try Supabase → timeout → fall back to local"
+(fallback, not local-first), so the network sits on the critical path.
+
+**Mental model — the device is a replica of ONE shop, not a copy of the database.**
+Sync means "give me my shop's rows." Anything that isn't a shop's row data is, by
+definition, out of scope. This makes the customer/admin split fall out for free.
+
+**Core principles:**
+1. **Absolute boundary.** Feature/transaction code NEVER touches Supabase — it only
+   reads/writes local Drift. A single sync service is the *only* thing that talks to
+   Supabase. (Removes the inline fire-and-forget push from `SalesRepository`.)
+2. **Local-first, not local-fallback.** Reads return from local immediately; the
+   network is never on a user-visible path. Online and offline become equal speed.
+3. **One sync registry.** Syncable shop modules are declared as a small list of
+   descriptors (local+remote table, FK order, conflict policy, shop-scoped pull
+   query). Adding a module = add one descriptor. ~12 stable entries.
+
+**Customer vs admin split — no per-table tagging, two layers instead:**
+- **RLS is the boundary.** The anon key ships inside the APK and is public; RLS is the
+  *only* wall between a user and other shops' data. Shop users physically cannot
+  `SELECT` operator/admin tables (licenses, key generation, block list) — so admin
+  data can never enter the replica even if the registry were wrong.
+- **License is a question, not synced data.** The device never pulls the licenses
+  table; it calls a narrow `get_my_license_status(shop_id)` RPC returning a single
+  derived status (active/blocked/expires_at). Entitlement stays server-authoritative.
+
+**Sync engine design:**
+- **Push** via an outbox: local writes mark rows dirty (`is_synced=false`); the service
+  drains them in **bulk upserts** (never row-by-row), in FK-dependency order,
+  **idempotent by UUID** so a re-push after a crash can't duplicate.
+- **Pull** is **delta, not full re-download**: a `last_synced_at` cursor pulls only
+  rows where `updated_at > cursor`, upsert by id. Requires `updated_at` + `deleted_at`
+  (soft delete) on every shop table.
+- **Conflict policy** per table: last-write-wins for transactional/config rows;
+  inventory quantity keeps the Phase 3 negative-stock detection (accumulator, not a
+  value). All conflict logic lives inside the sync service.
+- **Triggers:** app start, **connectivity restored** (currently missing), 15-min timer,
+  debounced nudge after each local write. All non-blocking, off the UI thread.
+
+**Three non-negotiables (painful to retrofit — get right at the migration):**
+1. **`updated_at` is set server-side (`now()` trigger), never trusted from the device.**
+   Delta sync + LWW both depend on it; a wrong device clock would corrupt ordering.
+2. **RLS airtight and tested** (try to read another shop's rows with a normal token),
+   because the anon key is public and the replica makes the client read broadly.
+3. **Idempotent upsert-by-UUID push**; UUIDs generated client-side so rows are valid
+   before sync.
+
+**Sequenced in, not blocking:** batch push/pull, local-DB indexes on
+`is_synced/updated_at/shop_id/FKs`, paginated first pull + on-device retention
+(don't keep all history forever), local Drift schema migration for existing pilot
+devices, offline JWT refresh on reconnect, operator sync-health debug view, and
+SQLCipher for the now-larger plaintext PII replica (still deferred past pilot).
+
+**Explicitly NOT doing:** Supabase Realtime (polling is cheaper for single-device
+shops; revisit for multi-device-same-shop).
+
+---
+
+## Decision: Offline-first v2 Phase B — delta pull, batched push, sync registry
+Date: 2026-06-14 | Status: Planned (branch `offline-first`)
+
+Builds the single-boundary sync engine on the Phase A metadata (`updated_at` /
+`deleted_at`, applied live in 023). Grounded in the current code:
+`SeedService.seedAll` (full re-download every trigger), `SyncService` (row-by-row
+push of customers/sales/expenses/adjustments), `SyncScheduler` (already triggers
+on reconnect/timer/cold-start), `SalesRepository.createSale` (has an inline
+fire-and-forget push to remove).
+
+- **Per-table cursor**, not global. New local Drift table `LocalSyncState
+  (tableKey PK, lastPulledAt)` (`tableKey`, not `tableName` — Drift reserves
+  `tableName`). Each table advances independently so one table's failed pull
+  doesn't stall the rest. (Decided — global cursor is too coarse.) The cursor is
+  **single-shop by design**: the device replicates exactly one shop per session,
+  so no `shopId` is keyed in. If multi-shop-per-device ever lands, the key becomes
+  `(shopId, tableKey)` and the local DB is cleared on shop switch.
+- **Delta pull** replaces full `seedAll` on every trigger: per table, fetch
+  `where updated_at > cursor order by updated_at`, upsert live rows, DELETE rows
+  whose `deleted_at` is set, then advance the cursor to the max `updated_at` seen.
+  First pull (null cursor) = full, paginated download; keep the existing 366-day /
+  2000-row windowing for sales/expenses history depth.
+- **Sync registry**: one descriptor per replica module (remote table + columns,
+  local upsert, pending-skip rule, conflict policy). The pull loop is registry-
+  driven instead of 13 hand-written `_seedX` methods. Adding a module = one entry.
+- **Batched, idempotent push**: convert `SyncService` from select-before-insert,
+  row-by-row to a single bulk `upsert(onConflict:'id')` per table, in FK order
+  (customers → sales → sale_items → …). Removes the extra round trip and is
+  idempotent by UUID. **Remove the inline push from `SalesRepository.createSale`**
+  — the local write only marks `isSynced=false`; `SyncService` is the sole pusher.
+- **Conflict policy**: LWW (≈ last-push-wins) for config/customer/product edits;
+  the pull already skips rows with a pending local version (push owns them). Stock
+  oversell keeps the Phase 3 negative-stock detection. All conflict logic stays in
+  the sync layer.
+- **License = a question, not synced data** (B4 verified already-satisfied):
+  the device reads only its OWN `shop_controls` row (3 cols) via an RLS-scoped
+  direct select that fails open offline; `license_keys` is deny-all (no client
+  policy); activation is the owner-only `activate_license` RPC. The tables are
+  never in the sync registry and entitlement is never cached locally. A dedicated
+  `get_my_license_status` RPC is optional polish, NOT required — RLS already gives
+  the own-shop isolation, so building one would be churn + a prod migration for no
+  security gain. Guardrail comment added in `seed_service.dart`.
+- **Migrate-once**: the B1 local schema bump (v6→v7) that adds `LocalSyncState`
+  also adds the denormalized-name columns Phase C needs (customer/cashier/payment
+  on `LocalSales`), so pilot devices migrate one time across B+C.
+- Triggering already satisfied by `SyncScheduler`; B just repoints `onPull` at the
+  new delta pull. Optional debounced post-write nudge if needed.
+
 ## Decision: Staff invites use an email CODE, not a magic link
 Date: 2026-06-09 | Status: Active
 

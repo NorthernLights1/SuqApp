@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:decimal/decimal.dart';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/services/sync_providers.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
@@ -126,7 +129,7 @@ class CreditSale extends Equatable {
 final customersRepositoryProvider = Provider<CustomersRepository>((ref) {
   return CustomersRepository(
     CustomersRemote(ref.read(supabaseClientProvider)),
-    ref.read(appDatabaseProvider),
+    ref.watch(appDatabaseProvider),
   );
 });
 
@@ -138,6 +141,22 @@ final customersProvider = FutureProvider<List<Customer>>((ref) async {
 
 final customerSalesProvider =
     FutureProvider.family<List<Map<String, dynamic>>, String>((ref, customerId) async {
+  // Local-first: the mirror (seeded + synced, incl. the user's own writes) is
+  // authoritative and works offline. Web (no local DB) reads from the server.
+  final db = ref.read(appDatabaseProvider);
+  if (db != null) {
+    final rows = await db.getSalesByCustomer(customerId);
+    return rows
+        .map((r) => <String, dynamic>{
+              'id': r.id,
+              'total': r.total.toString(),
+              'status': r.status,
+              'created_at': r.createdAt.toIso8601String(),
+              'is_credit': r.isCredit,
+              'credit_settled_at': r.creditSettledAt?.toIso8601String(),
+            })
+        .toList();
+  }
   final client = ref.read(supabaseClientProvider);
   final data = await client
       .from('sales')
@@ -152,6 +171,23 @@ final customerSalesProvider =
 // fully paid. Embeds credit_payments so each bill knows how much is left.
 final customerCreditSalesProvider =
     FutureProvider.family<List<CreditSale>, String>((ref, customerId) async {
+  // Local-first: unsettled credits + payments come from the mirror, so a
+  // just-recorded payment is reflected immediately (and offline). Web → server.
+  final db = ref.read(appDatabaseProvider);
+  if (db != null) {
+    final rows = (await db.getUnsettledCreditSales())
+        .where((r) => r.customerId == customerId)
+        .toList();
+    final paid = await db.getPaidBySale(rows.map((r) => r.id).toList());
+    return rows
+        .map((r) => CreditSale(
+              id: r.id,
+              total: r.total,
+              paid: paid[r.id] ?? Decimal.zero,
+              createdAt: r.createdAt,
+            ))
+        .toList();
+  }
   final client = ref.read(supabaseClientProvider);
   final data = await client
       .from('sales')
@@ -169,6 +205,28 @@ final outstandingCreditProvider =
     FutureProvider<List<CreditSaleWithCustomer>>((ref) async {
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
+  // Local-first: assemble unsettled credits from the mirror (sales + payments +
+  // customers) so balances reflect own writes instantly and work offline.
+  final db = ref.read(appDatabaseProvider);
+  if (db != null) {
+    final rows = (await db.getUnsettledCreditSales())
+        .where((r) => r.customerId != null)
+        .toList();
+    final paid = await db.getPaidBySale(rows.map((r) => r.id).toList());
+    final names = {
+      for (final c in await db.getCustomersByShop(shop.id)) c.id: c.name,
+    };
+    return rows
+        .map((r) => CreditSaleWithCustomer(
+              id: r.id,
+              total: r.total,
+              paid: paid[r.id] ?? Decimal.zero,
+              createdAt: r.createdAt,
+              customerId: r.customerId!,
+              customerName: names[r.customerId] ?? 'Unknown',
+            ))
+        .toList();
+  }
   final client = ref.read(supabaseClientProvider);
   final data = await client
       .from('sales')
@@ -200,6 +258,23 @@ final customerOutstandingMapProvider =
 // Payment history for one credit sale (newest first), for the dispute trail.
 final creditPaymentsProvider =
     FutureProvider.family<List<CreditPayment>, String>((ref, saleId) async {
+  // Local-first: payment history (incl. a just-recorded payment) comes from the
+  // mirror; newest-first to match the dispute trail. Web (no DB) → server.
+  final db = ref.read(appDatabaseProvider);
+  if (db != null) {
+    final rows = await db.getCreditPaymentsForSale(saleId);
+    final payments = rows
+        .map((r) => CreditPayment(
+              id: r.id,
+              amount: r.amount,
+              method: r.method,
+              notes: r.notes,
+              createdAt: r.createdAt,
+            ))
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return payments;
+  }
   final client = ref.read(supabaseClientProvider);
   final data = await client
       .from('credit_payments')
@@ -249,46 +324,22 @@ class CustomerFormNotifier extends AsyncNotifier<void> {
     String? notes,
   }) async {
     if (amount <= Decimal.zero) return false;
-    final client = ref.read(supabaseClientProvider);
-    final userId = ref.read(currentUserIdProvider);
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
-      // 1) Record the payment (the audit trail).
-      await client.from('credit_payments').insert({
-        'sale_id': saleId,
-        'customer_id': customerId,
-        'amount': amount.toString(),
-        'method': method,
-        if (notes != null && notes.isNotEmpty) 'notes': notes,
-        'recorded_by': userId,
-      });
-      // 2) Recompute total paid from the server to decide if the bill is
-      //    cleared (avoids a stale client-side balance).
-      final rows = (await client
-          .from('credit_payments')
-          .select('amount, method')
-          .eq('sale_id', saleId)) as List;
-      final paid = rows.fold<Decimal>(
-        Decimal.zero,
-        (s, r) => s + Decimal.parse((r['amount'] ?? '0').toString()),
-      );
-      // 3) Fully paid? stamp the sale settled and mirror it locally so the
-      //    offline sales list reflects it. Per-payment method/notes live in
-      //    credit_payments (the audit trail); only stamp a single sale-level
-      //    method when every payment used the same one — otherwise leave it
-      //    unset rather than misrepresent a mixed settlement.
-      if (paid >= saleTotal) {
-        final methods = rows.map((r) => r['method'] as String).toSet();
-        final saleUpdate = <String, dynamic>{
-          'credit_settled_at': DateTime.now().toIso8601String(),
-        };
-        // Only claim a single method when every payment used the same one.
-        if (methods.length == 1) {
-          saleUpdate['credit_settlement_method'] = methods.first;
-        }
-        await client.from('sales').update(saleUpdate).eq('id', saleId);
-        await ref.read(appDatabaseProvider)?.markSaleCreditSettled(saleId);
-      }
+      // Data access lives in the repository (native: local-first + atomic settle
+      // + queued push; web: online). The provider only orchestrates + refreshes.
+      // recorded_by is stamped server-side (auth.uid()) by the RPC.
+      await ref.read(customersRepositoryProvider).recordCreditPayment(
+            saleId: saleId,
+            customerId: customerId,
+            saleTotal: saleTotal,
+            amount: amount,
+            method: method,
+            notes: notes,
+          );
+      // Nudge a sync so an offline-recorded payment pushes promptly (no-op on
+      // web / when offline).
+      unawaited(ref.read(syncSchedulerProvider).syncNow());
       ref.invalidate(customersProvider);
       ref.invalidate(customerCreditSalesProvider(customerId));
       ref.invalidate(customerSalesProvider(customerId));
