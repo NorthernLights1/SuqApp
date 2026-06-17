@@ -58,9 +58,9 @@ Current schema version: **v11** (added `isSynced` to LocalProducts + LocalProduc
 ```powershell
 flutter test
 ```
-Result: 133 tests passing (last run 2026-06-17, session 19).
+Result: 134 tests passing (last run 2026-06-17, session 19).
 Test files:
-- `test/features/auth/friendly_auth_error_test.dart` — sign-in error classification (Bug 8/9)
+- `test/features/auth/friendly_auth_error_test.dart` — sign-in error classification (Bug 8/9) + unknown exception fallback
 - `test/data/local/app_database_test.dart` — Drift DB ops + edge cases
 - `test/data/local/seed_service_test.dart` — delta-pull partition logic
 - `test/features/customers/customers_repository_test.dart` — offline customer create/edit

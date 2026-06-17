@@ -50,7 +50,7 @@ Push: `git push origin <branch>`
 | Session 16 — GitHub Actions APK build, APK debug-build fixes (env secrets, INTERNET perm), security branch (licensing) | ✅ Done |
 | Session 17 — Test-feedback batch (12 items): server-first sales reads, cashier name, reports RBAC + drill-downs, offline boot, inventory refresh, honest overdue-email, email-all recipients (fn v5) | ✅ Done (merged to main) |
 | Session 18 — Licensing merged to main; overdue-email = all unpaid (fn v6); offline-first Phases 1–3 (download/pull sync, all reads local-first, oversell conflict detection+resolution+email) | 🚧 Built, pending on-device verify + merge (branch `offline-first_v2`) |
-| Session 19 — Device testing: 9 bugs found. Fixed: Bug 7 (UTC sync), Bugs 1,4,5,6,10,12 (void message, offline product/category creation, reports local-first), Bugs 8+9 (friendly offline/wrong-password login error + cached session usable offline). Schema v11. Bug 11 confirmed not a bug. | 🚧 On branch `offline-first_v2`, pending CodeRabbit + push |
+| Session 19 — Device testing: 9 bugs found. Fixed: Bug 7 (UTC sync), Bugs 1,4,5,6,10,12 (void message, offline product/category creation, reports local-first), Bugs 8+9 (friendly offline/wrong-password login error + cached session usable offline). Schema v11. Bug 11 confirmed not a bug. Code cleanups: removed 4× redundant try/catch, fixed misleading comment, simplified offline check, added test coverage. | 🚧 On branch `offline-first_v2`, pending CodeRabbit + push |
 | Session 15 — Code review: 9 findings fixed (atomic upsert, CHECK constraint, false-success snackbar, unsafe cast, INotificationService wiring, Telegram flag, stale controllers, regex, raw error) | ✅ Done |
 | Session 16 — service_role grant fix, UTC date fix, code-based staff invite, profiles shopmate read, scheduled 9am/9pm notifications (low-stock + overdue) | ✅ Done |
 
@@ -59,7 +59,7 @@ Push: `git push origin <branch>`
 ## What Works Right Now
 
 - `flutter analyze` — 0 issues ✅ (last run 2026-06-17, session 19)
-- `flutter test` — 133 tests passing ✅ (last run 2026-06-17, session 19)
+- `flutter test` — 134 tests passing ✅ (last run 2026-06-17, session 19)
 - Auth (signup/login/logout) ✅
 - Onboarding: shop + branch creation + default settings ✅
 - Dashboard: home summary, sales tab (color-coded), inventory tab, **credits tab**, more tab ✅

@@ -71,6 +71,14 @@ case to "Incorrect email or password." — the login screen was the one remainin
 sign-in path still dumping the raw `AuthException` (inventory + accept-invite already
 used `on AuthException catch`).
 
+**Code cleanups (commit `a97380d`):**
+Five trivial improvements from CodeRabbit feedback review: (1) removed 4× redundant
+`try/catch` blocks in `sync_service.dart` that only rethrow (−20 lines); (2) fixed
+misleading "always seeded" comment in `inventory_repository.dart` (seeding can fail);
+(3) eliminated double-trim of description field (stored trimmed result in variable);
+(4) simplified offline-check logic in `app_router.dart` (`!any(...!= none)` → `every(...== none)`);
+(5) added test case for unknown AuthException to complete classifier coverage.
+
 ---
 
 ## Session 17 (2026-06-12) — test-feedback batch (12 items, all on `main`)
