@@ -147,13 +147,13 @@ class SyncService implements ISyncService {
     'status': sale.status,
     'void_reason': sale.voidReason,
     'voided_by': sale.voidedBy,
-    'voided_at': sale.voidedAt?.toIso8601String(),
+    'voided_at': sale.voidedAt?.toUtc().toIso8601String(),
     'is_credit': sale.isCredit,
     'notes': sale.notes,
-    'created_at': sale.createdAt.toIso8601String(),
+    'created_at': sale.createdAt.toUtc().toIso8601String(),
     // Carries an offline settlement up: a bill settled offline re-pushes the
     // sale with these stamped (null otherwise, which is a no-op).
-    'credit_settled_at': sale.creditSettledAt?.toIso8601String(),
+    'credit_settled_at': sale.creditSettledAt?.toUtc().toIso8601String(),
     'credit_settlement_method': sale.creditSettlementMethod,
   };
 
@@ -190,7 +190,7 @@ class SyncService implements ISyncService {
                     'description': e.description,
                     'recorded_by': e.recordedBy,
                     'date': e.date.toIso8601String().substring(0, 10),
-                    'created_at': e.createdAt.toIso8601String(),
+                    'created_at': e.createdAt.toUtc().toIso8601String(),
                   },
                 )
                 .toList(),
@@ -310,12 +310,13 @@ class SyncService implements ISyncService {
       'user_id': userId,
       'branch_id': branchId,
       'device_id': 'mobile',
-      'last_synced_at': DateTime.now().toIso8601String(),
+      'last_synced_at': DateTime.now().toUtc().toIso8601String(),
       'status': 'success',
     });
     // Bounded retention: drop this user's stale heartbeats so the append-only
     // log can't grow without limit (RLS scopes the delete to own rows).
     final cutoff = DateTime.now()
+        .toUtc()
         .subtract(const Duration(days: AppConstants.syncLogRetentionDays))
         .toIso8601String();
     await _supabase
