@@ -7,6 +7,41 @@ final supabaseClientProvider = Provider<SupabaseClient>(
   (ref) => Supabase.instance.client,
 );
 
+/// Maps a raw sign-in failure to a short, user-facing message so the login
+/// screen never shows a raw exception. Distinguishes "you're offline" (gotrue
+/// wraps fetch failures in [AuthRetryableFetchException]) from "wrong
+/// credentials" (400) from rate-limiting (429). Covers Bug 8 (offline login)
+/// and Bug 9 (wrong-password message).
+String friendlyAuthError(Object error) {
+  if (error is AuthRetryableFetchException) return _offlineSignInMessage;
+  if (error is AuthException) {
+    final m = error.message.toLowerCase();
+    if (error.statusCode == '400' || m.contains('invalid login credentials')) {
+      return 'Incorrect email or password.';
+    }
+    if (error.statusCode == '429' || m.contains('rate') || m.contains('after')) {
+      return 'Too many attempts — wait a minute, then try again.';
+    }
+    return error.message;
+  }
+  // Non-auth errors that still mean "no network" (raw socket/client errors).
+  final msg = error.toString();
+  if (msg.contains('SocketException') ||
+      msg.contains('Failed host lookup') ||
+      msg.contains('ClientException') ||
+      msg.contains('Connection') ||
+      msg.contains('Network is unreachable') ||
+      msg.contains('TimeoutException') ||
+      msg.contains('timed out')) {
+    return _offlineSignInMessage;
+  }
+  return 'Could not sign in. Please try again.';
+}
+
+const _offlineSignInMessage =
+    'No internet connection. You need to be online the first time you sign in. '
+    'After that, the app keeps working offline.';
+
 final notificationServiceProvider = Provider<INotificationService>(
   (ref) => NotificationService(ref.read(supabaseClientProvider)),
 );
