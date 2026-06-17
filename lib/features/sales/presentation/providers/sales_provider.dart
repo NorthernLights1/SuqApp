@@ -326,11 +326,15 @@ class VoidSaleNotifier extends AsyncNotifier<void> {
             reason: reason,
             branchId: sale.branchId,
           );
+      // Void restores stock server-side. Pull a fresh snapshot into the local
+      // mirror before invalidating stockLevelsProvider; otherwise the
+      // local-first read returns the stale pre-void quantity until the next
+      // background refresh cycle.
+      await ref
+          .read(inventoryRepositoryProvider)
+          .refreshStock(sale.branchId);
       ref.invalidate(salesListProvider);
       ref.invalidate(todaySalesTotalsProvider);
-      // Voiding restores stock server-side and changes report/credit figures —
-      // refresh those screens too (refetching stock also refreshes the local
-      // mirror, keeping offline pre-sale checks consistent).
       ref.invalidate(stockLevelsProvider);
       ref.invalidate(reportSummaryProvider);
       ref.invalidate(outstandingCreditProvider);

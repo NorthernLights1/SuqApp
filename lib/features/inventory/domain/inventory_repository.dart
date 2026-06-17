@@ -186,6 +186,11 @@ class InventoryRepository {
   /// Background refresh of the stock mirror from the server, preserving any
   /// optimistic local quantity for products with an in-flight (unpushed)
   /// adjustment so we never clobber a write that hasn't synced yet.
+  /// Force-pull fresh stock from the server into the local mirror.
+  /// Used after server-side operations that change quantity (e.g. void sale)
+  /// so the next local-first read reflects the server state immediately.
+  Future<void> refreshStock(String branchId) => _refreshStock(branchId);
+
   Future<void> _refreshStock(String branchId) async {
     try {
       final remote = await _remote

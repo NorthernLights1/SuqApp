@@ -167,7 +167,7 @@ Future<List<Sale>> _localReportSales(
   ({DateTime start, DateTime end}) range,
   String? categoryFilter,
 ) async {
-  final rows = (await db.getSalesByBranch(branchId, range.start, range.end))
+  final rows = (await db.getSalesByBranch(branchId, range.start.toUtc(), range.end.toUtc()))
       .where((r) => r.status == 'completed')
       .toList();
   final custNames = {
@@ -404,7 +404,7 @@ Future<ReportSummary> _localReportSummary(
   ({DateTime start, DateTime end}) range,
   String? categoryFilter,
 ) async {
-  final sales = await db.getSalesByBranch(branchId, range.start, range.end);
+  final sales = await db.getSalesByBranch(branchId, range.start.toUtc(), range.end.toUtc());
   final prodCat = <String, String?>{
     if (shopId != null)
       for (final p in await db.getProductsByShop(shopId)) p.id: p.categoryId,
