@@ -22,7 +22,7 @@ String friendlyAuthError(Object error) {
     if (error.statusCode == '429' || m.contains('rate') || m.contains('after')) {
       return 'Too many attempts — wait a minute, then try again.';
     }
-    return error.message;
+    return 'Incorrect email or password.';
   }
   // Non-auth errors that still mean "no network" (raw socket/client errors).
   final msg = error.toString();

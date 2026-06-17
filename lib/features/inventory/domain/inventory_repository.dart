@@ -27,8 +27,8 @@ class InventoryRepository {
   // ── Reference reads (remote) ─────────────────────────────────────────────────
 
   Future<List<MeasurementUnit>> getMeasurementUnits(String shopId) async {
-    // Local-first: system units are always seeded, so non-empty local is
-    // authoritative; empty = pre-seed or web → server.
+    // Local-first: non-empty local is authoritative (seeding complete).
+    // Empty local = pre-seed or web → server.
     if (_db != null) {
       final rows = await _db.getUnits();
       if (rows.isNotEmpty) {
@@ -132,8 +132,8 @@ class InventoryRepository {
     // works offline. SyncService pushes it when connectivity is available.
     final id = const Uuid().v4();
     final trimmedName = name.trim();
-    final trimmedDesc =
-        description?.trim().isEmpty ?? true ? null : description?.trim();
+    final trimmedDesc = description?.trim();
+    final finalDesc = (trimmedDesc?.isEmpty ?? true) ? null : trimmedDesc;
     // Look up the unit abbreviation from the local cache (always seeded).
     final units = await _db.getUnits();
     final unitAbbr = units
@@ -146,7 +146,7 @@ class InventoryRepository {
         shopId: Value(shopId),
         name: Value(trimmedName),
         categoryId: Value(categoryId),
-        description: Value(trimmedDesc),
+        description: Value(finalDesc),
         measurementUnitId: Value(measurementUnitId),
         measurementUnitAbbr: Value(unitAbbr),
         lowStockThreshold: Value(lowStockThreshold),

@@ -77,55 +77,47 @@ class SyncService implements ISyncService {
     final db = _db!;
     final pending = await db.getPendingCategories();
     if (pending.isEmpty) return 0;
-    try {
-      await _supabase.from('product_categories').upsert(
-            pending
-                .map((c) => {
-                      'id': c.id,
-                      'shop_id': c.shopId,
-                      'name': c.name,
-                    })
-                .toList(),
-            onConflict: 'id',
-          );
-      for (final c in pending) {
-        await db.markCategorySynced(c.id);
-      }
-      return pending.length;
-    } catch (_) {
-      rethrow;
+    await _supabase.from('product_categories').upsert(
+          pending
+              .map((c) => {
+                    'id': c.id,
+                    'shop_id': c.shopId,
+                    'name': c.name,
+                  })
+              .toList(),
+          onConflict: 'id',
+        );
+    for (final c in pending) {
+      await db.markCategorySynced(c.id);
     }
+    return pending.length;
   }
 
   Future<int> _pushPendingProducts() async {
     final db = _db!;
     final pending = await db.getPendingProducts();
     if (pending.isEmpty) return 0;
-    try {
-      await _supabase.from('products').upsert(
-            pending
-                .map((p) => {
-                      'id': p.id,
-                      'shop_id': p.shopId,
-                      'name': p.name,
-                      'description': p.description,
-                      'measurement_unit_id': p.measurementUnitId,
-                      'low_stock_threshold': p.lowStockThreshold.toString(),
-                      'selling_price': p.sellingPrice?.toString(),
-                      'cost_price': p.costPrice?.toString(),
-                      'category_id': p.categoryId,
-                      'is_active': p.isActive,
-                    })
-                .toList(),
-            onConflict: 'id',
-          );
-      for (final p in pending) {
-        await db.markProductSynced(p.id);
-      }
-      return pending.length;
-    } catch (_) {
-      rethrow;
+    await _supabase.from('products').upsert(
+          pending
+              .map((p) => {
+                    'id': p.id,
+                    'shop_id': p.shopId,
+                    'name': p.name,
+                    'description': p.description,
+                    'measurement_unit_id': p.measurementUnitId,
+                    'low_stock_threshold': p.lowStockThreshold.toString(),
+                    'selling_price': p.sellingPrice?.toString(),
+                    'cost_price': p.costPrice?.toString(),
+                    'category_id': p.categoryId,
+                    'is_active': p.isActive,
+                  })
+              .toList(),
+          onConflict: 'id',
+        );
+    for (final p in pending) {
+      await db.markProductSynced(p.id);
     }
+    return pending.length;
   }
 
   /// Sales and stock operations share one inventory timeline. Replaying them
@@ -234,33 +226,29 @@ class SyncService implements ISyncService {
     final db = _db!;
     final pending = await db.getPendingExpenses();
     if (pending.isEmpty) return 0;
-    try {
-      await _supabase
-          .from('expenses')
-          .upsert(
-            pending
-                .map(
-                  (e) => {
-                    'id': e.id,
-                    'branch_id': e.branchId,
-                    'category_id': e.categoryId,
-                    'amount': e.amount.toString(),
-                    'description': e.description,
-                    'recorded_by': e.recordedBy,
-                    'date': e.date.toIso8601String().substring(0, 10),
-                    'created_at': e.createdAt.toUtc().toIso8601String(),
-                  },
-                )
-                .toList(),
-            onConflict: 'id',
-          );
-      for (final e in pending) {
-        await db.markExpenseSynced(e.id);
-      }
-      return pending.length;
-    } catch (_) {
-      rethrow;
+    await _supabase
+        .from('expenses')
+        .upsert(
+          pending
+              .map(
+                (e) => {
+                  'id': e.id,
+                  'branch_id': e.branchId,
+                  'category_id': e.categoryId,
+                  'amount': e.amount.toString(),
+                  'description': e.description,
+                  'recorded_by': e.recordedBy,
+                  'date': e.date.toIso8601String().substring(0, 10),
+                  'created_at': e.createdAt.toUtc().toIso8601String(),
+                },
+              )
+              .toList(),
+          onConflict: 'id',
+        );
+    for (final e in pending) {
+      await db.markExpenseSynced(e.id);
     }
+    return pending.length;
   }
 
   /// Pushes pending credit payments (offline settlements) in one bulk upsert.
@@ -274,28 +262,24 @@ class SyncService implements ISyncService {
     // recorded_by references a real user; if we somehow lost the session, leave
     // the payments queued rather than push a null attribution.
     if (userId == null) return 0;
-    try {
-      for (final p in pending) {
-        await _supabase.rpc(
-          'record_credit_payment',
-          params: {
-            'p_id': p.id,
-            'p_sale_id': p.saleId,
-            'p_customer_id': p.customerId,
-            'p_amount': p.amount.toString(),
-            'p_method': p.method,
-            'p_notes': p.notes,
-            // Preserve when the payment was actually recorded offline, not the
-            // (possibly days-later) push time.
-            'p_created_at': p.createdAt.toUtc().toIso8601String(),
-          },
-        );
-        await db.markCreditPaymentSynced(p.id);
-      }
-      return pending.length;
-    } catch (_) {
-      rethrow;
+    for (final p in pending) {
+      await _supabase.rpc(
+        'record_credit_payment',
+        params: {
+          'p_id': p.id,
+          'p_sale_id': p.saleId,
+          'p_customer_id': p.customerId,
+          'p_amount': p.amount.toString(),
+          'p_method': p.method,
+          'p_notes': p.notes,
+          // Preserve when the payment was actually recorded offline, not the
+          // (possibly days-later) push time.
+          'p_created_at': p.createdAt.toUtc().toIso8601String(),
+        },
+      );
+      await db.markCreditPaymentSynced(p.id);
     }
+    return pending.length;
   }
 
   /// Pushes pending customer identity rows (offline-created or edited) in one
@@ -305,29 +289,25 @@ class SyncService implements ISyncService {
     final db = _db!;
     final pending = await db.getPendingCustomers();
     if (pending.isEmpty) return 0;
-    try {
-      await _supabase
-          .from('customers')
-          .upsert(
-            pending
-                .map(
-                  (c) => {
-                    'id': c.id,
-                    'shop_id': c.shopId,
-                    'name': c.name,
-                    'phone': c.phone,
-                  },
-                )
-                .toList(),
-            onConflict: 'id',
-          );
-      for (final c in pending) {
-        await db.markCustomerSynced(c.id);
-      }
-      return pending.length;
-    } catch (_) {
-      rethrow;
+    await _supabase
+        .from('customers')
+        .upsert(
+          pending
+              .map(
+                (c) => {
+                  'id': c.id,
+                  'shop_id': c.shopId,
+                  'name': c.name,
+                  'phone': c.phone,
+                },
+              )
+              .toList(),
+          onConflict: 'id',
+        );
+    for (final c in pending) {
+      await db.markCustomerSynced(c.id);
     }
+    return pending.length;
   }
 
   @override

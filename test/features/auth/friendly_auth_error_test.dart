@@ -36,5 +36,12 @@ void main() {
       final msg = friendlyAuthError(StateError('boom'));
       expect(msg, 'Could not sign in. Please try again.');
     });
+
+    test('unknown auth exception (e.g. unconfirmed email) → generic message', () {
+      final msg = friendlyAuthError(
+        AuthApiException('Email not confirmed', statusCode: '403'),
+      );
+      expect(msg, 'Incorrect email or password.');
+    });
   });
 }

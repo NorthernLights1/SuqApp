@@ -57,7 +57,7 @@ GoRouter createRouter() {
         // timeout fallback below, but instant (no 5s dead wait on every offline
         // cold start). Bug 8: a cached session is usable offline.
         final conn = await Connectivity().checkConnectivity();
-        final offline = !conn.any((r) => r != ConnectivityResult.none);
+        final offline = conn.every((r) => r == ConnectivityResult.none);
         if (offline) return AppRoutes.dashboard;
 
         // Bound the network calls: offline these would otherwise hang with no
