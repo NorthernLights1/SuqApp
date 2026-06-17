@@ -55,17 +55,24 @@ class InventoryRepository {
     required String shopId,
     required String name,
   }) async {
-    final category =
-        await _remote.createProductCategory(shopId: shopId, name: name);
-    await _db?.upsertCategories([
+    // Web: remote-only (no local DB).
+    if (_db == null) {
+      return _remote.createProductCategory(shopId: shopId, name: name);
+    }
+    // Native: write locally first so the category is visible immediately and
+    // works offline. SyncService pushes it when connectivity is available.
+    final id = const Uuid().v4();
+    final trimmed = name.trim();
+    await _db.upsertCategories([
       LocalProductCategoriesCompanion(
-        id: Value(category.id),
+        id: Value(id),
         shopId: Value(shopId),
-        name: Value(category.name),
+        name: Value(trimmed),
         syncedAt: Value(DateTime.now()),
+        isSynced: const Value(false),
       ),
     ]);
-    return category;
+    return ProductCategory(id: id, name: trimmed);
   }
 
   // ── Products ─────────────────────────────────────────────────────────────────
@@ -108,19 +115,61 @@ class InventoryRepository {
     String? categoryId,
     String? description,
   }) async {
-    final product = await _remote.createProduct(
+    // Web: remote-only (no local DB).
+    if (_db == null) {
+      return _remote.createProduct(
+        shopId: shopId,
+        name: name,
+        measurementUnitId: measurementUnitId,
+        lowStockThreshold: lowStockThreshold,
+        sellingPrice: sellingPrice,
+        costPrice: costPrice,
+        categoryId: categoryId,
+        description: description,
+      );
+    }
+    // Native: write locally first so the product is visible immediately and
+    // works offline. SyncService pushes it when connectivity is available.
+    final id = const Uuid().v4();
+    final trimmedName = name.trim();
+    final trimmedDesc =
+        description?.trim().isEmpty ?? true ? null : description?.trim();
+    // Look up the unit abbreviation from the local cache (always seeded).
+    final units = await _db.getUnits();
+    final unitAbbr = units
+        .where((u) => u.id == measurementUnitId)
+        .map((u) => u.abbreviation)
+        .firstOrNull ?? '';
+    await _db.upsertProducts([
+      LocalProductsCompanion(
+        id: Value(id),
+        shopId: Value(shopId),
+        name: Value(trimmedName),
+        categoryId: Value(categoryId),
+        description: Value(trimmedDesc),
+        measurementUnitId: Value(measurementUnitId),
+        measurementUnitAbbr: Value(unitAbbr),
+        lowStockThreshold: Value(lowStockThreshold),
+        sellingPrice: Value(sellingPrice),
+        costPrice: Value(costPrice),
+        isActive: const Value(true),
+        syncedAt: Value(DateTime.now()),
+        isSynced: const Value(false),
+      ),
+    ]);
+    return Product(
+      id: id,
       shopId: shopId,
-      name: name,
+      name: trimmedName,
+      categoryId: categoryId,
+      description: trimmedDesc,
       measurementUnitId: measurementUnitId,
+      measurementUnitAbbr: unitAbbr,
       lowStockThreshold: lowStockThreshold,
       sellingPrice: sellingPrice,
       costPrice: costPrice,
-      categoryId: categoryId,
-      description: description,
+      isActive: true,
     );
-    // Mirror locally so local-first reads show it immediately (before sync).
-    await _db?.upsertProducts([_toProductCompanion(product)]);
-    return product;
   }
 
   Future<Product> updateProduct({

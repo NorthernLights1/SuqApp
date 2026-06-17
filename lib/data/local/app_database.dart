@@ -37,6 +37,9 @@ class LocalProducts extends Table {
   TextColumn get costPrice => text().nullable().map(const _NullDec())();
   BoolColumn get isActive => boolean()();
   DateTimeColumn get syncedAt => dateTime()();
+  // Default true: server-pulled rows are already on the server.
+  // Offline-created products set this false so the push queue picks them up.
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -219,6 +222,9 @@ class LocalProductCategories extends Table {
   TextColumn get shopId => text()();
   TextColumn get name => text()();
   DateTimeColumn get syncedAt => dateTime()();
+  // Default true: server-pulled rows are already on the server.
+  // Offline-created categories set this false so the push queue picks them up.
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -321,7 +327,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 10;
+  int get schemaVersion => 11;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -378,6 +384,19 @@ class AppDatabase extends _$AppDatabase {
           if (from < 10) {
             await m.addColumn(localStock, localStock.expiryDate);
           }
+          // v10 -> v11: offline-first product and category creation.
+          // localProducts exists since v1 — all existing DBs need addColumn.
+          // localProductCategories was created in the v5 step via createTable,
+          // which picks up the current schema at compile time. DBs that upgraded
+          // through v5 already have isSynced from that createTable call; only
+          // DBs that were already at v5+ before this change need addColumn.
+          if (from < 11) {
+            await m.addColumn(localProducts, localProducts.isSynced);
+            if (from >= 5) {
+              await m.addColumn(
+                  localProductCategories, localProductCategories.isSynced);
+            }
+          }
         },
       );
 
@@ -385,6 +404,13 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> upsertProducts(List<LocalProductsCompanion> rows) =>
       batch((b) => b.insertAllOnConflictUpdate(localProducts, rows));
+
+  Future<List<ProductRow>> getPendingProducts() =>
+      (select(localProducts)..where((t) => t.isSynced.equals(false))).get();
+
+  Future<void> markProductSynced(String id) =>
+      (update(localProducts)..where((t) => t.id.equals(id)))
+          .write(const LocalProductsCompanion(isSynced: Value(true)));
 
   Future<List<ProductRow>> getProductsByShop(String shopId) =>
       (select(localProducts)
@@ -705,6 +731,14 @@ class AppDatabase extends _$AppDatabase {
       (select(localProductCategories)..where((t) => t.shopId.equals(shopId)))
           .get();
 
+  Future<List<ProductCategoryRow>> getPendingCategories() =>
+      (select(localProductCategories)..where((t) => t.isSynced.equals(false)))
+          .get();
+
+  Future<void> markCategorySynced(String id) =>
+      (update(localProductCategories)..where((t) => t.id.equals(id)))
+          .write(const LocalProductCategoriesCompanion(isSynced: Value(true)));
+
   // ── Measurement units ────────────────────────────────────────────────────────
 
   Future<void> upsertUnits(List<LocalMeasurementUnitsCompanion> rows) =>
@@ -897,6 +931,8 @@ class AppDatabase extends _$AppDatabase {
   Stream<bool> watchHasPendingWork() {
     return customSelect(
       'SELECT ('
+      'EXISTS(SELECT 1 FROM local_product_categories WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_products WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_sales WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_expenses WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_inventory_adjustments WHERE is_synced = 0) OR '
@@ -904,6 +940,8 @@ class AppDatabase extends _$AppDatabase {
       'EXISTS(SELECT 1 FROM local_credit_payments WHERE is_synced = 0)'
       ') AS has_pending',
       readsFrom: {
+        localProductCategories,
+        localProducts,
         localSales,
         localExpenses,
         localInventoryAdjustments,

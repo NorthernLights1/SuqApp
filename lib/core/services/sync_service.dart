@@ -47,6 +47,9 @@ class SyncService implements ISyncService {
 
       var pushed = 0;
       if (_db != null) {
+        // FK order: categories → products → customers → sales/adjustments → payments → expenses.
+        pushed += await _pushPendingCategories();
+        pushed += await _pushPendingProducts();
         pushed += await _pushPendingCustomers();
         pushed += await _pushPendingInventoryWork();
         pushed += await _pushPendingCreditPayments();
@@ -67,6 +70,61 @@ class SyncService implements ISyncService {
       _emit(SyncStatus.success);
     } catch (_) {
       _emit(SyncStatus.failed);
+    }
+  }
+
+  Future<int> _pushPendingCategories() async {
+    final db = _db!;
+    final pending = await db.getPendingCategories();
+    if (pending.isEmpty) return 0;
+    try {
+      await _supabase.from('product_categories').upsert(
+            pending
+                .map((c) => {
+                      'id': c.id,
+                      'shop_id': c.shopId,
+                      'name': c.name,
+                    })
+                .toList(),
+            onConflict: 'id',
+          );
+      for (final c in pending) {
+        await db.markCategorySynced(c.id);
+      }
+      return pending.length;
+    } catch (_) {
+      rethrow;
+    }
+  }
+
+  Future<int> _pushPendingProducts() async {
+    final db = _db!;
+    final pending = await db.getPendingProducts();
+    if (pending.isEmpty) return 0;
+    try {
+      await _supabase.from('products').upsert(
+            pending
+                .map((p) => {
+                      'id': p.id,
+                      'shop_id': p.shopId,
+                      'name': p.name,
+                      'description': p.description,
+                      'measurement_unit_id': p.measurementUnitId,
+                      'low_stock_threshold': p.lowStockThreshold.toString(),
+                      'selling_price': p.sellingPrice?.toString(),
+                      'cost_price': p.costPrice?.toString(),
+                      'category_id': p.categoryId,
+                      'is_active': p.isActive,
+                    })
+                .toList(),
+            onConflict: 'id',
+          );
+      for (final p in pending) {
+        await db.markProductSynced(p.id);
+      }
+      return pending.length;
+    } catch (_) {
+      rethrow;
     }
   }
 

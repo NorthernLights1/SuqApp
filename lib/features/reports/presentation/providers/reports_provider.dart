@@ -120,44 +120,39 @@ final reportSalesProvider = FutureProvider<List<Sale>>((ref) async {
   if (branch == null) return const [];
 
   final range = _rangeFor(period, customRange);
-  final client = ref.read(supabaseClientProvider);
+  final db = ref.read(appDatabaseProvider);
 
-  try {
-    final data = await client
-        .from('sales')
-        .select(
-            '*, sale_items(*, products(category_id)), customers(id, name, phone), payment_methods(id, name, code), cashier:profiles!sales_cashier_id_fkey(full_name)')
-        .eq('branch_id', branch.id)
-        .eq('status', 'completed')
-        .gte('created_at', range.start.toUtc().toIso8601String())
-        .lt('created_at', range.end.toUtc().toIso8601String())
-        .order('created_at', ascending: false)
-        // Cap the drill-down list; a shop won't review more than this at once
-        // and it keeps the query bounded for long periods (e.g. Year).
-        .limit(500)
-        .timeout(AppConstants.remoteReadTimeout);
-
-    final rows = (data as List).cast<Map<String, dynamic>>();
-    final filtered = categoryFilter == null
-        ? rows
-        : rows.where((row) {
-            final items = (row['sale_items'] as List? ?? []);
-            return items.any((item) =>
-                (item['products'] as Map<String, dynamic>?)?['category_id'] ==
-                categoryFilter);
-          }).toList();
-
-    return filtered.map((e) => Sale.fromJson(e)).toList();
-  } catch (e) {
-    // Offline or fetch failure: build the drill-down list from the local cache.
-    // Log so a real failure (auth/permission/malformed) is distinguishable
-    // from a genuine offline read during development.
-    debugPrint('Report sales list fetch failed, using local cache: $e');
-    final db = ref.read(appDatabaseProvider);
-    if (db == null) rethrow;
+  // Native: local-first — instant, works offline, no network latency.
+  // The local mirror is kept fresh by the background SyncScheduler.
+  if (db != null) {
     final shop = await ref.read(currentShopProvider.future);
     return _localReportSales(db, shop?.id, branch.id, range, categoryFilter);
   }
+
+  // Web: remote-only.
+  final client = ref.read(supabaseClientProvider);
+  final data = await client
+      .from('sales')
+      .select(
+          '*, sale_items(*, products(category_id)), customers(id, name, phone), payment_methods(id, name, code), cashier:profiles!sales_cashier_id_fkey(full_name)')
+      .eq('branch_id', branch.id)
+      .eq('status', 'completed')
+      .gte('created_at', range.start.toUtc().toIso8601String())
+      .lt('created_at', range.end.toUtc().toIso8601String())
+      .order('created_at', ascending: false)
+      .limit(500)
+      .timeout(AppConstants.remoteReadTimeout);
+
+  final rows = (data as List).cast<Map<String, dynamic>>();
+  final filtered = categoryFilter == null
+      ? rows
+      : rows.where((row) {
+          final items = (row['sale_items'] as List? ?? []);
+          return items.any((item) =>
+              (item['products'] as Map<String, dynamic>?)?['category_id'] ==
+              categoryFilter);
+        }).toList();
+  return filtered.map((e) => Sale.fromJson(e)).toList();
 });
 
 Future<List<Sale>> _localReportSales(
@@ -266,8 +261,17 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
 
   final range = _rangeFor(period, customRange);
   final shop = await ref.watch(currentShopProvider.future);
-  final client = ref.read(supabaseClientProvider);
+  final db = ref.read(appDatabaseProvider);
 
+  // Native: local-first — instant, works offline, no network latency.
+  // Locally-recorded expenses (even unsynced) are visible immediately.
+  // The local mirror is kept fresh by the background SyncScheduler.
+  if (db != null) {
+    return _localReportSummary(db, branch.id, shop?.id, range, categoryFilter);
+  }
+
+  // Web: remote-only.
+  final client = ref.read(supabaseClientProvider);
   try {
   // Sales — include product category info for optional category filter
   final salesData = await client
@@ -387,11 +391,9 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
     profitItemCount: profitItemCount,
   );
   } catch (e) {
-    // Offline or fetch failure: compute the same summary from the local cache.
-    debugPrint('Report summary fetch failed, using local cache: $e');
-    final db = ref.read(appDatabaseProvider);
-    if (db == null) rethrow;
-    return _localReportSummary(db, branch.id, shop?.id, range, categoryFilter);
+    // Web-only path: no local DB to fall back to.
+    debugPrint('Report summary remote fetch failed: $e');
+    rethrow;
   }
 });
 
