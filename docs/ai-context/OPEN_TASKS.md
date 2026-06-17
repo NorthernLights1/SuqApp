@@ -1,6 +1,6 @@
 # Open Tasks — Suq ERP
 
-Last updated: 2026-06-12 (session 17)
+Last updated: 2026-06-17 (session 19)
 
 ---
 
@@ -195,11 +195,14 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
   `syncNow()` in `SyncScheduler`. Covers all offline writes automatically. (The
   explicit sales/credit nudges from B3/C3a remain — redundant-but-harmless; the
   watcher is now primary.) analyze clean; 126 tests.
-- [ ] **C3c — product writes local-first** (debt, no reported bug): product
-  create/edit/deactivate + `createCustomer` are still remote-first.
-- [ ] **C4 — remaining server-first reads → local-first**: `getSale` /
-  `getSalesForBranch` (with C2), `getExpenses`, inventory `getProducts` /
-  `getStockLevels` (currently try-server-then-fallback).
+- [x] **C3c — product writes local-first** — DEFERRED: still remote-first (see
+  Bug 5 below). Recorded as a known offline gap.
+- [x] **C4 — remaining server-first reads → local-first**: DONE (session 19).
+  `getProducts` / `getStockLevels` (inventory), `getCustomers` (customers repo),
+  `customerSalesProvider` / `customerCreditSalesProvider` / `outstandingCreditProvider`
+  / `creditPaymentsProvider` (customers_provider) all flipped to local-first with
+  background refresh. `getExpenses` / reports / stock-conflicts queries bounded with
+  `remoteReadTimeout` so offline fails fast to local cache. 128 tests pass.
 
 **Phase C — known limitation (RESOLVED)**
 - [x] Web/online credit settlement was a non-atomic insert→read→update. FIXED by
@@ -215,6 +218,40 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
 - [ ] Operator sync-health debug view: last sync time, pending-push count, last error.
 - [ ] SQLCipher for the local cache (now holds full shop PII) — still deferred past pilot.
 - [ ] Audit SECURITY DEFINER functions for dynamic SQL / search_path (injection + priv-esc).
+
+---
+
+## Session 19 — Offline bugs found in manual device testing (2026-06-17)
+
+Diagnosed (not yet fixed). Root causes confirmed by reading the code.
+
+- [ ] **Bug 1 — Void sale offline crashes**: `voidSale()` calls `_remote.voidSale()`
+  first with no queue. Offline → socket exception → UI error, nothing happens.
+  No user-friendly "requires connection" message. (`sales_repository.dart:248`)
+- [ ] **Bug 2 / 3 — Void does not refresh inventory immediately (even online)**:
+  After a successful online void, `ref.invalidate(stockLevelsProvider)` re-reads
+  the local Drift mirror — which hasn't been updated yet (background `_refreshStock`
+  runs after). User must restart to see restored stock.
+  (`sales_provider.dart:334`)
+- [ ] **Bug 4 — New category fails offline**: `createProductCategory()` is
+  remote-only, no local queue. Crashes before product save even begins.
+  (`inventory_repository.dart:54`)
+- [ ] **Bug 5 — Adding new product fails offline**: `createProduct()` is remote-only.
+  Socket exception before `setOpeningStock` (which IS offline-safe) is reached.
+  (`inventory_repository.dart:101`)
+- [ ] **Bug 6 — Add Stock with changed price/threshold fails offline**: When any of
+  sale price / purchase price / low-stock fields are edited, the screen calls
+  `updateProduct()` (remote) first; offline → returns `false` → early return, the
+  stock adjustment queue step is never reached. Leaving fields at defaults skips
+  `updateProduct()` and works because `detailsChanged == false`.
+  (`inventory_screen.dart:386-401`)
+- [ ] **Bug 7 — Report "Today" shows all zeros offline**: `reportSummaryProvider`
+  and `reportSalesProvider` try server first; offline, they fall to the local DB.
+  The "Today" range is computed in local time (`DateTime.now()`), but the local
+  DB stores sales with UTC timestamps — for EAT (UTC+3) a sale made at 10 AM
+  local is stored as 07:00 UTC, and the local-time midnight boundary may not
+  align. Week/Month/Year ranges are wide enough to absorb the offset; Today's
+  narrow window misses it.
 
 ---
 
