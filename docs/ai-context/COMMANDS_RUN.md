@@ -23,7 +23,7 @@ Primary dev target. Drift/SQLite not available on web — all DB falls back to S
 ```powershell
 flutter analyze
 ```
-Result: 0 issues (last run 2026-06-02 × 4). Run before every commit.
+Result: 0 issues (last run 2026-06-17, session 19). Run before every commit.
 
 ---
 
@@ -50,6 +50,7 @@ Run after editing `lib/l10n/app_en.arb`.
 dart run build_runner build --delete-conflicting-outputs
 ```
 Run after changing Drift table definitions in `app_database.dart` or adding `@riverpod` annotations.
+Current schema version: **v11** (added `isSynced` to LocalProducts + LocalProductCategories, session 19).
 
 ---
 
@@ -57,11 +58,16 @@ Run after changing Drift table definitions in `app_database.dart` or adding `@ri
 ```powershell
 flutter test
 ```
-Result: 81 tests passing (last run 2026-06-02, confirmed after Riverpod 3.x migration).
+Result: 133 tests passing (last run 2026-06-17, session 19).
 Test files:
-- `test/data/local/app_database_test.dart` — Drift DB (27 tests incl. edge cases)
-- `test/domain/models/models_test.dart` — model parsing + CartItem logic (30 tests)
-- `test/features/sales/sales_repository_test.dart` — inventory enforcement, sale creation, search (34 tests)
+- `test/features/auth/friendly_auth_error_test.dart` — sign-in error classification (Bug 8/9)
+- `test/data/local/app_database_test.dart` — Drift DB ops + edge cases
+- `test/data/local/seed_service_test.dart` — delta-pull partition logic
+- `test/features/customers/customers_repository_test.dart` — offline customer create/edit
+- `test/features/expenses/expenses_repository_test.dart` — offline expense record
+- `test/features/inventory/inventory_correction_test.dart` — stock correction (15 tests)
+- `test/features/inventory/inventory_repository_test.dart` — stock ops, offline fallback
+- `test/features/sales/sales_repository_test.dart` — enforcement, sale creation, search
 
 ---
 

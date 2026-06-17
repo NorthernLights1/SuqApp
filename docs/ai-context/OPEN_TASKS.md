@@ -1,6 +1,6 @@
 # Open Tasks — Suq ERP
 
-Last updated: 2026-06-17 (session 19)
+Last updated: 2026-06-17 (session 19, part 3)
 
 ---
 
@@ -225,33 +225,64 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
 
 Diagnosed (not yet fixed). Root causes confirmed by reading the code.
 
-- [ ] **Bug 1 — Void sale offline crashes**: `voidSale()` calls `_remote.voidSale()`
-  first with no queue. Offline → socket exception → UI error, nothing happens.
-  No user-friendly "requires connection" message. (`sales_repository.dart:248`)
+- [x] **Bug 1 — Void sale offline crashes**: FIXED (commit `9a55b7f`). `voidSale()`
+  now catches network/timeout exceptions and shows "Voiding a sale requires an
+  internet connection." Server rejections propagate as-is.
 - [ ] **Bug 2 / 3 — Void does not refresh inventory immediately (even online)**:
   After a successful online void, `ref.invalidate(stockLevelsProvider)` re-reads
   the local Drift mirror — which hasn't been updated yet (background `_refreshStock`
   runs after). User must restart to see restored stock.
   (`sales_provider.dart:334`)
-- [ ] **Bug 4 — New category fails offline**: `createProductCategory()` is
-  remote-only, no local queue. Crashes before product save even begins.
-  (`inventory_repository.dart:54`)
-- [ ] **Bug 5 — Adding new product fails offline**: `createProduct()` is remote-only.
-  Socket exception before `setOpeningStock` (which IS offline-safe) is reached.
-  (`inventory_repository.dart:101`)
-- [ ] **Bug 6 — Add Stock with changed price/threshold fails offline**: When any of
-  sale price / purchase price / low-stock fields are edited, the screen calls
-  `updateProduct()` (remote) first; offline → returns `false` → early return, the
-  stock adjustment queue step is never reached. Leaving fields at defaults skips
-  `updateProduct()` and works because `detailsChanged == false`.
-  (`inventory_screen.dart:386-401`)
+- [x] **Bug 4 — New category fails offline**: FIXED (commit `9a55b7f`).
+  `createProductCategory()` now writes locally first (UUID client-generated,
+  `isSynced=false`). SyncService pushes when online. Web path remote-only.
+- [x] **Bug 5 — Adding new product fails offline**: FIXED (commit `9a55b7f`).
+  `createProduct()` now writes locally first. Unit abbreviation looked up from
+  local cache. SyncService pushes categories then products (FK order). Schema
+  v11 adds `isSynced` to both `LocalProducts` and `LocalProductCategories`.
+- [x] **Bug 6 — Add Stock with changed price/threshold fails offline**: ALREADY
+  FIXED in a prior CodeRabbit round. Screen shows a snackbar on price-update
+  failure but does NOT return; stock adjustment always proceeds. Confirmed by
+  reading `inventory_screen.dart:401`.
 - [ ] **Bug 7 — Report "Today" shows all zeros offline**: `reportSummaryProvider`
   and `reportSalesProvider` try server first; offline, they fall to the local DB.
   The "Today" range is computed in local time (`DateTime.now()`), but the local
   DB stores sales with UTC timestamps — for EAT (UTC+3) a sale made at 10 AM
   local is stored as 07:00 UTC, and the local-time midnight boundary may not
   align. Week/Month/Year ranges are wide enough to absorb the offset; Today's
-  narrow window misses it.
+  narrow window misses it. **ROOT CAUSE FIXED** (`sync_service.dart` was pushing
+  local DateTimes without `.toUtc()` → Supabase stored wrong timestamps → delta
+  pull brought back wrong epoch millis → today-range excluded the sale). Commit
+  `d05ee82`. Retest: make offline sale, sync, confirm sale still in Today report.
+
+## Session 19 — Additional device testing bugs (2026-06-17)
+
+Reported by Temesgen. Not yet diagnosed or fixed.
+
+- [x] **Bug 8 — Login fails when offline (auth exception)**: FIXED (commit
+  `16e5bb5`). Two parts: (1) `friendlyAuthError()` in `auth_provider.dart`
+  classifies the sign-in failure and the login screen shows a clear "No internet
+  connection…" message instead of a raw exception. (2) The router skips the
+  owner/staff network lookup and routes straight to the dashboard when offline
+  with a restored session — Supabase persists the session locally, so a cached
+  login is usable offline with no 5s cold-start wait.
+- [x] **Bug 9 — Wrong password shows raw exception**: FIXED (commit `16e5bb5`,
+  same classifier). `friendlyAuthError()` maps 400 → "Incorrect email or
+  password." and 429 → "Too many attempts — wait a minute, then try again."
+- [x] **Bug 10 + Bug 12 — Reports remote-first. FIXED (commit `9a55b7f`).**
+  `reportSummaryProvider` and `reportSalesProvider` are now local-first on native:
+  they read from local Drift immediately (instant, offline-capable). Locally-recorded
+  expenses appear in reports at once instead of waiting for a Supabase round-trip.
+  Web retains remote-only path.
+- [x] **Bug 11 — NOT A BUG (working as designed)**: Reports exclude voided sales
+  everywhere — `status == 'completed'` filter in all four paths
+  (`reportSalesProvider` remote line 131 + local line 171; `reportSummaryProvider`
+  remote line 290 + local line 426). Temesgen's pre-update sales were voided during
+  void-feature testing, so they correctly don't appear in Reports. They DO show in
+  the sales list (operational log, badged "Voided") and the summary number is
+  correct (excludes them) — which also proves the download/sync worked and there is
+  no missing-history problem. Confirm by checking one OLD non-voided sale appears in
+  Reports for its date.
 
 ---
 
@@ -383,3 +414,9 @@ Diagnosed (not yet fixed). Root causes confirmed by reading the code.
 - Staff invite for existing Supabase users — Edge Function errors; users must use a fresh email
 - Barcode scanning + product images — deferred post-v1
 - Monetization / multi-branch pricing tiers — decision pending
+- **Refunds / returns — DEFERRED (decided 2026-06-17)**. Void (same-day mistake,
+  erases the sale) stays as-is. A refund (real sale, goods returned later — keeps
+  the original sale, records cash out today, optionally restores stock, may be
+  partial) is a distinct transaction type and deserves separate handling IF pilot
+  shops actually process returns. Deferred for now. When built, must be
+  offline-first from day one (do not repeat Bug 1).

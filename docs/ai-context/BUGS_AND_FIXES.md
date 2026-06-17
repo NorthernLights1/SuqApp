@@ -2,6 +2,77 @@
 
 ---
 
+## Session 19 (2026-06-17) — offline-first device testing (branch `offline-first_v2`)
+
+**Bug 7 — Today report zeros after sync (UTC timestamp mismatch). FIXED (commit `d05ee82`).**
+`sync_service.dart` was calling `.toIso8601String()` on local DateTimes without `.toUtc()`.
+Postgres `timestamptz` treated the bare string as UTC → stored 3h wrong (EAT UTC+3) →
+delta pull brought back wrong epoch millis → today-range query excluded the sale → zeros.
+Fix: `.toUtc()` before all `.toIso8601String()` calls in `_saleJson`, `_pushPendingExpenses`,
+`_writeSyncLog`. Also reverted a no-op `.toUtc()` on Drift epoch-millis queries in
+`reports_provider.dart` (commit `f032fae`) — Drift stores INTEGER epoch ms, so `.toUtc()`
+on query parameters changes nothing.
+
+**Bug 11 — Reports only show post-update sales. NOT A BUG.**
+Pre-update sales were voided during testing. Reports correctly exclude voided sales
+(`status == 'completed'` filter everywhere). Confirmed: voided sales appear in the
+sales list (operational log) and are correctly excluded from revenue totals.
+
+**Bug 6 — Add Stock with changed price/threshold fails offline. ALREADY FIXED (prior CodeRabbit round).**
+Inventory screen already shows a snackbar on product-update failure but does NOT return —
+stock adjustment proceeds regardless. Code at `inventory_screen.dart:401` with comment
+"Still proceed to queue the stock adjustment — it is offline-safe and independent."
+
+**Bug 1 — Void sale offline shows raw SocketException. FIXED (commit `9a55b7f`).**
+`sales_repository.dart:voidSale` now catches network/timeout exceptions and rethrows with
+"Voiding a sale requires an internet connection." Real server rejections propagate as-is.
+
+**Bug 4 — New product category fails offline. FIXED (commit `9a55b7f`).**
+`inventory_repository.dart:createProductCategory` now writes locally first with
+`isSynced=false` (client-generated UUID) and returns immediately. SyncService pushes in
+background. Web path still goes remote-only.
+
+**Bug 5 — New product creation fails offline. FIXED (commit `9a55b7f`).**
+`inventory_repository.dart:createProduct` now writes locally first with `isSynced=false`.
+Looks up `measurementUnitAbbr` from local unit cache. SyncService pushes categories before
+products (FK order). Web path still goes remote-only.
+
+**Bugs 10+12 — Reports slow + expenses delayed. FIXED (commit `9a55b7f`).**
+`reportSummaryProvider` and `reportSalesProvider` were remote-first; network wait caused
+slowness (Bug 10) and unsynced expenses weren't visible (Bug 12) because the remote read
+returned data from Supabase before the local expense was pushed. Both providers flipped to
+local-first on native — instant read from Drift mirror, no network on the critical path.
+Web retains remote-only path.
+
+**Schema: v10 → v11 (commit `9a55b7f`).**
+`LocalProductCategories` and `LocalProducts` gained `isSynced bool default(true)`.
+`watchHasPendingWork()` updated to arm the sync nudge on new offline product/category
+writes. Migration: `if (from < 11)` addColumn products; `if (from >= 5 && from < 11)`
+addColumn categories (v1–v4 DBs get it from the v5 createTable step).
+
+**Bug 8 — Login fails when offline (raw auth exception). FIXED (commit `16e5bb5`).**
+Two parts. (1) Message: new top-level `friendlyAuthError(Object)` in
+`auth_provider.dart` classifies the failure — offline (`AuthRetryableFetchException`
+or raw socket/client errors) → "No internet connection. You need to be online the
+first time you sign in…"; 400 / "invalid login credentials" → "Incorrect email or
+password."; 429 / rate → "Too many attempts — wait a minute…". `login_screen.dart`
+now renders that instead of `authState.error.toString()`. (2) Cached session usable
+offline: `supabase_flutter` already restores the session from local storage on cold
+start (no network), but the router's owner/staff lookup then waited up to 5s before
+reaching the dashboard. `app_router.dart` now does a `Connectivity().checkConnectivity()`
+check first — if offline with a restored session it routes straight to the dashboard
+(same destination as the old timeout fallback, but instant). Note: a *first-ever*
+login still requires internet by design (no password stored on device). 5 unit tests
+for the classifier in `test/features/auth/friendly_auth_error_test.dart`.
+
+**Bug 9 — Wrong password shows raw exception. FIXED (commit `16e5bb5`, same classifier).**
+Folded into Bug 8: `friendlyAuthError` maps the 400 / "invalid login credentials"
+case to "Incorrect email or password." — the login screen was the one remaining
+sign-in path still dumping the raw `AuthException` (inventory + accept-invite already
+used `on AuthException catch`).
+
+---
+
 ## Session 17 (2026-06-12) — test-feedback batch (12 items, all on `main`)
 
 **Manager/credit-detail saw only own-device sales (root cause for 3 reports).**
