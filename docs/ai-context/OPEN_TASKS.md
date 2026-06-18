@@ -407,6 +407,15 @@ Reported by Temesgen. Not yet diagnosed or fixed.
 
 ---
 
+## EOD Cash Reconciliation — Deferred
+
+- [ ] **End-of-day cash drawer reconciliation** (2026-06-18): float + cash sales −
+  cash expenses = expected drawer vs. physical count → discrepancy report. Only
+  useful if shop has staff handling cash (theft/error detection). Overkill if owner
+  is the sole cashier. Revisit after pilot based on shop owner feedback.
+
+---
+
 ## Data Backup & Recovery — Explore later
 
 - [ ] **Device-level backup for offline data** (2026-06-18, session start): Users
