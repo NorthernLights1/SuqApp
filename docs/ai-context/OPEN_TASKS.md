@@ -407,6 +407,17 @@ Reported by Temesgen. Not yet diagnosed or fixed.
 
 ---
 
+## Data Backup & Recovery — Explore later
+
+- [ ] **Device-level backup for offline data** (2026-06-18, session start): Users
+  can restore their app data across uninstall via: (1) Supabase sync + login restore
+  (already implemented, safest); (2) native device backup (iOS iCloud, Android backup
+  service — minimal config); (3) manual export (CSV/JSON file). Explore which gives
+  best UX offline, especially for unsynced local changes. Currently, uninstall loses
+  local data if it hasn't synced to Supabase yet.
+
+---
+
 ## Blocked / Deferred
 
 - Chapa payments — out of scope v1
