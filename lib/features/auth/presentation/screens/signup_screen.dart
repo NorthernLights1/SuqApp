@@ -22,6 +22,7 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
   final _emailCtrl = TextEditingController();
   final _passwordCtrl = TextEditingController();
   bool _obscurePassword = true;
+  bool _signedUp = false;
 
   @override
   void dispose() {
@@ -46,12 +47,44 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(error.toString()), backgroundColor: AppColors.error),
       );
+    } else {
+      setState(() => _signedUp = true);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final loading = ref.watch(authNotifierProvider).isLoading;
+
+    if (_signedUp) {
+      return Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.mark_email_unread_outlined, size: 64),
+                const SizedBox(height: 24),
+                Text('Check your email', style: AppTextStyles.headline1),
+                const SizedBox(height: 12),
+                Text(
+                  'We sent a confirmation link to ${_emailCtrl.text.trim()}. '
+                  'Click it to activate your account, then come back and log in.',
+                  style: AppTextStyles.bodySmall,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 40),
+                AppButton(
+                  label: 'Go to Login',
+                  onPressed: () => context.go(AppRoutes.login),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       body: SafeArea(
