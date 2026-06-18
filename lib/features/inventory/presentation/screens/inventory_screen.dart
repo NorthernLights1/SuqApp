@@ -400,14 +400,13 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
           );
       if (!updated) {
         if (!mounted) return;
-        setState(() => _loading = false);
+        // Price/threshold update failed (likely offline). Still proceed to
+        // queue the stock adjustment — it is offline-safe and independent.
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Failed to update product details'),
-            backgroundColor: AppColors.error,
+            content: Text('Product details could not be saved — will retry when online'),
           ),
         );
-        return;
       }
     }
 

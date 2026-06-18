@@ -1,3 +1,4 @@
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -50,9 +51,18 @@ GoRouter createRouter() {
         if (!isAuthRoute) return null;
 
         // Logged in, on auth screen → check if shop exists (owner) or staff
-        // membership. Bound the network calls: offline these would otherwise
-        // hang with no UI, showing a black screen on cold start. On timeout
-        // the catch below sends an already-logged-in user to the dashboard.
+        // membership. This needs the network. If we're offline but already hold
+        // a (locally-restored) session, skip the lookup and go straight to the
+        // dashboard — the local cache serves the data. Same destination as the
+        // timeout fallback below, but instant (no 5s dead wait on every offline
+        // cold start). Bug 8: a cached session is usable offline.
+        final conn = await Connectivity().checkConnectivity();
+        final offline = conn.every((r) => r == ConnectivityResult.none);
+        if (offline) return AppRoutes.dashboard;
+
+        // Bound the network calls: offline these would otherwise hang with no
+        // UI, showing a black screen on cold start. On timeout the catch below
+        // sends an already-logged-in user to the dashboard.
         const lookupTimeout = Duration(seconds: 5);
 
         final shopData = await client

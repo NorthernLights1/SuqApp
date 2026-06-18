@@ -245,9 +245,30 @@ class SalesRepository implements ISalesRepository {
     required String reason,
     required String branchId,
   }) async {
-    // Void requires connectivity — inventory reversal must reach the server
-    await _remote.voidSale(
-        saleId: saleId, voidedBy: voidedBy, reason: reason, branchId: branchId);
+    // Void is remote-only: inventory reversal runs as a server-side transaction.
+    // Catch network failures and surface a user-friendly message instead of a
+    // raw SocketException.
+    try {
+      await _remote.voidSale(
+          saleId: saleId,
+          voidedBy: voidedBy,
+          reason: reason,
+          branchId: branchId);
+    } catch (e) {
+      final msg = e.toString();
+      // Let real server rejections (already voided, permission denied) through
+      // with their original message; wrap network/timeout failures.
+      if (msg.contains('SocketException') ||
+          msg.contains('Failed host lookup') ||
+          msg.contains('Connection refused') ||
+          msg.contains('Network is unreachable') ||
+          msg.contains('TimeoutException') ||
+          msg.contains('timed out')) {
+        throw Exception(
+            'Voiding a sale requires an internet connection. Please try again when online.');
+      }
+      rethrow;
+    }
     await _db?.markSaleVoided(saleId, reason, voidedBy);
   }
 

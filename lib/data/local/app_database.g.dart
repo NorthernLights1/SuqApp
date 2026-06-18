@@ -133,6 +133,21 @@ class $LocalProductsTable extends LocalProducts
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+    'is_synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -147,6 +162,7 @@ class $LocalProductsTable extends LocalProducts
     costPrice,
     isActive,
     syncedAt,
+    isSynced,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -234,6 +250,12 @@ class $LocalProductsTable extends LocalProducts
     } else if (isInserting) {
       context.missing(_syncedAtMeta);
     }
+    if (data.containsKey('is_synced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta),
+      );
+    }
     return context;
   }
 
@@ -298,6 +320,10 @@ class $LocalProductsTable extends LocalProducts
         DriftSqlType.dateTime,
         data['${effectivePrefix}synced_at'],
       )!,
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_synced'],
+      )!,
     );
   }
 
@@ -327,6 +353,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
   final Decimal? costPrice;
   final bool isActive;
   final DateTime syncedAt;
+  final bool isSynced;
   const ProductRow({
     required this.id,
     required this.shopId,
@@ -340,6 +367,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     this.costPrice,
     required this.isActive,
     required this.syncedAt,
+    required this.isSynced,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -374,6 +402,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     }
     map['is_active'] = Variable<bool>(isActive);
     map['synced_at'] = Variable<DateTime>(syncedAt);
+    map['is_synced'] = Variable<bool>(isSynced);
     return map;
   }
 
@@ -399,6 +428,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           : Value(costPrice),
       isActive: Value(isActive),
       syncedAt: Value(syncedAt),
+      isSynced: Value(isSynced),
     );
   }
 
@@ -424,6 +454,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       costPrice: serializer.fromJson<Decimal?>(json['costPrice']),
       isActive: serializer.fromJson<bool>(json['isActive']),
       syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
     );
   }
   @override
@@ -442,6 +473,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       'costPrice': serializer.toJson<Decimal?>(costPrice),
       'isActive': serializer.toJson<bool>(isActive),
       'syncedAt': serializer.toJson<DateTime>(syncedAt),
+      'isSynced': serializer.toJson<bool>(isSynced),
     };
   }
 
@@ -458,6 +490,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     Value<Decimal?> costPrice = const Value.absent(),
     bool? isActive,
     DateTime? syncedAt,
+    bool? isSynced,
   }) => ProductRow(
     id: id ?? this.id,
     shopId: shopId ?? this.shopId,
@@ -471,6 +504,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     costPrice: costPrice.present ? costPrice.value : this.costPrice,
     isActive: isActive ?? this.isActive,
     syncedAt: syncedAt ?? this.syncedAt,
+    isSynced: isSynced ?? this.isSynced,
   );
   ProductRow copyWithCompanion(LocalProductsCompanion data) {
     return ProductRow(
@@ -498,6 +532,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
       costPrice: data.costPrice.present ? data.costPrice.value : this.costPrice,
       isActive: data.isActive.present ? data.isActive.value : this.isActive,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
     );
   }
 
@@ -515,7 +550,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           ..write('sellingPrice: $sellingPrice, ')
           ..write('costPrice: $costPrice, ')
           ..write('isActive: $isActive, ')
-          ..write('syncedAt: $syncedAt')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('isSynced: $isSynced')
           ..write(')'))
         .toString();
   }
@@ -534,6 +570,7 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
     costPrice,
     isActive,
     syncedAt,
+    isSynced,
   );
   @override
   bool operator ==(Object other) =>
@@ -550,7 +587,8 @@ class ProductRow extends DataClass implements Insertable<ProductRow> {
           other.sellingPrice == this.sellingPrice &&
           other.costPrice == this.costPrice &&
           other.isActive == this.isActive &&
-          other.syncedAt == this.syncedAt);
+          other.syncedAt == this.syncedAt &&
+          other.isSynced == this.isSynced);
 }
 
 class LocalProductsCompanion extends UpdateCompanion<ProductRow> {
@@ -566,6 +604,7 @@ class LocalProductsCompanion extends UpdateCompanion<ProductRow> {
   final Value<Decimal?> costPrice;
   final Value<bool> isActive;
   final Value<DateTime> syncedAt;
+  final Value<bool> isSynced;
   final Value<int> rowid;
   const LocalProductsCompanion({
     this.id = const Value.absent(),
@@ -580,6 +619,7 @@ class LocalProductsCompanion extends UpdateCompanion<ProductRow> {
     this.costPrice = const Value.absent(),
     this.isActive = const Value.absent(),
     this.syncedAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalProductsCompanion.insert({
@@ -595,6 +635,7 @@ class LocalProductsCompanion extends UpdateCompanion<ProductRow> {
     this.costPrice = const Value.absent(),
     required bool isActive,
     required DateTime syncedAt,
+    this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        shopId = Value(shopId),
@@ -617,6 +658,7 @@ class LocalProductsCompanion extends UpdateCompanion<ProductRow> {
     Expression<String>? costPrice,
     Expression<bool>? isActive,
     Expression<DateTime>? syncedAt,
+    Expression<bool>? isSynced,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -633,6 +675,7 @@ class LocalProductsCompanion extends UpdateCompanion<ProductRow> {
       if (costPrice != null) 'cost_price': costPrice,
       if (isActive != null) 'is_active': isActive,
       if (syncedAt != null) 'synced_at': syncedAt,
+      if (isSynced != null) 'is_synced': isSynced,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -650,6 +693,7 @@ class LocalProductsCompanion extends UpdateCompanion<ProductRow> {
     Value<Decimal?>? costPrice,
     Value<bool>? isActive,
     Value<DateTime>? syncedAt,
+    Value<bool>? isSynced,
     Value<int>? rowid,
   }) {
     return LocalProductsCompanion(
@@ -665,6 +709,7 @@ class LocalProductsCompanion extends UpdateCompanion<ProductRow> {
       costPrice: costPrice ?? this.costPrice,
       isActive: isActive ?? this.isActive,
       syncedAt: syncedAt ?? this.syncedAt,
+      isSynced: isSynced ?? this.isSynced,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -718,6 +763,9 @@ class LocalProductsCompanion extends UpdateCompanion<ProductRow> {
     if (syncedAt.present) {
       map['synced_at'] = Variable<DateTime>(syncedAt.value);
     }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -739,6 +787,7 @@ class LocalProductsCompanion extends UpdateCompanion<ProductRow> {
           ..write('costPrice: $costPrice, ')
           ..write('isActive: $isActive, ')
           ..write('syncedAt: $syncedAt, ')
+          ..write('isSynced: $isSynced, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -6279,8 +6328,23 @@ class $LocalProductCategoriesTable extends LocalProductCategories
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
   @override
-  List<GeneratedColumn> get $columns => [id, shopId, name, syncedAt];
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+    'is_synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [id, shopId, name, syncedAt, isSynced];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -6322,6 +6386,12 @@ class $LocalProductCategoriesTable extends LocalProductCategories
     } else if (isInserting) {
       context.missing(_syncedAtMeta);
     }
+    if (data.containsKey('is_synced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta),
+      );
+    }
     return context;
   }
 
@@ -6347,6 +6417,10 @@ class $LocalProductCategoriesTable extends LocalProductCategories
         DriftSqlType.dateTime,
         data['${effectivePrefix}synced_at'],
       )!,
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_synced'],
+      )!,
     );
   }
 
@@ -6362,11 +6436,13 @@ class ProductCategoryRow extends DataClass
   final String shopId;
   final String name;
   final DateTime syncedAt;
+  final bool isSynced;
   const ProductCategoryRow({
     required this.id,
     required this.shopId,
     required this.name,
     required this.syncedAt,
+    required this.isSynced,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -6375,6 +6451,7 @@ class ProductCategoryRow extends DataClass
     map['shop_id'] = Variable<String>(shopId);
     map['name'] = Variable<String>(name);
     map['synced_at'] = Variable<DateTime>(syncedAt);
+    map['is_synced'] = Variable<bool>(isSynced);
     return map;
   }
 
@@ -6384,6 +6461,7 @@ class ProductCategoryRow extends DataClass
       shopId: Value(shopId),
       name: Value(name),
       syncedAt: Value(syncedAt),
+      isSynced: Value(isSynced),
     );
   }
 
@@ -6397,6 +6475,7 @@ class ProductCategoryRow extends DataClass
       shopId: serializer.fromJson<String>(json['shopId']),
       name: serializer.fromJson<String>(json['name']),
       syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
     );
   }
   @override
@@ -6407,6 +6486,7 @@ class ProductCategoryRow extends DataClass
       'shopId': serializer.toJson<String>(shopId),
       'name': serializer.toJson<String>(name),
       'syncedAt': serializer.toJson<DateTime>(syncedAt),
+      'isSynced': serializer.toJson<bool>(isSynced),
     };
   }
 
@@ -6415,11 +6495,13 @@ class ProductCategoryRow extends DataClass
     String? shopId,
     String? name,
     DateTime? syncedAt,
+    bool? isSynced,
   }) => ProductCategoryRow(
     id: id ?? this.id,
     shopId: shopId ?? this.shopId,
     name: name ?? this.name,
     syncedAt: syncedAt ?? this.syncedAt,
+    isSynced: isSynced ?? this.isSynced,
   );
   ProductCategoryRow copyWithCompanion(LocalProductCategoriesCompanion data) {
     return ProductCategoryRow(
@@ -6427,6 +6509,7 @@ class ProductCategoryRow extends DataClass
       shopId: data.shopId.present ? data.shopId.value : this.shopId,
       name: data.name.present ? data.name.value : this.name,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
     );
   }
 
@@ -6436,13 +6519,14 @@ class ProductCategoryRow extends DataClass
           ..write('id: $id, ')
           ..write('shopId: $shopId, ')
           ..write('name: $name, ')
-          ..write('syncedAt: $syncedAt')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('isSynced: $isSynced')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(id, shopId, name, syncedAt);
+  int get hashCode => Object.hash(id, shopId, name, syncedAt, isSynced);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -6450,7 +6534,8 @@ class ProductCategoryRow extends DataClass
           other.id == this.id &&
           other.shopId == this.shopId &&
           other.name == this.name &&
-          other.syncedAt == this.syncedAt);
+          other.syncedAt == this.syncedAt &&
+          other.isSynced == this.isSynced);
 }
 
 class LocalProductCategoriesCompanion
@@ -6459,12 +6544,14 @@ class LocalProductCategoriesCompanion
   final Value<String> shopId;
   final Value<String> name;
   final Value<DateTime> syncedAt;
+  final Value<bool> isSynced;
   final Value<int> rowid;
   const LocalProductCategoriesCompanion({
     this.id = const Value.absent(),
     this.shopId = const Value.absent(),
     this.name = const Value.absent(),
     this.syncedAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalProductCategoriesCompanion.insert({
@@ -6472,6 +6559,7 @@ class LocalProductCategoriesCompanion
     required String shopId,
     required String name,
     required DateTime syncedAt,
+    this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        shopId = Value(shopId),
@@ -6482,6 +6570,7 @@ class LocalProductCategoriesCompanion
     Expression<String>? shopId,
     Expression<String>? name,
     Expression<DateTime>? syncedAt,
+    Expression<bool>? isSynced,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -6489,6 +6578,7 @@ class LocalProductCategoriesCompanion
       if (shopId != null) 'shop_id': shopId,
       if (name != null) 'name': name,
       if (syncedAt != null) 'synced_at': syncedAt,
+      if (isSynced != null) 'is_synced': isSynced,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -6498,6 +6588,7 @@ class LocalProductCategoriesCompanion
     Value<String>? shopId,
     Value<String>? name,
     Value<DateTime>? syncedAt,
+    Value<bool>? isSynced,
     Value<int>? rowid,
   }) {
     return LocalProductCategoriesCompanion(
@@ -6505,6 +6596,7 @@ class LocalProductCategoriesCompanion
       shopId: shopId ?? this.shopId,
       name: name ?? this.name,
       syncedAt: syncedAt ?? this.syncedAt,
+      isSynced: isSynced ?? this.isSynced,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -6524,6 +6616,9 @@ class LocalProductCategoriesCompanion
     if (syncedAt.present) {
       map['synced_at'] = Variable<DateTime>(syncedAt.value);
     }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -6537,6 +6632,7 @@ class LocalProductCategoriesCompanion
           ..write('shopId: $shopId, ')
           ..write('name: $name, ')
           ..write('syncedAt: $syncedAt, ')
+          ..write('isSynced: $isSynced, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -8326,6 +8422,7 @@ typedef $$LocalProductsTableCreateCompanionBuilder =
       Value<Decimal?> costPrice,
       required bool isActive,
       required DateTime syncedAt,
+      Value<bool> isSynced,
       Value<int> rowid,
     });
 typedef $$LocalProductsTableUpdateCompanionBuilder =
@@ -8342,6 +8439,7 @@ typedef $$LocalProductsTableUpdateCompanionBuilder =
       Value<Decimal?> costPrice,
       Value<bool> isActive,
       Value<DateTime> syncedAt,
+      Value<bool> isSynced,
       Value<int> rowid,
     });
 
@@ -8416,6 +8514,11 @@ class $$LocalProductsTableFilterComposer
     column: $table.syncedAt,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$LocalProductsTableOrderingComposer
@@ -8486,6 +8589,11 @@ class $$LocalProductsTableOrderingComposer
     column: $table.syncedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LocalProductsTableAnnotationComposer
@@ -8546,6 +8654,9 @@ class $$LocalProductsTableAnnotationComposer
 
   GeneratedColumn<DateTime> get syncedAt =>
       $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
 }
 
 class $$LocalProductsTableTableManager
@@ -8591,6 +8702,7 @@ class $$LocalProductsTableTableManager
                 Value<Decimal?> costPrice = const Value.absent(),
                 Value<bool> isActive = const Value.absent(),
                 Value<DateTime> syncedAt = const Value.absent(),
+                Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalProductsCompanion(
                 id: id,
@@ -8605,6 +8717,7 @@ class $$LocalProductsTableTableManager
                 costPrice: costPrice,
                 isActive: isActive,
                 syncedAt: syncedAt,
+                isSynced: isSynced,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -8621,6 +8734,7 @@ class $$LocalProductsTableTableManager
                 Value<Decimal?> costPrice = const Value.absent(),
                 required bool isActive,
                 required DateTime syncedAt,
+                Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalProductsCompanion.insert(
                 id: id,
@@ -8635,6 +8749,7 @@ class $$LocalProductsTableTableManager
                 costPrice: costPrice,
                 isActive: isActive,
                 syncedAt: syncedAt,
+                isSynced: isSynced,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -11445,6 +11560,7 @@ typedef $$LocalProductCategoriesTableCreateCompanionBuilder =
       required String shopId,
       required String name,
       required DateTime syncedAt,
+      Value<bool> isSynced,
       Value<int> rowid,
     });
 typedef $$LocalProductCategoriesTableUpdateCompanionBuilder =
@@ -11453,6 +11569,7 @@ typedef $$LocalProductCategoriesTableUpdateCompanionBuilder =
       Value<String> shopId,
       Value<String> name,
       Value<DateTime> syncedAt,
+      Value<bool> isSynced,
       Value<int> rowid,
     });
 
@@ -11482,6 +11599,11 @@ class $$LocalProductCategoriesTableFilterComposer
 
   ColumnFilters<DateTime> get syncedAt => $composableBuilder(
     column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -11514,6 +11636,11 @@ class $$LocalProductCategoriesTableOrderingComposer
     column: $table.syncedAt,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LocalProductCategoriesTableAnnotationComposer
@@ -11536,6 +11663,9 @@ class $$LocalProductCategoriesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get syncedAt =>
       $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
 }
 
 class $$LocalProductCategoriesTableTableManager
@@ -11588,12 +11718,14 @@ class $$LocalProductCategoriesTableTableManager
                 Value<String> shopId = const Value.absent(),
                 Value<String> name = const Value.absent(),
                 Value<DateTime> syncedAt = const Value.absent(),
+                Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalProductCategoriesCompanion(
                 id: id,
                 shopId: shopId,
                 name: name,
                 syncedAt: syncedAt,
+                isSynced: isSynced,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -11602,12 +11734,14 @@ class $$LocalProductCategoriesTableTableManager
                 required String shopId,
                 required String name,
                 required DateTime syncedAt,
+                Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalProductCategoriesCompanion.insert(
                 id: id,
                 shopId: shopId,
                 name: name,
                 syncedAt: syncedAt,
+                isSynced: isSynced,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

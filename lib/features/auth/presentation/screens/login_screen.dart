@@ -41,7 +41,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     if (authState.hasError) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(authState.error.toString()),
+          content: Text(friendlyAuthError(authState.error!)),
           backgroundColor: AppColors.error,
         ),
       );
