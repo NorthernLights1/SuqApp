@@ -419,6 +419,12 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
     if (!mounted) return;
     setState(() => _loading = false);
     if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Stock added'),
+          backgroundColor: AppColors.success,
+        ),
+      );
       Navigator.pop(context);
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -639,6 +645,12 @@ class _CorrectStockDialogState extends ConsumerState<_CorrectStockDialog> {
     if (!mounted) return;
     setState(() => _loading = false);
     if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Stock corrected'),
+          backgroundColor: AppColors.success,
+        ),
+      );
       Navigator.pop(context);
     } else {
       setState(() => _error = 'Correction failed. Try again.');
@@ -857,12 +869,18 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
 
     if (!mounted) return;
     if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_isEdit ? 'Product updated' : 'Product added'),
+          backgroundColor: AppColors.success,
+        ),
+      );
       Navigator.pop(context);
     } else {
       final err = ref.read(productFormProvider).error;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(err?.toString() ?? 'Failed to save'),
+          content: Text(err?.toString() ?? 'Failed to save product'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -891,7 +909,17 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     if (confirm != true || !mounted) return;
     final ok =
         await ref.read(productFormProvider.notifier).deactivate(widget.product!.id);
-    if (mounted && ok) Navigator.pop(context);
+    if (!mounted) return;
+    if (ok) {
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to remove product'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
   }
 
   Future<void> _createCategory() async {

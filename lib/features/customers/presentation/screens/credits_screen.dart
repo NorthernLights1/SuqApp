@@ -321,8 +321,13 @@ class _SettleSheetState extends ConsumerState<_SettleSheet> {
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
         );
     if (!mounted) return;
-    Navigator.pop(context);
-    if (!ok) {
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Payment of ${formatCurrency(amount)} recorded'),
+        backgroundColor: AppColors.success,
+      ));
+      Navigator.pop(context);
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
         content: Text('Could not record the payment. Try again.'),
         backgroundColor: AppColors.error,
