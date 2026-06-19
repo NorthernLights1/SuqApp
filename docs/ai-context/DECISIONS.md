@@ -266,6 +266,24 @@ Reason: Separates normal operations (restock) from corrections (data fixes). Pas
 
 ---
 
+## Decision: HR/payroll is a separate product; financial module is out of scope
+Date: 2026-06-19 | Status: Active
+
+Suq POS is a paper-ledger replacement for small shops — not a full ERP or financial module.
+
+**HR/payroll**: Deferred as a future separate product (Suq HR). If ever built:
+- `hr_integration` flag in `shop_settings` controls POS behaviour.
+  - `false` (default) → POS manages staff directly via `shop_users` (standalone mode).
+  - `true` → HR owns `shop_users` writes; POS reads staff as read-only (integrated mode).
+- Clients who only need POS never flip the flag. One codebase handles both cases.
+- Ethiopian labour law baseline: 7% employee + 11% employer pension (Proclamation 715/2011);
+  income tax brackets 0–35% across 7 bands.
+
+**Financial module** (supplier AP, formal invoicing, VAT 15%, bank reconciliation, true P&L,
+budgets, multi-currency): explicitly out of scope. Different customer, different product.
+
+---
+
 ## Decision: Credit settlement — partial payments allowed
 Date: 2026-06-02 | Status: Active
 

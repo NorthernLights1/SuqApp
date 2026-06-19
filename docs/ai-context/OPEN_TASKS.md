@@ -228,11 +228,10 @@ Diagnosed (not yet fixed). Root causes confirmed by reading the code.
 - [x] **Bug 1 — Void sale offline crashes**: FIXED (commit `9a55b7f`). `voidSale()`
   now catches network/timeout exceptions and shows "Voiding a sale requires an
   internet connection." Server rejections propagate as-is.
-- [ ] **Bug 2 / 3 — Void does not refresh inventory immediately (even online)**:
-  After a successful online void, `ref.invalidate(stockLevelsProvider)` re-reads
-  the local Drift mirror — which hasn't been updated yet (background `_refreshStock`
-  runs after). User must restart to see restored stock.
-  (`sales_provider.dart:334`)
+- [x] **Bug 2 / 3 — Void does not refresh inventory immediately**: ALREADY FIXED.
+  `VoidSaleNotifier` awaits `inventoryRepository.refreshStock(branchId)` before
+  invalidating `stockLevelsProvider` — local mirror is updated before the UI
+  re-reads it. (`sales_provider.dart:333`)
 - [x] **Bug 4 — New category fails offline**: FIXED (commit `9a55b7f`).
   `createProductCategory()` now writes locally first (UUID client-generated,
   `isSynced=false`). SyncService pushes when online. Web path remote-only.
@@ -440,3 +439,24 @@ Reported by Temesgen. Not yet diagnosed or fixed.
   partial) is a distinct transaction type and deserves separate handling IF pilot
   shops actually process returns. Deferred for now. When built, must be
   offline-first from day one (do not repeat Bug 1).
+- **Receipt printer support — DEFERRED post-pilot**. Bluetooth thermal printers
+  (80mm ESC/POS, common in Ethiopian shops) via `bluetooth_print` or `esc_pos_utils`
+  packages. USB wired printers also possible but harder on Android. No architectural
+  changes needed — add when pilot shops ask "can I print receipts?"
+- **Web app / PC support — DEFERRED post-pilot**. Flutter web build already works
+  (`flutter build web`) and the offline layer already falls back to Supabase-direct
+  on web (`_db == null` guards in place). Main gap is responsive layouts for wider
+  screens — a design pass, not a rewrite. Add when shops ask "can my accountant
+  check reports from a laptop?"
+- **EOD cash reconciliation — DEFERRED post-pilot** (decided 2026-06-19). Schema
+  table `cash_reconciliations` already exists. Only useful if shop has staff handling
+  cash. Revisit after pilot feedback. Plan reviewed and set aside — build after v1.
+- **Weekly auth cleanup — DEFERRED post-pilot** (decided 2026-06-19). Two pg_cron
+  jobs running weekly via the existing `pg_net` + `cron_secret` pattern:
+  (1) Delete Supabase auth users who signed up but never verified their email
+  (unverified after 7 days → `auth.admin.deleteUser`).
+  (2) Delete `shop_users` rows with status='invited' older than 7 days + their
+  corresponding auth user if they were created by the invite flow and never
+  activated. Keeps the auth table clean and prevents ghost accounts.
+  Implementation: Edge Function called by pg_cron (same pattern as cron-notifications)
+  using service_role key to call `auth.admin` API.
