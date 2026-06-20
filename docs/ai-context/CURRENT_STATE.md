@@ -1,6 +1,6 @@
 # Current State — Suq ERP
 
-Last updated: 2026-06-19 (session 20)
+Last updated: 2026-06-20
 
 ---
 
@@ -9,8 +9,8 @@ Last updated: 2026-06-19 (session 20)
 **Suq** — mobile ERP for small shop owners. Flutter + Supabase.
 Package: `com.temesgen.suq` | Repo: `NorthernLights1/SuqApp`
 Flutter app root: `c:/Projects/SuqApp/`
-Active branch: `feat/action-feedback` (pushing to main). `security` merged to
-`main` (PR #1). `offline-first_v2` merged to `main` (PR #4). `main` is current.
+Active branch: `feat/action-feedback` (in progress — action feedback / UX polish).
+`security` merged to `main` (PR #1). `offline-first_v2` merged to `main` (PR #4).
 Push: `git push origin <branch>`
 
 ## Build & Distribution
@@ -24,7 +24,7 @@ Push: `git push origin <branch>`
 
 ## Current Phase
 
-**Phase 5 complete. Session 6 fixed 3 bugs + a dependency regression.**
+**Session 20 in progress on `feat/action-feedback`.**
 
 | Phase | Status |
 |---|---|
@@ -49,11 +49,9 @@ Push: `git push origin <branch>`
 | Session 15 — Auto-sync triggers, per-credit partial settlement + payment history (mig 017/018), add-stock fields | ✅ Done |
 | Session 16 — GitHub Actions APK build, APK debug-build fixes (env secrets, INTERNET perm), security branch (licensing) | ✅ Done |
 | Session 17 — Test-feedback batch (12 items): server-first sales reads, cashier name, reports RBAC + drill-downs, offline boot, inventory refresh, honest overdue-email, email-all recipients (fn v5) | ✅ Done (merged to main) |
-| Session 18 — Licensing merged to main; overdue-email = all unpaid (fn v6); offline-first Phases 1–3 (download/pull sync, all reads local-first, oversell conflict detection+resolution+email) | 🚧 Built, pending on-device verify + merge (branch `offline-first_v2`) |
-| Session 19 — Device testing: 9 bugs found. Fixed: Bug 7 (UTC sync), Bugs 1,4,5,6,10,12 (void message, offline product/category creation, reports local-first), Bugs 8+9 (friendly offline/wrong-password login error + cached session usable offline). Schema v11. Bug 11 confirmed not a bug. Code cleanups: removed 4× redundant try/catch, fixed misleading comment, simplified offline check, added test coverage. | ✅ Merged (PR #4) |
-| Session 20 — Action feedback: success/error snackbars on all write operations (expenses, add stock, correct stock, product save/update, product deactivation). Fixed pre-existing bug where credit settle sheet always closed even on failure. | 🚧 On branch `feat/action-feedback`, pushing |
-| Session 15 — Code review: 9 findings fixed (atomic upsert, CHECK constraint, false-success snackbar, unsafe cast, INotificationService wiring, Telegram flag, stale controllers, regex, raw error) | ✅ Done |
-| Session 16 — service_role grant fix, UTC date fix, code-based staff invite, profiles shopmate read, scheduled 9am/9pm notifications (low-stock + overdue) | ✅ Done |
+| Session 18 — Licensing merged to main; overdue-email = all unpaid (fn v6); offline-first Phases 1–3 (download/pull sync, all reads local-first, oversell conflict detection+resolution+email) | ✅ Done (merged to main via PR #4 in session 19) |
+| Session 19 — Device testing: 9 bugs found. Fixed: Bug 7 (UTC sync), Bugs 1,4,5,6,10,12 (void message, offline product/category creation, reports local-first), Bugs 8+9 (friendly offline/wrong-password login error + cached session usable offline). Schema v11. Bug 11 confirmed not a bug. Code cleanups. | ✅ Merged (PR #4) |
+| Session 20 — Action feedback: success/error snackbars on all write operations (expenses, add stock, correct stock, product save/update, product deactivation). Fixed pre-existing bug where credit settle sheet always closed even on failure. | 🚧 On branch `feat/action-feedback` |
 
 ---
 
@@ -238,12 +236,15 @@ on the user-visible path. Remote is consulted only when the local cache can't
 answer (e.g. a sale older than the sync window, or web with no local DB).
 
 **Seed / pull**: `SeedNotifier` watches shop (watched in `dashboard_screen.dart`)
-and seeds on login; `SeedService.seedAll` is a full download (shop, branches,
-settings, payment methods, categories, units, profiles, products, stock,
-customers, sales+items, expenses, credit payments) and also runs on every sync
-trigger via `SyncScheduler` (push then pull).
+and seeds on login; `SeedService` uses a **delta pull engine** — per-table cursor
+in `LocalSyncState`, fetches only rows where `updated_at >= cursor`, upserts live
+rows, hard-deletes soft-deleted rows, then advances cursor. First pull is full
+(366-day / 2000-row window for sales/expenses). 13 `_seedX` methods are the registry.
 
-**Sync**: `SyncService._pushPendingSales` pushes unsynced sales to Supabase; handles duplicate-key gracefully.
+**Sync**: `SyncService` bulk-upserts all pending entities in FK order:
+customers → sales + sale_items → expenses → credit payments → products → product
+categories. All writes are `upsert(onConflict:'id')` (idempotent). Stock
+adjustments remain per-row (server-side delta accumulator).
 
 **Web**: `appDatabaseProvider` returns `null` on web (`kIsWeb`). All callers null-guarded. Falls back to Supabase-direct.
 
@@ -266,13 +267,14 @@ trigger via `SyncScheduler` (push then pull).
 
 ## Known Tech Debt
 
-- Inventory writes (create/edit product, stock adjust) not write-through to Drift
+- Product/category **edit** (updateProduct) still remote-only; create is now offline-first
 - Hardcoded strings throughout screens violate l10n rule (`app_en.arb` not used)
 - No error boundaries — raw Supabase exceptions reach snackbars
-- ~~`SyncService` not auto-triggered on connectivity change~~ STALE — `SyncScheduler`
-  already fires on offline→online edge + 15-min backstop + cold start (verified
-  2026-06-14 reading the code)
 - Permission cache TTL not implemented (role changes need app restart)
 - `Decimal.parse()` without try-catch in models — can throw on malformed DB data
-- Inventory writes (create/edit product, stock adjust) not write-through to Drift
 - `FilteringTextInputFormatter` allows multiple decimal points (e.g. "1.2.3") — `Decimal.tryParse` returns null and validation catches it, but a smarter formatter could reject mid-input
+- Expenses & customers push as bulk upsert — a single invalid row blocks that batch (sales/adjustments/credit payments already per-row failure-isolated)
+- Presentation providers call Supabase directly (bypasses "modules behind interfaces" rule) — app-wide cleanup, not per-feature
+
+---
+*Related: [[INDEX]] · [[OPEN_TASKS]] · [[DECISIONS]] · [[BUGS_AND_FIXES]] · [[FILE_MAP]]*

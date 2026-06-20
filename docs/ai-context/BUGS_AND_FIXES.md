@@ -543,3 +543,6 @@ Status: All fixed (2026-06-06)
 9. Raw `${state.error}` interpolated in user-facing snackbar for reminder send failures. Replaced with generic message.
 
 Files: `settings_provider.dart`, `settings_screen.dart`, `sales_provider.dart`, `auth_provider.dart`, `notification_service.dart`, `notification_service_interface.dart`, `012_notifications.sql`
+
+---
+*Related: [[INDEX]] · [[CURRENT_STATE]] · [[OPEN_TASKS]] · [[DECISIONS]] · [[FILE_MAP]]*
