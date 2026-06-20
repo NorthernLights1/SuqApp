@@ -131,6 +131,39 @@ fire-and-forget push to remove).
 - Triggering already satisfied by `SyncScheduler`; B just repoints `onPull` at the
   new delta pull. Optional debounced post-write nudge if needed.
 
+## Decision: Retail vs Wholesale split via a locked `shop_type` setting
+Date: 2026-06-21 | Status: Active
+
+Suq targets both retail shops and (irregular) wholesalers/distributors — e.g. a
+pharma distributor with no warehouse or barcode printer. Rather than fork the
+app, one `shop_type` shop_setting (`'retail'` | `'wholesale'`) gates the
+differences.
+
+- **Chosen at onboarding (step 1, before naming the shop), LOCKED afterward.**
+  Locking is intentional: switching mid-data has pricing/tier implications we
+  haven't designed, and avoids weird half-migrated states. Revisit if a real
+  need appears.
+- **`shopTypeProvider`** (FutureProvider, local-cache fallback) +
+  `AsyncValue<String>.isWholesale` extension is the single gate. Features wrap
+  with `if (ref.watch(shopTypeProvider).isWholesale)`. No per-feature flags.
+- **Wholesale gating so far:** customer mandatory on every sale (not just
+  credit). Planned: batch/expiry tracking, refunds. Retail paths stay untouched
+  so the simple shop keeps the simple flow.
+- **Why not a column on `shops`?** `shop_settings` is the existing config
+  mechanism, already synced to the local replica; a column would need a schema
+  migration + model change for the same result. (Key rule #1: config via
+  `shop_settings`.)
+
+## Decision: Custom measurement units are create-online-only (for now)
+Date: 2026-06-21 | Status: Active
+
+`measurement_units` already allows shop-scoped rows (RLS) and is in the delta
+pull, so reads/sync were free. Create writes straight to Supabase + optimistically
+mirrors locally; the local units table has no `is_synced`/`shop_id` and no
+SyncService push path. Units are reference data added rarely (usually online at
+setup), so a full offline-first create path (schema bump + push descriptor) isn't
+worth it yet. Add it if shops report needing to add units while disconnected.
+
 ## Decision: Staff invites use an email CODE, not a magic link
 Date: 2026-06-09 | Status: Active
 

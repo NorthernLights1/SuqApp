@@ -120,6 +120,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 | Path | Purpose | Edit when |
 |---|---|---|
 | `settings/presentation/providers/settings_provider.dart` | `BranchNameNotifier` | Adding settings |
+| `settings/presentation/providers/shop_type_provider.dart` | `shopTypeProvider` (retail/wholesale, local-cache fallback) + `AsyncValue<String>.isWholesale` gate | Gating wholesale-only features |
 | `settings/presentation/screens/settings_screen.dart` | Settings UI — shop info, branch edit | Changing settings UI |
 
 ---

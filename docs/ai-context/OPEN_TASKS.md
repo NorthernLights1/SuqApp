@@ -1,6 +1,30 @@
 # Open Tasks — Suq ERP
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
+
+---
+
+## Wholesale support (NEW — retail/wholesale split)
+
+shop_type chosen at onboarding, locked. `shopTypeProvider.isWholesale` is the gate.
+
+- [x] Onboarding: business-type selection step (retail vs wholesale), saved to
+  `shop_settings.shop_type`. Onboarding is now 5 steps.
+- [x] Mandatory customer on every sale (wholesale) — new-sale `_submit` gate +
+  "required" cue on the picker.
+- [x] Custom units of measurement (both types) — inline "New unit" in product form.
+  Online-only create; ponytail shortcut (offline add deferred).
+- [ ] **Batch numbers + expiry (wholesale)** — LARGE, plan-first. New
+  `product_batches` table (qty/expiry/batch_no per product), FEFO depletion on
+  sale (offline-first), rollup quantity, reuse `stock_conflicts` for oversell.
+  Retail keeps the single-quantity model untouched. Do in its own worktree.
+- [ ] **Refunds / returns** — schema (`refunds`/`refund_items`) already exists,
+  unused. Must be offline-first. Restock-to-batch couples to batch tracking — do
+  after it. (See "Blocked / Deferred" for the original deferral decision.)
+- [ ] Extra customer fields (business_name / TIN / address) — deferred to ride
+  with an invoice/printout feature (no display surface yet).
+- A4 invoice / detailed printout — **dropped by Temesgen (2026-06-21)**.
+  `printing`/`pdf` deps remain if revived.
 
 ---
 
@@ -25,20 +49,14 @@ Phases A–C complete. Remaining hardening items:
 
 ## Open bugs
 
-- [ ] **Bug 2/3 — Void does not refresh inventory immediately (even online):**
-  After a successful online void, `ref.invalidate(stockLevelsProvider)` re-reads
-  the local Drift mirror before `_refreshStock` has run. User sees stale stock
-  until restart. Fix: wait for the background refresh before invalidating, or
-  update the local mirror synchronously on void. (`sales_provider.dart:334`)
+- None currently open. (Bug 2/3 void-inventory-refresh, partial-settlement
+  payment logs, voided-credit-drops-from-views, and Bug 7 offline-sale-in-report
+  all confirmed fixed on device by Temesgen, 2026-06-21.)
 
 ---
 
 ## Unverified on-device
 
-- [ ] **Verify on device:** partial-settlement shows all payment logs; voided
-  credit drops out of all credit views (fixes are in but unverified on-device).
-- [ ] **Bug 7 retest:** make a sale offline → go online → confirm Today's report
-  shows the sale. Fix committed (`d05ee82`) but never retested on device.
 - [ ] **RLS Part 2:** run `supabase/rls_isolation_test.sql` Part 2 with two real
   accounts from different shops (cross-shop isolation; MCP bypasses RLS).
 
@@ -59,8 +77,8 @@ Phases A–C complete. Remaining hardening items:
 
 ## Deferred / Manual Steps
 
-- [ ] Supabase Dashboard: enable Leaked Password Protection (Auth → Settings → Password Security — cannot do via SQL)
-- [ ] Supabase: Magic Link email template must include `{{ .Token }}` (required for staff OTP invite to work)
+- [ ] Supabase Dashboard: enable Leaked Password Protection (Auth → Settings → Password Security — cannot do via SQL). Temesgen still deciding (2026-06-21).
+- [x] Supabase: Magic Link email template includes `{{ .Token }}` — confirmed added & working (2026-06-21); staff OTP invite functional.
 
 ---
 

@@ -974,6 +974,78 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     }
   }
 
+  Future<void> _createUnit() async {
+    final shop = await ref.read(currentShopProvider.future);
+    if (shop == null || !mounted) return;
+
+    final nameCtrl = TextEditingController();
+    final abbrCtrl = TextEditingController();
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New Unit'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Name (e.g. Carton)',
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: abbrCtrl,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => Navigator.pop(ctx, true),
+              decoration: const InputDecoration(
+                labelText: 'Abbreviation (e.g. ctn)',
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    final name = nameCtrl.text.trim();
+    final abbr = abbrCtrl.text.trim();
+    nameCtrl.dispose();
+    abbrCtrl.dispose();
+
+    if (created != true || name.isEmpty || abbr.isEmpty || !mounted) return;
+    try {
+      final unit = await ref.read(inventoryRepositoryProvider).createMeasurementUnit(
+            shopId: shop.id,
+            name: name,
+            abbreviation: abbr,
+          );
+      ref.invalidate(measurementUnitsProvider);
+      if (mounted) setState(() => _selectedUnit = unit);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to create unit — you may be offline'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final units = ref.watch(measurementUnitsProvider);
@@ -1029,28 +1101,46 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               ),
               const SizedBox(height: 16),
               units.when(
-                data: (list) => InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'Unit of Measurement *',
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 4),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<MeasurementUnit>(
-                      value: _selectedUnit,
-                      hint: const Text('Select unit'),
-                      isExpanded: true,
-                      items: list
-                          .map((u) => DropdownMenuItem(
-                                value: u,
-                                child: Text('${u.name} (${u.abbreviation})'),
-                              ))
-                          .toList(),
-                      onChanged: (u) => setState(() => _selectedUnit = u),
+                data: (list) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Unit of Measurement *',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 4),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<MeasurementUnit>(
+                          value: _selectedUnit,
+                          hint: const Text('Select unit'),
+                          isExpanded: true,
+                          items: list
+                              .map((u) => DropdownMenuItem(
+                                    value: u,
+                                    child:
+                                        Text('${u.name} (${u.abbreviation})'),
+                                  ))
+                              .toList(),
+                          onChanged: (u) => setState(() => _selectedUnit = u),
+                        ),
+                      ),
                     ),
-                  ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _createUnit,
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('New unit'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 loading: () => const LinearProgressIndicator(),
                 error: (e, st) => Text(

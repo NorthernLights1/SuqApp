@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
+import '../../../../features/settings/presentation/providers/shop_type_provider.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/utils/currency_formatter.dart';
@@ -106,6 +107,17 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     if (isCredit && customer == null) {
       _showSnack('Select or add a customer for credit sales');
       return;
+    }
+    // Wholesale shops sell to registered businesses — a customer is mandatory
+    // on every sale, not just credit. (Gate is app-level; shop_type is locked
+    // at onboarding.)
+    if (customer == null) {
+      final shopType = await ref.read(shopTypeProvider.future);
+      if (!mounted) return;
+      if (shopType == 'wholesale') {
+        _showSnack('Wholesale sales require a customer. Select or add one.');
+        return;
+      }
     }
     for (final item in cart) {
       if (item.quantity <= Decimal.zero) {
@@ -577,6 +589,7 @@ class _CustomerPickerSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final customer = ref.watch(selectedCustomerProvider);
+    final isWholesale = ref.watch(shopTypeProvider).isWholesale;
 
     if (customer != null) {
       return Material(
@@ -607,7 +620,7 @@ class _CustomerPickerSection extends ConsumerWidget {
       width: double.infinity,
       child: OutlinedButton.icon(
         icon: const Icon(Icons.person_search_outlined, size: 18),
-        label: const Text('Select customer'),
+        label: Text(isWholesale ? 'Select customer (required)' : 'Select customer'),
         onPressed: () => showModalBottomSheet<void>(
           context: context,
           isScrollControlled: true,

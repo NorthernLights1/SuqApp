@@ -135,6 +135,24 @@ class InventoryRemote {
     return (data as List).map((e) => MeasurementUnit.fromJson(e)).toList();
   }
 
+  Future<MeasurementUnit> createMeasurementUnit({
+    required String shopId,
+    required String name,
+    required String abbreviation,
+  }) async {
+    final data = await _client
+        .from('measurement_units')
+        .insert({
+          'shop_id': shopId,
+          'name': name.trim(),
+          'abbreviation': abbreviation.trim(),
+          'is_system': false,
+        })
+        .select('id, name, abbreviation')
+        .single();
+    return MeasurementUnit.fromJson(data);
+  }
+
   // ─── Product categories ────────────────────────────────────────────────────
 
   Future<List<ProductCategory>> getProductCategories(String shopId) async {
@@ -249,6 +267,15 @@ class MeasurementUnit {
         name: json['name'] as String,
         abbreviation: json['abbreviation'] as String,
       );
+
+  // Value equality on id so a DropdownButton can match a freshly-created unit
+  // against the refetched list (different instance, same id).
+  @override
+  bool operator ==(Object other) =>
+      other is MeasurementUnit && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 
   @override
   String toString() => '$name ($abbreviation)';

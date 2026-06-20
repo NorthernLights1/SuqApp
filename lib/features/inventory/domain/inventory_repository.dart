@@ -41,6 +41,32 @@ class InventoryRepository {
     return _remote.getMeasurementUnits(shopId);
   }
 
+  Future<MeasurementUnit> createMeasurementUnit({
+    required String shopId,
+    required String name,
+    required String abbreviation,
+  }) async {
+    // ponytail: custom units are reference data added rarely (usually online at
+    // setup). Create is remote-only; the delta pull mirrors it back. We also
+    // optimistically upsert into the local cache so the picker shows it at once.
+    // Offline support deferred — add a local-first path if shops report needing
+    // to add units while disconnected.
+    final unit = await _remote.createMeasurementUnit(
+      shopId: shopId,
+      name: name,
+      abbreviation: abbreviation,
+    );
+    await _db?.upsertUnits([
+      LocalMeasurementUnitsCompanion(
+        id: Value(unit.id),
+        name: Value(unit.name),
+        abbreviation: Value(unit.abbreviation),
+        syncedAt: Value(DateTime.now()),
+      ),
+    ]);
+    return unit;
+  }
+
   Future<List<ProductCategory>> getProductCategories(String shopId) async {
     // Local-first: categories can legitimately be empty (a shop may have none),
     // so when the local DB is present we trust it outright — never error offline.

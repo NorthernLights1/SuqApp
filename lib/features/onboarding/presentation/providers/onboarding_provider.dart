@@ -1,14 +1,16 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/constants/setting_keys.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 
-enum OnboardingStep { createShop, createBranch, openingStock, inviteStaff }
+enum OnboardingStep { selectShopType, createShop, createBranch, openingStock, inviteStaff }
 
 class OnboardingState {
   const OnboardingState({
-    this.step = OnboardingStep.createShop,
+    this.step = OnboardingStep.selectShopType,
     this.shopId,
     this.branchId,
+    this.shopType = 'retail',
     this.loading = false,
     this.error,
   });
@@ -16,6 +18,7 @@ class OnboardingState {
   final OnboardingStep step;
   final String? shopId;
   final String? branchId;
+  final String shopType;
   final bool loading;
   final String? error;
 
@@ -23,6 +26,7 @@ class OnboardingState {
     OnboardingStep? step,
     String? shopId,
     String? branchId,
+    String? shopType,
     bool? loading,
     String? error,
   }) =>
@@ -30,6 +34,7 @@ class OnboardingState {
         step: step ?? this.step,
         shopId: shopId ?? this.shopId,
         branchId: branchId ?? this.branchId,
+        shopType: shopType ?? this.shopType,
         loading: loading ?? this.loading,
         error: error,
       );
@@ -44,6 +49,10 @@ class OnboardingNotifier extends Notifier<OnboardingState> {
 
   SupabaseClient get _client => ref.read(supabaseClientProvider);
 
+  void selectShopType(String type) {
+    state = state.copyWith(shopType: type, step: OnboardingStep.createShop);
+  }
+
   Future<bool> createShop(String name) async {
     state = state.copyWith(loading: true, error: null);
     try {
@@ -51,6 +60,17 @@ class OnboardingNotifier extends Notifier<OnboardingState> {
         'create_shop_with_owner',
         params: {'p_name': name.trim()},
       ) as String;
+
+      await _client.from('shop_settings').upsert(
+        {
+          'shop_id': shopId,
+          'branch_id': null,
+          'key': SettingKeys.shopType,
+          'value': '"${state.shopType}"',
+          'updated_by': _client.auth.currentUser!.id,
+        },
+        onConflict: 'shop_id,branch_id,key',
+      );
 
       state = state.copyWith(
         loading: false,

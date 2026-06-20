@@ -1,6 +1,6 @@
 # Current State — Suq ERP
 
-Last updated: 2026-06-20
+Last updated: 2026-06-21
 
 ---
 
@@ -57,8 +57,8 @@ Push: `git push origin <branch>`
 
 ## What Works Right Now
 
-- `flutter analyze` — 0 issues ✅ (last run 2026-06-19, session 20)
-- `flutter test` — 134 tests passing ✅ (last run 2026-06-17, session 19)
+- `flutter analyze` — 0 issues ✅ (last run 2026-06-21)
+- `flutter test` — 134 tests passing ✅ (last run 2026-06-21)
 - Auth (signup/login/logout) ✅
 - Onboarding: shop + branch creation + default settings ✅
 - Dashboard: home summary, sales tab (color-coded), inventory tab, **credits tab**, more tab ✅
@@ -74,6 +74,31 @@ Push: `git push origin <branch>`
 - Reports: today/week/month, sales summary, gross profit, expense breakdown, low-stock ✅
 - Settings: branch name edit ✅; inventory mode toggle removed (enforcement is unconditional, no UI for it)
 - Staff: member list, suspend/restore, invite via email (Edge Function) ✅
+
+---
+
+## Retail vs Wholesale (shop_type) — NEW
+
+Suq now serves two business types, chosen at onboarding and **locked** afterward
+(pricing implications deferred).
+
+- **`shop_type` shop_setting** (`'retail'` | `'wholesale'`), written during shop
+  creation in `OnboardingNotifier.createShop`. Onboarding step 1 ("What kind of
+  business?") selects it before naming the shop; onboarding is now **5 steps**.
+- **`shopTypeProvider`** (`features/settings/.../shop_type_provider.dart`) —
+  FutureProvider reading the setting; local-cache fallback offline. Extension
+  `AsyncValue<String>.isWholesale` is the gate any feature uses:
+  `if (ref.watch(shopTypeProvider).isWholesale) ...`.
+- **Gated so far:** mandatory customer on every sale (wholesale) — the new-sale
+  `_submit` blocks a customer-less sale when wholesale; the customer picker shows
+  "(required)". Retail keeps customer optional (still required for credit).
+- **Custom units of measurement** (both types): "New unit" inline in the product
+  form unit picker → `InventoryRepository.createMeasurementUnit` (remote create +
+  optimistic local mirror; `measurement_units` already shop-scoped + in delta pull).
+  Online-only create (ponytail: reference data, added rarely while connected).
+- **Next for wholesale:** batch numbers + expiry (large, plan-first), refunds.
+  Extra customer fields (business_name/TIN/address) deferred to ride with an
+  invoice/printout feature where they'd be displayed (no surface yet).
 
 ---
 

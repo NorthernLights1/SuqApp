@@ -183,21 +183,22 @@
       "bases:Create new base": false
     }
   },
-  "active": "268f5357324f5b40",
+  "active": "2fdcdb4cfcfb43d8",
   "lastOpenFiles": [
+    "FILE_MAP.md.tmp.18620.e66d64f0daee",
+    "DECISIONS.md.tmp.18620.2be61be32cc2",
+    "OPEN_TASKS.md.tmp.18620.d839eda2dcd4",
+    "OPEN_TASKS.md.tmp.18620.32fa76295771",
+    "OPEN_TASKS.md.tmp.18620.7e6d6a2100db",
+    "CURRENT_STATE.md.tmp.18620.87266c693469",
+    "CURRENT_STATE.md.tmp.18620.c66ff5cf2630",
     "BUGS_AND_FIXES.md",
     "CURRENT_STATE.md",
     "OPEN_TASKS.md.tmp.30368.a6bccb0fbbb3",
     "OPEN_TASKS.md.tmp.30368.f1906131df3d",
     "OPEN_TASKS.md.tmp.30368.81d3de7935db",
     "CURRENT_STATE.md.tmp.30368.87e5df298916",
-    "DECISIONS.md.tmp.30368.64bc9d1160c0",
-    "DECISIONS.md.tmp.30368.fcd4e01c6ef9",
-    "Untitled",
     "Untitled.canvas",
-    "INDEX.md",
-    "OFFLINE_QA_CHECKLIST.md.tmp.30368.4bfa5ce3aecf",
-    "COMMANDS_RUN.md.tmp.30368.f7abd99dbdbf",
-    "FILE_MAP.md.tmp.30368.d6835b4d7d59"
+    "INDEX.md"
   ]
 }

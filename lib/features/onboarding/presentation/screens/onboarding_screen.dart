@@ -15,10 +15,11 @@ class OnboardingScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final step = ref.watch(onboardingProvider).step;
     return switch (step) {
-      OnboardingStep.createShop    => const _CreateShopStep(),
-      OnboardingStep.createBranch  => const _CreateBranchStep(),
-      OnboardingStep.openingStock  => const _OpeningStockStep(),
-      OnboardingStep.inviteStaff   => const _InviteStaffStep(),
+      OnboardingStep.selectShopType => const _SelectShopTypeStep(),
+      OnboardingStep.createShop     => const _CreateShopStep(),
+      OnboardingStep.createBranch   => const _CreateBranchStep(),
+      OnboardingStep.openingStock   => const _OpeningStockStep(),
+      OnboardingStep.inviteStaff    => const _InviteStaffStep(),
     };
   }
 }
@@ -82,7 +83,100 @@ class _StepScaffold extends StatelessWidget {
   }
 }
 
-// ─── Step 1: Create Shop ────────────────────────────────────────────────────
+// ─── Step 1: Select Shop Type ───────────────────────────────────────────────
+
+class _SelectShopTypeStep extends ConsumerWidget {
+  const _SelectShopTypeStep();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    void select(String type) =>
+        ref.read(onboardingProvider.notifier).selectShopType(type);
+
+    return _StepScaffold(
+      stepNumber: 1,
+      totalSteps: 5,
+      title: 'What kind of business?',
+      subtitle: 'This shapes your experience and cannot be changed later.',
+      child: Column(
+        children: [
+          _TypeCard(
+            icon: Icons.storefront_outlined,
+            title: 'Retail Shop',
+            description:
+                'Sell directly to walk-in customers. Great for general stores, boutiques, and small shops.',
+            onTap: () => select('retail'),
+          ),
+          const SizedBox(height: 16),
+          _TypeCard(
+            icon: Icons.warehouse_outlined,
+            title: 'Wholesale / Distributor',
+            description:
+                'Sell in bulk to other businesses. Includes batch tracking, expiry dates, and invoice printing.',
+            onTap: () => select('wholesale'),
+          ),
+          const Spacer(),
+        ],
+      ),
+    );
+  }
+}
+
+class _TypeCard extends StatelessWidget {
+  const _TypeCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String description;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppColors.divider),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppColors.primaryLight,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: AppColors.primary, size: 28),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: AppTextStyles.headline3),
+                  const SizedBox(height: 4),
+                  Text(description, style: AppTextStyles.bodySmall),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded, color: AppColors.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Step 2: Create Shop ────────────────────────────────────────────────────
 
 class _CreateShopStep extends ConsumerStatefulWidget {
   const _CreateShopStep();
@@ -116,8 +210,8 @@ class _CreateShopStepState extends ConsumerState<_CreateShopStep> {
   Widget build(BuildContext context) {
     final loading = ref.watch(onboardingProvider).loading;
     return _StepScaffold(
-      stepNumber: 1,
-      totalSteps: 4,
+      stepNumber: 2,
+      totalSteps: 5,
       title: 'Name your shop',
       subtitle: 'This is how your shop will appear across the app.',
       child: Form(
@@ -185,8 +279,8 @@ class _CreateBranchStepState extends ConsumerState<_CreateBranchStep> {
   Widget build(BuildContext context) {
     final loading = ref.watch(onboardingProvider).loading;
     return _StepScaffold(
-      stepNumber: 2,
-      totalSteps: 4,
+      stepNumber: 3,
+      totalSteps: 5,
       title: 'Add your shop location',
       subtitle: 'Where you sell from. You can rename it later in Settings.',
       child: Form(
@@ -229,8 +323,8 @@ class _OpeningStockStep extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return _StepScaffold(
-      stepNumber: 3,
-      totalSteps: 4,
+      stepNumber: 4,
+      totalSteps: 5,
       title: 'Add opening stock',
       subtitle: 'Enter your existing inventory. You can always do this later.',
       child: Column(
@@ -284,8 +378,8 @@ class _InviteStaffStep extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return _StepScaffold(
-      stepNumber: 4,
-      totalSteps: 4,
+      stepNumber: 5,
+      totalSteps: 5,
       title: 'Invite your staff',
       subtitle: 'Add managers and cashiers. You can do this later in Settings.',
       child: Column(
