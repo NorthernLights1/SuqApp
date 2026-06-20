@@ -248,7 +248,14 @@ Auth methods live in `AuthNotifier`: `sendInviteCode()`, `claimInvite()`.
 
 ## Drift / Offline Architecture (Phase 5)
 
-**Local DB**: `lib/data/local/app_database.dart` — tables: LocalProducts, LocalStock, LocalSales, LocalSaleItems, LocalCustomers.
+**Local DB**: `lib/data/local/app_database.dart` — tables: LocalProducts, LocalStock, LocalProductBatches (wholesale, schema v12), LocalSales, LocalSaleItems, LocalCustomers. Schema **v12**.
+
+**Batch tracking (wholesale, Phase 1 done — branch `feat/batch-tracking`)**:
+`product_batches` (server) holds qty/expiry/batch per batch; a trigger keeps
+`inventory.quantity` = sum(batches) so all existing reads are unchanged. Device
+mirrors via `LocalProductBatches` + `_seedProductBatches` delta pull. Retail
+untouched (no batches). Phases 2 (batch-aware add-stock), 3 (FEFO depletion +
+`sale_item_batches`), 4 (expiry UI) still to do. Migration 028 awaits live apply.
 
 **Write path (sales)**: `SalesRepository.createSale` → write to Drift
 (`isSynced=false`) + update local stock. No inline push (offline-first v2 single

@@ -1165,6 +1165,627 @@ class LocalStockCompanion extends UpdateCompanion<StockRow> {
   }
 }
 
+class $LocalProductBatchesTable extends LocalProductBatches
+    with TableInfo<$LocalProductBatchesTable, ProductBatchRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalProductBatchesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _branchIdMeta = const VerificationMeta(
+    'branchId',
+  );
+  @override
+  late final GeneratedColumn<String> branchId = GeneratedColumn<String>(
+    'branch_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _productIdMeta = const VerificationMeta(
+    'productId',
+  );
+  @override
+  late final GeneratedColumn<String> productId = GeneratedColumn<String>(
+    'product_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _batchNumberMeta = const VerificationMeta(
+    'batchNumber',
+  );
+  @override
+  late final GeneratedColumn<String> batchNumber = GeneratedColumn<String>(
+    'batch_number',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _expiryDateMeta = const VerificationMeta(
+    'expiryDate',
+  );
+  @override
+  late final GeneratedColumn<DateTime> expiryDate = GeneratedColumn<DateTime>(
+    'expiry_date',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<Decimal, String> quantity =
+      GeneratedColumn<String>(
+        'quantity',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<Decimal>($LocalProductBatchesTable.$converterquantity);
+  @override
+  late final GeneratedColumnWithTypeConverter<Decimal?, String> costPrice =
+      GeneratedColumn<String>(
+        'cost_price',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      ).withConverter<Decimal?>($LocalProductBatchesTable.$convertercostPrice);
+  static const VerificationMeta _receivedAtMeta = const VerificationMeta(
+    'receivedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> receivedAt = GeneratedColumn<DateTime>(
+    'received_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+    'synced_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+    'is_synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    branchId,
+    productId,
+    batchNumber,
+    expiryDate,
+    quantity,
+    costPrice,
+    receivedAt,
+    syncedAt,
+    isSynced,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_product_batches';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ProductBatchRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('branch_id')) {
+      context.handle(
+        _branchIdMeta,
+        branchId.isAcceptableOrUnknown(data['branch_id']!, _branchIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_branchIdMeta);
+    }
+    if (data.containsKey('product_id')) {
+      context.handle(
+        _productIdMeta,
+        productId.isAcceptableOrUnknown(data['product_id']!, _productIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_productIdMeta);
+    }
+    if (data.containsKey('batch_number')) {
+      context.handle(
+        _batchNumberMeta,
+        batchNumber.isAcceptableOrUnknown(
+          data['batch_number']!,
+          _batchNumberMeta,
+        ),
+      );
+    }
+    if (data.containsKey('expiry_date')) {
+      context.handle(
+        _expiryDateMeta,
+        expiryDate.isAcceptableOrUnknown(data['expiry_date']!, _expiryDateMeta),
+      );
+    }
+    if (data.containsKey('received_at')) {
+      context.handle(
+        _receivedAtMeta,
+        receivedAt.isAcceptableOrUnknown(data['received_at']!, _receivedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_receivedAtMeta);
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    if (data.containsKey('is_synced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  ProductBatchRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ProductBatchRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      branchId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}branch_id'],
+      )!,
+      productId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_id'],
+      )!,
+      batchNumber: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}batch_number'],
+      ),
+      expiryDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}expiry_date'],
+      ),
+      quantity: $LocalProductBatchesTable.$converterquantity.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}quantity'],
+        )!,
+      ),
+      costPrice: $LocalProductBatchesTable.$convertercostPrice.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}cost_price'],
+        ),
+      ),
+      receivedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}received_at'],
+      )!,
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}synced_at'],
+      )!,
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_synced'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalProductBatchesTable createAlias(String alias) {
+    return $LocalProductBatchesTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<Decimal, String> $converterquantity = const _Dec();
+  static TypeConverter<Decimal?, String?> $convertercostPrice =
+      const _NullDec();
+}
+
+class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
+  final String id;
+  final String branchId;
+  final String productId;
+  final String? batchNumber;
+  final DateTime? expiryDate;
+  final Decimal quantity;
+  final Decimal? costPrice;
+  final DateTime receivedAt;
+  final DateTime syncedAt;
+  final bool isSynced;
+  const ProductBatchRow({
+    required this.id,
+    required this.branchId,
+    required this.productId,
+    this.batchNumber,
+    this.expiryDate,
+    required this.quantity,
+    this.costPrice,
+    required this.receivedAt,
+    required this.syncedAt,
+    required this.isSynced,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['branch_id'] = Variable<String>(branchId);
+    map['product_id'] = Variable<String>(productId);
+    if (!nullToAbsent || batchNumber != null) {
+      map['batch_number'] = Variable<String>(batchNumber);
+    }
+    if (!nullToAbsent || expiryDate != null) {
+      map['expiry_date'] = Variable<DateTime>(expiryDate);
+    }
+    {
+      map['quantity'] = Variable<String>(
+        $LocalProductBatchesTable.$converterquantity.toSql(quantity),
+      );
+    }
+    if (!nullToAbsent || costPrice != null) {
+      map['cost_price'] = Variable<String>(
+        $LocalProductBatchesTable.$convertercostPrice.toSql(costPrice),
+      );
+    }
+    map['received_at'] = Variable<DateTime>(receivedAt);
+    map['synced_at'] = Variable<DateTime>(syncedAt);
+    map['is_synced'] = Variable<bool>(isSynced);
+    return map;
+  }
+
+  LocalProductBatchesCompanion toCompanion(bool nullToAbsent) {
+    return LocalProductBatchesCompanion(
+      id: Value(id),
+      branchId: Value(branchId),
+      productId: Value(productId),
+      batchNumber: batchNumber == null && nullToAbsent
+          ? const Value.absent()
+          : Value(batchNumber),
+      expiryDate: expiryDate == null && nullToAbsent
+          ? const Value.absent()
+          : Value(expiryDate),
+      quantity: Value(quantity),
+      costPrice: costPrice == null && nullToAbsent
+          ? const Value.absent()
+          : Value(costPrice),
+      receivedAt: Value(receivedAt),
+      syncedAt: Value(syncedAt),
+      isSynced: Value(isSynced),
+    );
+  }
+
+  factory ProductBatchRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ProductBatchRow(
+      id: serializer.fromJson<String>(json['id']),
+      branchId: serializer.fromJson<String>(json['branchId']),
+      productId: serializer.fromJson<String>(json['productId']),
+      batchNumber: serializer.fromJson<String?>(json['batchNumber']),
+      expiryDate: serializer.fromJson<DateTime?>(json['expiryDate']),
+      quantity: serializer.fromJson<Decimal>(json['quantity']),
+      costPrice: serializer.fromJson<Decimal?>(json['costPrice']),
+      receivedAt: serializer.fromJson<DateTime>(json['receivedAt']),
+      syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'branchId': serializer.toJson<String>(branchId),
+      'productId': serializer.toJson<String>(productId),
+      'batchNumber': serializer.toJson<String?>(batchNumber),
+      'expiryDate': serializer.toJson<DateTime?>(expiryDate),
+      'quantity': serializer.toJson<Decimal>(quantity),
+      'costPrice': serializer.toJson<Decimal?>(costPrice),
+      'receivedAt': serializer.toJson<DateTime>(receivedAt),
+      'syncedAt': serializer.toJson<DateTime>(syncedAt),
+      'isSynced': serializer.toJson<bool>(isSynced),
+    };
+  }
+
+  ProductBatchRow copyWith({
+    String? id,
+    String? branchId,
+    String? productId,
+    Value<String?> batchNumber = const Value.absent(),
+    Value<DateTime?> expiryDate = const Value.absent(),
+    Decimal? quantity,
+    Value<Decimal?> costPrice = const Value.absent(),
+    DateTime? receivedAt,
+    DateTime? syncedAt,
+    bool? isSynced,
+  }) => ProductBatchRow(
+    id: id ?? this.id,
+    branchId: branchId ?? this.branchId,
+    productId: productId ?? this.productId,
+    batchNumber: batchNumber.present ? batchNumber.value : this.batchNumber,
+    expiryDate: expiryDate.present ? expiryDate.value : this.expiryDate,
+    quantity: quantity ?? this.quantity,
+    costPrice: costPrice.present ? costPrice.value : this.costPrice,
+    receivedAt: receivedAt ?? this.receivedAt,
+    syncedAt: syncedAt ?? this.syncedAt,
+    isSynced: isSynced ?? this.isSynced,
+  );
+  ProductBatchRow copyWithCompanion(LocalProductBatchesCompanion data) {
+    return ProductBatchRow(
+      id: data.id.present ? data.id.value : this.id,
+      branchId: data.branchId.present ? data.branchId.value : this.branchId,
+      productId: data.productId.present ? data.productId.value : this.productId,
+      batchNumber: data.batchNumber.present
+          ? data.batchNumber.value
+          : this.batchNumber,
+      expiryDate: data.expiryDate.present
+          ? data.expiryDate.value
+          : this.expiryDate,
+      quantity: data.quantity.present ? data.quantity.value : this.quantity,
+      costPrice: data.costPrice.present ? data.costPrice.value : this.costPrice,
+      receivedAt: data.receivedAt.present
+          ? data.receivedAt.value
+          : this.receivedAt,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ProductBatchRow(')
+          ..write('id: $id, ')
+          ..write('branchId: $branchId, ')
+          ..write('productId: $productId, ')
+          ..write('batchNumber: $batchNumber, ')
+          ..write('expiryDate: $expiryDate, ')
+          ..write('quantity: $quantity, ')
+          ..write('costPrice: $costPrice, ')
+          ..write('receivedAt: $receivedAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('isSynced: $isSynced')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    branchId,
+    productId,
+    batchNumber,
+    expiryDate,
+    quantity,
+    costPrice,
+    receivedAt,
+    syncedAt,
+    isSynced,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ProductBatchRow &&
+          other.id == this.id &&
+          other.branchId == this.branchId &&
+          other.productId == this.productId &&
+          other.batchNumber == this.batchNumber &&
+          other.expiryDate == this.expiryDate &&
+          other.quantity == this.quantity &&
+          other.costPrice == this.costPrice &&
+          other.receivedAt == this.receivedAt &&
+          other.syncedAt == this.syncedAt &&
+          other.isSynced == this.isSynced);
+}
+
+class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
+  final Value<String> id;
+  final Value<String> branchId;
+  final Value<String> productId;
+  final Value<String?> batchNumber;
+  final Value<DateTime?> expiryDate;
+  final Value<Decimal> quantity;
+  final Value<Decimal?> costPrice;
+  final Value<DateTime> receivedAt;
+  final Value<DateTime> syncedAt;
+  final Value<bool> isSynced;
+  final Value<int> rowid;
+  const LocalProductBatchesCompanion({
+    this.id = const Value.absent(),
+    this.branchId = const Value.absent(),
+    this.productId = const Value.absent(),
+    this.batchNumber = const Value.absent(),
+    this.expiryDate = const Value.absent(),
+    this.quantity = const Value.absent(),
+    this.costPrice = const Value.absent(),
+    this.receivedAt = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalProductBatchesCompanion.insert({
+    required String id,
+    required String branchId,
+    required String productId,
+    this.batchNumber = const Value.absent(),
+    this.expiryDate = const Value.absent(),
+    required Decimal quantity,
+    this.costPrice = const Value.absent(),
+    required DateTime receivedAt,
+    required DateTime syncedAt,
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       branchId = Value(branchId),
+       productId = Value(productId),
+       quantity = Value(quantity),
+       receivedAt = Value(receivedAt),
+       syncedAt = Value(syncedAt);
+  static Insertable<ProductBatchRow> custom({
+    Expression<String>? id,
+    Expression<String>? branchId,
+    Expression<String>? productId,
+    Expression<String>? batchNumber,
+    Expression<DateTime>? expiryDate,
+    Expression<String>? quantity,
+    Expression<String>? costPrice,
+    Expression<DateTime>? receivedAt,
+    Expression<DateTime>? syncedAt,
+    Expression<bool>? isSynced,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (branchId != null) 'branch_id': branchId,
+      if (productId != null) 'product_id': productId,
+      if (batchNumber != null) 'batch_number': batchNumber,
+      if (expiryDate != null) 'expiry_date': expiryDate,
+      if (quantity != null) 'quantity': quantity,
+      if (costPrice != null) 'cost_price': costPrice,
+      if (receivedAt != null) 'received_at': receivedAt,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (isSynced != null) 'is_synced': isSynced,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalProductBatchesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? branchId,
+    Value<String>? productId,
+    Value<String?>? batchNumber,
+    Value<DateTime?>? expiryDate,
+    Value<Decimal>? quantity,
+    Value<Decimal?>? costPrice,
+    Value<DateTime>? receivedAt,
+    Value<DateTime>? syncedAt,
+    Value<bool>? isSynced,
+    Value<int>? rowid,
+  }) {
+    return LocalProductBatchesCompanion(
+      id: id ?? this.id,
+      branchId: branchId ?? this.branchId,
+      productId: productId ?? this.productId,
+      batchNumber: batchNumber ?? this.batchNumber,
+      expiryDate: expiryDate ?? this.expiryDate,
+      quantity: quantity ?? this.quantity,
+      costPrice: costPrice ?? this.costPrice,
+      receivedAt: receivedAt ?? this.receivedAt,
+      syncedAt: syncedAt ?? this.syncedAt,
+      isSynced: isSynced ?? this.isSynced,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (branchId.present) {
+      map['branch_id'] = Variable<String>(branchId.value);
+    }
+    if (productId.present) {
+      map['product_id'] = Variable<String>(productId.value);
+    }
+    if (batchNumber.present) {
+      map['batch_number'] = Variable<String>(batchNumber.value);
+    }
+    if (expiryDate.present) {
+      map['expiry_date'] = Variable<DateTime>(expiryDate.value);
+    }
+    if (quantity.present) {
+      map['quantity'] = Variable<String>(
+        $LocalProductBatchesTable.$converterquantity.toSql(quantity.value),
+      );
+    }
+    if (costPrice.present) {
+      map['cost_price'] = Variable<String>(
+        $LocalProductBatchesTable.$convertercostPrice.toSql(costPrice.value),
+      );
+    }
+    if (receivedAt.present) {
+      map['received_at'] = Variable<DateTime>(receivedAt.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalProductBatchesCompanion(')
+          ..write('id: $id, ')
+          ..write('branchId: $branchId, ')
+          ..write('productId: $productId, ')
+          ..write('batchNumber: $batchNumber, ')
+          ..write('expiryDate: $expiryDate, ')
+          ..write('quantity: $quantity, ')
+          ..write('costPrice: $costPrice, ')
+          ..write('receivedAt: $receivedAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $LocalSalesTable extends LocalSales
     with TableInfo<$LocalSalesTable, SaleRow> {
   @override
@@ -8361,6 +8982,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $LocalProductsTable localProducts = $LocalProductsTable(this);
   late final $LocalStockTable localStock = $LocalStockTable(this);
+  late final $LocalProductBatchesTable localProductBatches =
+      $LocalProductBatchesTable(this);
   late final $LocalSalesTable localSales = $LocalSalesTable(this);
   late final $LocalSaleItemsTable localSaleItems = $LocalSaleItemsTable(this);
   late final $LocalCustomersTable localCustomers = $LocalCustomersTable(this);
@@ -8390,6 +9013,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     localProducts,
     localStock,
+    localProductBatches,
     localSales,
     localSaleItems,
     localCustomers,
@@ -8972,6 +9596,325 @@ typedef $$LocalStockTableProcessedTableManager =
       $$LocalStockTableUpdateCompanionBuilder,
       (StockRow, BaseReferences<_$AppDatabase, $LocalStockTable, StockRow>),
       StockRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LocalProductBatchesTableCreateCompanionBuilder =
+    LocalProductBatchesCompanion Function({
+      required String id,
+      required String branchId,
+      required String productId,
+      Value<String?> batchNumber,
+      Value<DateTime?> expiryDate,
+      required Decimal quantity,
+      Value<Decimal?> costPrice,
+      required DateTime receivedAt,
+      required DateTime syncedAt,
+      Value<bool> isSynced,
+      Value<int> rowid,
+    });
+typedef $$LocalProductBatchesTableUpdateCompanionBuilder =
+    LocalProductBatchesCompanion Function({
+      Value<String> id,
+      Value<String> branchId,
+      Value<String> productId,
+      Value<String?> batchNumber,
+      Value<DateTime?> expiryDate,
+      Value<Decimal> quantity,
+      Value<Decimal?> costPrice,
+      Value<DateTime> receivedAt,
+      Value<DateTime> syncedAt,
+      Value<bool> isSynced,
+      Value<int> rowid,
+    });
+
+class $$LocalProductBatchesTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalProductBatchesTable> {
+  $$LocalProductBatchesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productId => $composableBuilder(
+    column: $table.productId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get batchNumber => $composableBuilder(
+    column: $table.batchNumber,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get expiryDate => $composableBuilder(
+    column: $table.expiryDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<Decimal, Decimal, String> get quantity =>
+      $composableBuilder(
+        column: $table.quantity,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnWithTypeConverterFilters<Decimal?, Decimal, String> get costPrice =>
+      $composableBuilder(
+        column: $table.costPrice,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<DateTime> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalProductBatchesTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalProductBatchesTable> {
+  $$LocalProductBatchesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get productId => $composableBuilder(
+    column: $table.productId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get batchNumber => $composableBuilder(
+    column: $table.batchNumber,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get expiryDate => $composableBuilder(
+    column: $table.expiryDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get costPrice => $composableBuilder(
+    column: $table.costPrice,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalProductBatchesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalProductBatchesTable> {
+  $$LocalProductBatchesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get branchId =>
+      $composableBuilder(column: $table.branchId, builder: (column) => column);
+
+  GeneratedColumn<String> get productId =>
+      $composableBuilder(column: $table.productId, builder: (column) => column);
+
+  GeneratedColumn<String> get batchNumber => $composableBuilder(
+    column: $table.batchNumber,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get expiryDate => $composableBuilder(
+    column: $table.expiryDate,
+    builder: (column) => column,
+  );
+
+  GeneratedColumnWithTypeConverter<Decimal, String> get quantity =>
+      $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<Decimal?, String> get costPrice =>
+      $composableBuilder(column: $table.costPrice, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get receivedAt => $composableBuilder(
+    column: $table.receivedAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+}
+
+class $$LocalProductBatchesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalProductBatchesTable,
+          ProductBatchRow,
+          $$LocalProductBatchesTableFilterComposer,
+          $$LocalProductBatchesTableOrderingComposer,
+          $$LocalProductBatchesTableAnnotationComposer,
+          $$LocalProductBatchesTableCreateCompanionBuilder,
+          $$LocalProductBatchesTableUpdateCompanionBuilder,
+          (
+            ProductBatchRow,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalProductBatchesTable,
+              ProductBatchRow
+            >,
+          ),
+          ProductBatchRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalProductBatchesTableTableManager(
+    _$AppDatabase db,
+    $LocalProductBatchesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalProductBatchesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalProductBatchesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LocalProductBatchesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> branchId = const Value.absent(),
+                Value<String> productId = const Value.absent(),
+                Value<String?> batchNumber = const Value.absent(),
+                Value<DateTime?> expiryDate = const Value.absent(),
+                Value<Decimal> quantity = const Value.absent(),
+                Value<Decimal?> costPrice = const Value.absent(),
+                Value<DateTime> receivedAt = const Value.absent(),
+                Value<DateTime> syncedAt = const Value.absent(),
+                Value<bool> isSynced = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalProductBatchesCompanion(
+                id: id,
+                branchId: branchId,
+                productId: productId,
+                batchNumber: batchNumber,
+                expiryDate: expiryDate,
+                quantity: quantity,
+                costPrice: costPrice,
+                receivedAt: receivedAt,
+                syncedAt: syncedAt,
+                isSynced: isSynced,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String branchId,
+                required String productId,
+                Value<String?> batchNumber = const Value.absent(),
+                Value<DateTime?> expiryDate = const Value.absent(),
+                required Decimal quantity,
+                Value<Decimal?> costPrice = const Value.absent(),
+                required DateTime receivedAt,
+                required DateTime syncedAt,
+                Value<bool> isSynced = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalProductBatchesCompanion.insert(
+                id: id,
+                branchId: branchId,
+                productId: productId,
+                batchNumber: batchNumber,
+                expiryDate: expiryDate,
+                quantity: quantity,
+                costPrice: costPrice,
+                receivedAt: receivedAt,
+                syncedAt: syncedAt,
+                isSynced: isSynced,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalProductBatchesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalProductBatchesTable,
+      ProductBatchRow,
+      $$LocalProductBatchesTableFilterComposer,
+      $$LocalProductBatchesTableOrderingComposer,
+      $$LocalProductBatchesTableAnnotationComposer,
+      $$LocalProductBatchesTableCreateCompanionBuilder,
+      $$LocalProductBatchesTableUpdateCompanionBuilder,
+      (
+        ProductBatchRow,
+        BaseReferences<
+          _$AppDatabase,
+          $LocalProductBatchesTable,
+          ProductBatchRow
+        >,
+      ),
+      ProductBatchRow,
       PrefetchHooks Function()
     >;
 typedef $$LocalSalesTableCreateCompanionBuilder =
@@ -12806,6 +13749,8 @@ class $AppDatabaseManager {
       $$LocalProductsTableTableManager(_db, _db.localProducts);
   $$LocalStockTableTableManager get localStock =>
       $$LocalStockTableTableManager(_db, _db.localStock);
+  $$LocalProductBatchesTableTableManager get localProductBatches =>
+      $$LocalProductBatchesTableTableManager(_db, _db.localProductBatches);
   $$LocalSalesTableTableManager get localSales =>
       $$LocalSalesTableTableManager(_db, _db.localSales);
   $$LocalSaleItemsTableTableManager get localSaleItems =>

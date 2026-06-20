@@ -42,7 +42,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 
 | Path | Purpose | Edit when |
 |---|---|---|
-| `data/local/app_database.dart` | Drift DB schema — tables, type converters, all queries | Adding tables or queries |
+| `data/local/app_database.dart` | Drift DB schema (v12) — tables, type converters, all queries. `LocalProductBatches` (wholesale batch/expiry mirror) added v12 | Adding tables or queries |
 | `data/local/database_provider.dart` | `appDatabaseProvider` — returns `AppDatabase?` (null on web) | Changing DB provider behavior |
 | `data/local/open_database.dart` | Web stub — throws UnsupportedError | Rarely |
 | `data/local/open_database_native.dart` | Native DB opener — `LazyDatabase` pointing to `suq.db` in documents dir | Rarely |
@@ -176,6 +176,7 @@ Run `flutter gen-l10n` after editing `app_en.arb`.
 | `025_one_shop_one_branch.sql` | Schema constraint for single-shop/branch model |
 | `026_preserve_offline_timestamps.sql` | p_created_at param on record_credit_payment |
 | `027_lock_down_trigger_function.sql` | SECURITY DEFINER audit / trigger hardening |
+| `028_product_batches.sql` | **NOT yet applied.** Wholesale batch/expiry: product_batches + sale_item_batches, rollup trigger (`inventory.quantity` = sum of batches), wholesale-only backfill |
 
 ---
 

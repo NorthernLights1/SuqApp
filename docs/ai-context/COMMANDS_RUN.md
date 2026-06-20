@@ -50,7 +50,7 @@ Run after editing `lib/l10n/app_en.arb`.
 dart run build_runner build --delete-conflicting-outputs
 ```
 Run after changing Drift table definitions in `app_database.dart` or adding `@riverpod` annotations.
-Current schema version: **v11** (added `isSynced` to LocalProducts + LocalProductCategories).
+Current schema version: **v12** (added `LocalProductBatches` — wholesale batch/expiry mirror).
 
 ---
 
@@ -81,7 +81,8 @@ Add in Windows Security → Virus & threat protection → Exclusions:
 
 ## Apply Supabase changes (manual — no CLI)
 Open Supabase Dashboard → SQL Editor and run SQL directly.
-Migrations in `supabase/migrations/001` through `027` — all applied to live project.
+Migrations in `supabase/migrations/001` through `028` — 001–027 applied to live
+project; **028 (product_batches) NOT yet applied** (run in SQL editor).
 
 ### Useful diagnostic queries
 ```sql

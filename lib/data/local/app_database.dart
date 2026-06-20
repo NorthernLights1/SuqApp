@@ -57,6 +57,28 @@ class LocalStock extends Table {
   Set<Column> get primaryKey => {productId, branchId};
 }
 
+/// One batch/lot of a product at a branch — its own qty, expiry, batch number.
+/// Wholesale-only (retail shops have no batches). The server keeps
+/// `inventory.quantity` as the rollup of these; the device mirrors them for FEFO
+/// depletion + expiry display. Offline-created batches (add-stock) set
+/// isSynced=false so the push queue picks them up.
+@DataClassName('ProductBatchRow')
+class LocalProductBatches extends Table {
+  TextColumn get id => text()();
+  TextColumn get branchId => text()();
+  TextColumn get productId => text()();
+  TextColumn get batchNumber => text().nullable()();
+  DateTimeColumn get expiryDate => dateTime().nullable()();
+  TextColumn get quantity => text().map(const _Dec())();
+  TextColumn get costPrice => text().nullable().map(const _NullDec())();
+  DateTimeColumn get receivedAt => dateTime()();
+  DateTimeColumn get syncedAt => dateTime()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('SaleRow')
 class LocalSales extends Table {
   TextColumn get id => text()();
@@ -307,6 +329,7 @@ class LocalSyncState extends Table {
 @DriftDatabase(tables: [
   LocalProducts,
   LocalStock,
+  LocalProductBatches,
   LocalSales,
   LocalSaleItems,
   LocalCustomers,
@@ -327,7 +350,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -397,6 +420,8 @@ class AppDatabase extends _$AppDatabase {
                   localProductCategories, localProductCategories.isSynced);
             }
           }
+          // v11 -> v12: wholesale batch/expiry mirror (FEFO depletion + expiry).
+          if (from < 12) await m.createTable(localProductBatches);
         },
       );
 
@@ -431,6 +456,28 @@ class AppDatabase extends _$AppDatabase {
 
   Future<void> upsertStock(List<LocalStockCompanion> rows) =>
       batch((b) => b.insertAllOnConflictUpdate(localStock, rows));
+
+  // ── Product batches (wholesale) ──────────────────────────────────────────────
+
+  Future<void> upsertProductBatches(List<LocalProductBatchesCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localProductBatches, rows));
+
+  /// A product's batches at a branch in FEFO order: soonest expiry first, nulls
+  /// (non-perishable) last. Empty/zero batches are kept out of depletion by the
+  /// caller. Used by Phase 3 (depletion) and Phase 4 (expiry display).
+  Future<List<ProductBatchRow>> getBatchesForProduct(
+          String branchId, String productId) =>
+      (select(localProductBatches)
+            ..where((t) =>
+                t.branchId.equals(branchId) & t.productId.equals(productId))
+            ..orderBy([
+              (t) => OrderingTerm.asc(t.expiryDate, nulls: NullsOrder.last),
+            ]))
+          .get();
+
+  Future<List<ProductBatchRow>> getPendingProductBatches() =>
+      (select(localProductBatches)..where((t) => t.isSynced.equals(false)))
+          .get();
 
   Future<List<StockRow>> getStockByBranch(String branchId) =>
       (select(localStock)..where((t) => t.branchId.equals(branchId))).get();

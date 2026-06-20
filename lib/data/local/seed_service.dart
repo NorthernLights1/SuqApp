@@ -53,6 +53,7 @@ class SeedService {
       _guard(() => _seedProfiles(shopId)),
       _guard(() => _seedProducts(shopId)),
       _guard(() => _seedStock(branchId)),
+      _guard(_seedProductBatches),
       _guard(() => _seedCustomers(shopId)),
       _guard(() => _seedExpenseCategories(shopId)),
       _guard(() => _seedSales(shopId)),
@@ -277,6 +278,38 @@ class SeedService {
                   name: Value(u['name'] as String),
                   abbreviation: Value(u['abbreviation'] as String),
                   syncedAt: Value(_now),
+                ))
+            .toList()),
+      );
+
+  // ── Product batches (wholesale: qty/expiry per batch) ────────────────────────
+
+  Future<void> _seedProductBatches() => _deltaPull(
+        tableKey: 'product_batches',
+        deleteFromTable: 'local_product_batches',
+        fetch: (cursorIso) async {
+          // No shop filter: RLS returns only this shop's batches.
+          var q = _client.from('product_batches').select(
+              'id, branch_id, product_id, batch_number, expiry_date, quantity, cost_price, received_at, updated_at, deleted_at');
+          if (cursorIso != null) q = q.gte('updated_at', cursorIso);
+          return (await q as List).cast<Map<String, dynamic>>();
+        },
+        applyLive: (rows) => _db.upsertProductBatches(rows
+            .map((b) => LocalProductBatchesCompanion(
+                  id: Value(b['id'] as String),
+                  branchId: Value(b['branch_id'] as String),
+                  productId: Value(b['product_id'] as String),
+                  batchNumber: Value(b['batch_number'] as String?),
+                  expiryDate: Value(b['expiry_date'] != null
+                      ? DateTime.tryParse(b['expiry_date'] as String)
+                      : null),
+                  quantity: Value(_dec(b['quantity'])),
+                  costPrice: Value(b['cost_price'] != null
+                      ? Decimal.tryParse(b['cost_price'].toString())
+                      : null),
+                  receivedAt: Value(DateTime.parse(b['received_at'] as String)),
+                  syncedAt: Value(_now),
+                  isSynced: const Value(true),
                 ))
             .toList()),
       );

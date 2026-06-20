@@ -14,10 +14,24 @@ shop_type chosen at onboarding, locked. `shopTypeProvider.isWholesale` is the ga
   "required" cue on the picker.
 - [x] Custom units of measurement (both types) — inline "New unit" in product form.
   Online-only create; ponytail shortcut (offline add deferred).
-- [ ] **Batch numbers + expiry (wholesale)** — LARGE, plan-first. New
-  `product_batches` table (qty/expiry/batch_no per product), FEFO depletion on
-  sale (offline-first), rollup quantity, reuse `stock_conflicts` for oversell.
-  Retail keeps the single-quantity model untouched. Do in its own worktree.
+- **Batch numbers + expiry (wholesale)** — LARGE, on branch `feat/batch-tracking`.
+  Decisions (2026-06-21): auto-FEFO, expired = warn-but-allow, recall traceability
+  IN (`sale_item_batches`), retail untouched.
+  - [x] **Phase 1 — schema + local mirror.** Migration `028_product_batches.sql`
+    (product_batches + sale_item_batches + rollup trigger keeping
+    `inventory.quantity` = sum of batches + wholesale-only backfill). Drift
+    `LocalProductBatches` (schema v12), delta-pull descriptor `_seedProductBatches`.
+    Reads unchanged (rollup). **Migration NOT yet applied to live DB** — Temesgen
+    to run it in the SQL editor (MCP exposed no tools; no CLI/connection available).
+  - [ ] **Phase 2 — batch-aware Add Stock (wholesale):** extend
+    `apply_inventory_adjustment` RPC with batch_number/expiry; Add Stock dialog
+    fields; local batch write. Retail add-stock unchanged.
+  - [ ] **Phase 3 — FEFO depletion on sale:** local + server FEFO (expiry asc,
+    nulls last); warn on expired; write `sale_item_batches`; oversell via existing
+    `stock_conflicts` (rollup feeds it).
+  - [ ] **Phase 4 — surface expiry:** per-batch rows + expiry badges (wholesale
+    inventory screen); optional near-expiry digest. Recall report (which customers
+    got batch X) is a server-side query — small later task.
 - [ ] **Refunds / returns** — schema (`refunds`/`refund_items`) already exists,
   unused. Must be offline-first. Restock-to-batch couples to batch tracking — do
   after it. (See "Blocked / Deferred" for the original deferral decision.)
