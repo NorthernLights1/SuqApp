@@ -1011,6 +1011,7 @@ class AppDatabase extends _$AppDatabase {
     'local_product_categories',
     'local_measurement_units',
     'local_products',
+    'local_product_batches',
     'local_customers',
     'local_expense_categories',
     'local_expenses',

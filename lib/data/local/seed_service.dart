@@ -307,7 +307,12 @@ class SeedService {
                   costPrice: Value(b['cost_price'] != null
                       ? Decimal.tryParse(b['cost_price'].toString())
                       : null),
-                  receivedAt: Value(DateTime.parse(b['received_at'] as String)),
+                  // tryParse + fallback: a malformed received_at must never throw
+                  // and stall this table's pull (it would leave the cursor
+                  // unadvanced and re-fetch the bad page forever).
+                  receivedAt: Value(
+                      DateTime.tryParse(b['received_at']?.toString() ?? '') ??
+                          _now),
                   syncedAt: Value(_now),
                   isSynced: const Value(true),
                 ))
