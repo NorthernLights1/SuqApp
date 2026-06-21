@@ -186,4 +186,61 @@ void main() {
       expect(await db.getPendingInventoryAdjustments(), isEmpty);
     });
   });
+
+  group('addStockBatch (wholesale)', () {
+    test('creates a pending batch and rolls up LocalStock to its quantity',
+        () async {
+      await repo.addStockBatch(
+        branchId: branchId,
+        productId: 'p-1',
+        quantity: Decimal.parse('12'),
+        adjustedBy: 'u-1',
+        batchNumber: 'LOT-A',
+        expiryDate: DateTime(2027, 1, 1),
+      );
+
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('12'));
+      final batches = await db.getBatchesForProduct(branchId, 'p-1');
+      expect(batches.length, 1);
+      expect(batches.first.batchNumber, 'LOT-A');
+      expect(batches.first.isSynced, isFalse); // queued for push
+    });
+
+    test('a second batch sums into the rollup; stock expiry = soonest',
+        () async {
+      await repo.addStockBatch(
+        branchId: branchId,
+        productId: 'p-1',
+        quantity: Decimal.parse('10'),
+        adjustedBy: 'u-1',
+        expiryDate: DateTime(2027, 6, 1),
+      );
+      await repo.addStockBatch(
+        branchId: branchId,
+        productId: 'p-1',
+        quantity: Decimal.parse('5'),
+        adjustedBy: 'u-1',
+        expiryDate: DateTime(2026, 12, 1), // sooner
+      );
+
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('15'));
+      // FEFO order: soonest-expiry batch first.
+      final batches = await db.getBatchesForProduct(branchId, 'p-1');
+      expect(batches.length, 2);
+      expect(batches.first.expiryDate, DateTime(2026, 12, 1));
+      // Stock row carries the soonest expiry (drives the "expiring" badge).
+      final stock = await db.getStockByBranch(branchId);
+      expect(stock.first.expiryDate, DateTime(2026, 12, 1));
+    });
+
+    test('flags the product as having pending batch work', () async {
+      await repo.addStockBatch(
+        branchId: branchId,
+        productId: 'p-1',
+        quantity: Decimal.one,
+        adjustedBy: 'u-1',
+      );
+      expect(await db.getPendingBatchProductIds(branchId), contains('p-1'));
+    });
+  });
 }

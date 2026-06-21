@@ -479,6 +479,19 @@ class AppDatabase extends _$AppDatabase {
       (select(localProductBatches)..where((t) => t.isSynced.equals(false)))
           .get();
 
+  Future<void> markProductBatchSynced(String id) =>
+      (update(localProductBatches)..where((t) => t.id.equals(id)))
+          .write(const LocalProductBatchesCompanion(isSynced: Value(true)));
+
+  /// Product ids at [branchId] with an unpushed batch — so a background stock
+  /// refresh won't clobber the optimistic rollup before the batch syncs.
+  Future<Set<String>> getPendingBatchProductIds(String branchId) async {
+    final rows = await (select(localProductBatches)
+          ..where((t) => t.branchId.equals(branchId) & t.isSynced.equals(false)))
+        .get();
+    return rows.map((r) => r.productId).toSet();
+  }
+
   Future<List<StockRow>> getStockByBranch(String branchId) =>
       (select(localStock)..where((t) => t.branchId.equals(branchId))).get();
 
@@ -980,6 +993,7 @@ class AppDatabase extends _$AppDatabase {
       'SELECT ('
       'EXISTS(SELECT 1 FROM local_product_categories WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_products WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_product_batches WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_sales WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_expenses WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_inventory_adjustments WHERE is_synced = 0) OR '
@@ -989,6 +1003,7 @@ class AppDatabase extends _$AppDatabase {
       readsFrom: {
         localProductCategories,
         localProducts,
+        localProductBatches,
         localSales,
         localExpenses,
         localInventoryAdjustments,

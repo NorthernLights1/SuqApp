@@ -274,7 +274,11 @@ class InventoryRepository {
       final pendingIds = (await _db!.getPendingInventoryAdjustments())
           .where((a) => a.branchId == branchId)
           .map((a) => a.productId)
-          .toSet();
+          .toSet()
+        // Also protect products whose only in-flight change is an unpushed
+        // batch (wholesale) — otherwise the refresh clobbers the optimistic
+        // rollup before the batch syncs.
+        ..addAll(await _db.getPendingBatchProductIds(branchId));
       final toCache = remote.where((s) => !pendingIds.contains(s.productId));
       await _db.upsertStock([
         for (final s in toCache)
@@ -355,6 +359,73 @@ class InventoryRepository {
       adjustedBy: adjustedBy,
       expiryDate: expiryDate,
     );
+  }
+
+  /// Wholesale stock-in: create a BATCH (qty + its own expiry/batch number).
+  /// The server rollup trigger maintains `inventory.quantity`; no
+  /// inventory_adjustments ledger row — the batch row IS the record. Local-first:
+  /// write the batch (isSynced=false) and recompute the local stock rollup;
+  /// SyncService pushes the batch (idempotent upsert by UUID).
+  ///
+  /// NOTE: for a wholesale product, ALL stock-in must go through here — writing
+  /// `inventory.quantity` directly (the retail path) would be overwritten by the
+  /// rollup trigger on the next batch change. The shop_type gate lives in the
+  /// provider/UI layer.
+  Future<void> addStockBatch({
+    required String branchId,
+    required String productId,
+    required Decimal quantity,
+    required String adjustedBy,
+    String? batchNumber,
+    DateTime? expiryDate,
+    Decimal? costPrice,
+  }) async {
+    final id = const Uuid().v4();
+
+    // Web (no local DB): insert straight to the server.
+    if (_db == null) {
+      await _remote.insertBatch(
+        id: id,
+        branchId: branchId,
+        productId: productId,
+        batchNumber: batchNumber,
+        expiryDate: expiryDate,
+        quantity: quantity,
+        costPrice: costPrice,
+      );
+      return;
+    }
+
+    await _db.upsertProductBatches([
+      LocalProductBatchesCompanion(
+        id: Value(id),
+        branchId: Value(branchId),
+        productId: Value(productId),
+        batchNumber: Value(batchNumber),
+        expiryDate: Value(expiryDate),
+        quantity: Value(quantity),
+        costPrice: Value(costPrice),
+        receivedAt: Value(DateTime.now()),
+        syncedAt: Value(DateTime.now()),
+        isSynced: const Value(false),
+      ),
+    ]);
+    await _recomputeLocalRollup(branchId, productId);
+  }
+
+  /// LocalStock.quantity = sum of the product's local batches; the stock row's
+  /// expiry = the soonest batch expiry (drives the list's "expiring" badge).
+  /// Mirrors the server-side rollup trigger so offline reads stay consistent.
+  Future<void> _recomputeLocalRollup(String branchId, String productId) async {
+    if (_db == null) return;
+    final batches = await _db.getBatchesForProduct(branchId, productId);
+    final total = batches.fold(Decimal.zero, (s, b) => s + b.quantity);
+    DateTime? soonest;
+    for (final b in batches) {
+      final e = b.expiryDate;
+      if (e != null && (soonest == null || e.isBefore(soonest))) soonest = e;
+    }
+    await _db.setStockLevel(branchId, productId, total, expiryDate: soonest);
   }
 
   Future<void> manualAdjustment({

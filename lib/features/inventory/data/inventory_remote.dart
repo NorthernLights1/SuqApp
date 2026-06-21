@@ -124,6 +124,31 @@ class InventoryRemote {
     });
   }
 
+  // ─── Product batches (wholesale) ────────────────────────────────────────────
+
+  /// Insert a new batch. The server rollup trigger updates `inventory.quantity`.
+  /// Used by the web path (no local DB) and by SyncService is NOT — the push
+  /// there is a bulk upsert. [id] is client-generated (idempotent by UUID).
+  Future<void> insertBatch({
+    required String id,
+    required String branchId,
+    required String productId,
+    String? batchNumber,
+    DateTime? expiryDate,
+    required Decimal quantity,
+    Decimal? costPrice,
+  }) async {
+    await _client.from('product_batches').insert({
+      'id': id,
+      'branch_id': branchId,
+      'product_id': productId,
+      'batch_number': batchNumber,
+      'expiry_date': expiryDate?.toIso8601String().substring(0, 10),
+      'quantity': quantity.toString(),
+      'cost_price': costPrice?.toString(),
+    });
+  }
+
   // ─── Measurement units ─────────────────────────────────────────────────────
 
   Future<List<MeasurementUnit>> getMeasurementUnits(String shopId) async {

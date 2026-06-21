@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
+import '../../../../features/settings/presentation/providers/shop_type_provider.dart';
 import '../../data/inventory_remote.dart';
 import '../../domain/inventory_repository.dart';
 
@@ -101,13 +102,28 @@ class ProductFormNotifier extends AsyncNotifier<void> {
           final branch = ref.read(activeBranchProvider) ??
               (branches.isNotEmpty ? branches.first : null);
           if (userId != null && branch != null) {
-            await repo.setOpeningStock(
-              branchId: branch.id,
-              productId: product.id,
-              quantity: initialQuantity,
-              adjustedBy: userId,
-              expiryDate: expiryDate,
-            );
+            // Wholesale opening stock must be a BATCH (with null batch number) —
+            // not a direct inventory write, which the rollup trigger would
+            // overwrite on the first restock, losing the opening quantity.
+            final isWholesale =
+                await ref.read(shopTypeProvider.future) == 'wholesale';
+            if (isWholesale) {
+              await repo.addStockBatch(
+                branchId: branch.id,
+                productId: product.id,
+                quantity: initialQuantity,
+                adjustedBy: userId,
+                expiryDate: expiryDate,
+              );
+            } else {
+              await repo.setOpeningStock(
+                branchId: branch.id,
+                productId: product.id,
+                quantity: initialQuantity,
+                adjustedBy: userId,
+                expiryDate: expiryDate,
+              );
+            }
           }
         }
       } else {
@@ -220,6 +236,34 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
             productId: productId,
             quantityToAdd: quantityToAdd,
             adjustedBy: userId,
+            expiryDate: expiryDate,
+          );
+      ref.invalidate(stockLevelsProvider);
+    });
+    return !state.hasError;
+  }
+
+  /// Wholesale restock — adds a new batch (qty + its own expiry/batch number).
+  Future<bool> addStockBatch({
+    required String productId,
+    required Decimal quantity,
+    String? batchNumber,
+    DateTime? expiryDate,
+  }) async {
+    final userId = ref.read(currentUserIdProvider);
+    final branches = await ref.read(currentShopBranchesProvider.future);
+    final branch = ref.read(activeBranchProvider) ??
+        (branches.isNotEmpty ? branches.first : null);
+    if (userId == null || branch == null) return false;
+
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(inventoryRepositoryProvider).addStockBatch(
+            branchId: branch.id,
+            productId: productId,
+            quantity: quantity,
+            adjustedBy: userId,
+            batchNumber: batchNumber,
             expiryDate: expiryDate,
           );
       ref.invalidate(stockLevelsProvider);

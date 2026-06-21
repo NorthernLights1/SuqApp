@@ -96,9 +96,15 @@ Suq now serves two business types, chosen at onboarding and **locked** afterward
   form unit picker → `InventoryRepository.createMeasurementUnit` (remote create +
   optimistic local mirror; `measurement_units` already shop-scoped + in delta pull).
   Online-only create (ponytail: reference data, added rarely while connected).
-- **Next for wholesale:** batch numbers + expiry (large, plan-first), refunds.
-  Extra customer fields (business_name/TIN/address) deferred to ride with an
-  invoice/printout feature where they'd be displayed (no surface yet).
+- **Batch + expiry (wholesale, branch `feat/batch-tracking`):** Phase 1 (schema
+  `028` + Drift mirror) + Phase 2 (stock-IN via batches — Add Stock batch field,
+  opening stock → batch, batch push) DONE + unit-tested, NOT verified end-to-end
+  (migration `028` not yet applied to live DB). Batches push as a replica table
+  (idempotent upsert); a server rollup trigger keeps `inventory.quantity` = sum of
+  batches, so all existing reads + oversell detection are unchanged. Next: Phase 3
+  (FEFO depletion on sale), Phase 2.5 (wholesale Correct Stock/oversell-resolve).
+- **Next for wholesale:** Phase 3 FEFO sale depletion, then refunds. Extra
+  customer fields (business_name/TIN/address) deferred to an invoice feature.
 
 ---
 

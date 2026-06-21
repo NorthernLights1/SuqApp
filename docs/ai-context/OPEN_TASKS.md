@@ -23,9 +23,17 @@ shop_type chosen at onboarding, locked. `shopTypeProvider.isWholesale` is the ga
     `LocalProductBatches` (schema v12), delta-pull descriptor `_seedProductBatches`.
     Reads unchanged (rollup). **Migration NOT yet applied to live DB** — Temesgen
     to run it in the SQL editor (MCP exposed no tools; no CLI/connection available).
-  - [ ] **Phase 2 — batch-aware Add Stock (wholesale):** extend
-    `apply_inventory_adjustment` RPC with batch_number/expiry; Add Stock dialog
-    fields; local batch write. Retail add-stock unchanged.
+  - [x] **Phase 2 — batch-aware stock-IN (wholesale).** NO RPC needed: batches
+    push as a replica table (idempotent upsert; the rollup trigger sums them,
+    distinct UUIDs from different devices just add). Add Stock dialog gains a
+    batch/lot field (wholesale); opening stock → batch; `addStockBatch`
+    (local-first, recomputes local rollup); batch push in `SyncService` + added
+    to the pending-work watcher. Correct Stock hidden for wholesale. Unit-tested
+    (rollup sum, soonest-expiry, pending flag). **NOT verified end-to-end** — needs
+    `028` applied + a wholesale shop on device.
+  - [ ] **Phase 2.5 — wholesale Correct Stock + oversell-resolution** at the
+    batch level (`conflicts_provider`); both currently hidden/retail-only because
+    they write `inventory.quantity` directly, which the rollup would overwrite.
   - [ ] **Phase 3 — FEFO depletion on sale:** local + server FEFO (expiry asc,
     nulls last); warn on expired; write `sale_item_batches`; oversell via existing
     `stock_conflicts` (rollup feeds it).

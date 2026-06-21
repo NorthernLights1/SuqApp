@@ -13,6 +13,7 @@ import '../../../../shared/widgets/app_text_field.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
+import '../../../../features/settings/presentation/providers/shop_type_provider.dart';
 import '../../data/inventory_remote.dart';
 import '../providers/inventory_provider.dart';
 import '../../../../shared/widgets/decimal_input_formatter.dart';
@@ -249,6 +250,9 @@ void _showStockSheet(
   final canAdjust = hasPermissionSync(ref, 'inventory.adjust');
   final canCorrect = hasPermissionSync(ref, 'settings.manage');
   final canEdit = hasPermissionSync(ref, 'inventory.edit');
+  // Correct Stock writes inventory.quantity directly — for wholesale that fights
+  // the batch rollup, so it's hidden until batch-level correction lands (2.5).
+  final isWholesale = ref.read(shopTypeProvider).isWholesale;
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -289,7 +293,7 @@ void _showStockSheet(
                   },
                 ),
               ),
-            if (entry != null && canCorrect) ...[
+            if (entry != null && canCorrect && !isWholesale) ...[
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -348,6 +352,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
   final _sellPriceCtrl = TextEditingController();
   final _costPriceCtrl = TextEditingController();
   final _thresholdCtrl = TextEditingController();
+  final _batchCtrl = TextEditingController();
   DateTime? _expiryDate;
   bool _loading = false;
 
@@ -357,6 +362,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
     _sellPriceCtrl.dispose();
     _costPriceCtrl.dispose();
     _thresholdCtrl.dispose();
+    _batchCtrl.dispose();
     super.dispose();
   }
 
@@ -410,12 +416,26 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
       }
     }
 
-    // 2) Add the received quantity.
-    final ok = await ref.read(stockAdjustmentProvider.notifier).addStock(
-          productId: p.id,
-          quantityToAdd: qty,
-          expiryDate: _expiryDate,
-        );
+    // 2) Add the received quantity. Wholesale creates a BATCH (qty + expiry +
+    // optional batch number); retail bumps the single stock quantity. Read the
+    // authoritative shop_type (await the future) so a still-loading wholesale
+    // shop can't fall through to the direct-write retail path.
+    final isWholesale = await ref.read(shopTypeProvider.future) == 'wholesale';
+    if (!mounted) return;
+    final notifier = ref.read(stockAdjustmentProvider.notifier);
+    final ok = isWholesale
+        ? await notifier.addStockBatch(
+            productId: p.id,
+            quantity: qty,
+            batchNumber:
+                _batchCtrl.text.trim().isEmpty ? null : _batchCtrl.text.trim(),
+            expiryDate: _expiryDate,
+          )
+        : await notifier.addStock(
+            productId: p.id,
+            quantityToAdd: qty,
+            expiryDate: _expiryDate,
+          );
     if (!mounted) return;
     setState(() => _loading = false);
     if (ok) {
@@ -442,6 +462,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
   Widget build(BuildContext context) {
     final p = widget.product;
     final unitAbbr = widget.currentEntry?.unitAbbr ?? p.measurementUnitAbbr;
+    final isWholesale = ref.watch(shopTypeProvider).isWholesale;
     return AlertDialog(
       title: Text('Add Stock: ${p.name}'),
       content: SingleChildScrollView(
@@ -467,6 +488,18 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               ),
             ),
             const SizedBox(height: 12),
+            // Wholesale: this received quantity becomes a batch with its own
+            // expiry (set below) and an optional batch/lot number.
+            if (isWholesale) ...[
+              TextField(
+                controller: _batchCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Batch / lot number (optional)',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             // Optional: update sale price for this product (blank = keep current)
             TextField(
               controller: _sellPriceCtrl,

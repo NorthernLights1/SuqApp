@@ -47,9 +47,10 @@ class SyncService implements ISyncService {
 
       var pushed = 0;
       if (_db != null) {
-        // FK order: categories → products → customers → sales/adjustments → payments → expenses.
+        // FK order: categories → products → batches → customers → sales/adjustments → payments → expenses.
         pushed += await _pushPendingCategories();
         pushed += await _pushPendingProducts();
+        pushed += await _pushPendingProductBatches();
         pushed += await _pushPendingCustomers();
         pushed += await _pushPendingInventoryWork();
         pushed += await _pushPendingCreditPayments();
@@ -116,6 +117,36 @@ class SyncService implements ISyncService {
         );
     for (final p in pending) {
       await db.markProductSynced(p.id);
+    }
+    return pending.length;
+  }
+
+  /// Pushes pending wholesale batches in one bulk upsert (idempotent by id).
+  /// Pushed after products so the batch's product FK exists. The server rollup
+  /// trigger recomputes inventory.quantity from the batches; distinct UUIDs from
+  /// different devices simply sum, so no accumulator RPC is needed.
+  Future<int> _pushPendingProductBatches() async {
+    final db = _db!;
+    final pending = await db.getPendingProductBatches();
+    if (pending.isEmpty) return 0;
+    await _supabase.from('product_batches').upsert(
+          pending
+              .map((b) => {
+                    'id': b.id,
+                    'branch_id': b.branchId,
+                    'product_id': b.productId,
+                    'batch_number': b.batchNumber,
+                    'expiry_date':
+                        b.expiryDate?.toIso8601String().substring(0, 10),
+                    'quantity': b.quantity.toString(),
+                    'cost_price': b.costPrice?.toString(),
+                    'received_at': b.receivedAt.toUtc().toIso8601String(),
+                  })
+              .toList(),
+          onConflict: 'id',
+        );
+    for (final b in pending) {
+      await db.markProductBatchSynced(b.id);
     }
     return pending.length;
   }
