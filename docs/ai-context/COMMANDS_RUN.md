@@ -50,7 +50,7 @@ Run after editing `lib/l10n/app_en.arb`.
 dart run build_runner build --delete-conflicting-outputs
 ```
 Run after changing Drift table definitions in `app_database.dart` or adding `@riverpod` annotations.
-Current schema version: **v12** (added `LocalProductBatches` — wholesale batch/expiry mirror).
+Current schema version: **v14** (v12 `LocalProductBatches`, v13 `LocalSaleItemBatches` depletion ledger, v14 batch `deletedAt` for lot discard).
 
 ---
 
@@ -58,7 +58,7 @@ Current schema version: **v12** (added `LocalProductBatches` — wholesale batch
 ```powershell
 flutter test
 ```
-Result: 134 tests passing (last run 2026-06-19).
+Result: 149 tests passing (last run 2026-06-21).
 Test files:
 - `test/features/auth/friendly_auth_error_test.dart` — sign-in error classification (Bug 8/9) + unknown exception fallback
 - `test/data/local/app_database_test.dart` — Drift DB ops + edge cases

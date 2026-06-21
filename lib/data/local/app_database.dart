@@ -73,6 +73,9 @@ class LocalProductBatches extends Table {
   TextColumn get costPrice => text().nullable().map(const _NullDec())();
   DateTimeColumn get receivedAt => dateTime()();
   DateTimeColumn get syncedAt => dateTime()();
+  // Discard (expired/damaged lot): set locally, pushed up, then the pull
+  // hard-removes the row once the server soft-delete comes back.
+  DateTimeColumn get deletedAt => dateTime().nullable()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
 
   @override
@@ -369,7 +372,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 13;
+  int get schemaVersion => 14;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -443,6 +446,10 @@ class AppDatabase extends _$AppDatabase {
           if (from < 12) await m.createTable(localProductBatches);
           // v12 -> v13: wholesale depletion ledger (sale_item_batches mirror).
           if (from < 13) await m.createTable(localSaleItemBatches);
+          // v13 -> v14: lot discard (soft-delete) on the batch mirror.
+          if (from < 14) {
+            await m.addColumn(localProductBatches, localProductBatches.deletedAt);
+          }
         },
       );
 
@@ -490,11 +497,27 @@ class AppDatabase extends _$AppDatabase {
           String branchId, String productId) =>
       (select(localProductBatches)
             ..where((t) =>
-                t.branchId.equals(branchId) & t.productId.equals(productId))
+                t.branchId.equals(branchId) &
+                t.productId.equals(productId) &
+                t.deletedAt.isNull()) // discarded lots are excluded everywhere
             ..orderBy([
               (t) => OrderingTerm.asc(t.expiryDate, nulls: NullsOrder.last),
             ]))
           .get();
+
+  Future<ProductBatchRow?> getBatch(String id) =>
+      (select(localProductBatches)..where((t) => t.id.equals(id)))
+          .getSingleOrNull();
+
+  /// Discard a lot (expired/damaged): soft-delete locally + queue the push. The
+  /// caller recomputes the product rollup afterwards.
+  Future<void> discardBatch(String id, DateTime when) =>
+      (update(localProductBatches)..where((t) => t.id.equals(id))).write(
+        LocalProductBatchesCompanion(
+          deletedAt: Value(when),
+          isSynced: const Value(false),
+        ),
+      );
 
   Future<List<ProductBatchRow>> getPendingProductBatches() =>
       (select(localProductBatches)..where((t) => t.isSynced.equals(false)))

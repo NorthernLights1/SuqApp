@@ -271,6 +271,8 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
       ref.invalidate(todaySalesTotalsProvider);
       ref.invalidate(salesListProvider);
       ref.invalidate(stockLevelsProvider);
+      // Wholesale: batch remaining changed (refreshes the per-lot view).
+      if (useBatches) ref.invalidate(productBatchesProvider);
       ref.invalidate(reportSummaryProvider);
       if (isCredit) ref.invalidate(outstandingCreditProvider);
       if (customerId != null) ref.invalidate(customerSalesProvider(customerId));

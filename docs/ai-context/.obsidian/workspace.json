@@ -11,10 +11,14 @@
             "id": "268f5357324f5b40",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "type": "markdown",
+              "state": {
+                "file": "OPEN_TASKS.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "OPEN_TASKS"
             }
           }
         ]
@@ -49,7 +53,7 @@
             "state": {
               "type": "search",
               "state": {
-                "query": "",
+                "query": "phase 4",
                 "matchingCase": false,
                 "explainSearch": false,
                 "collapseAll": false,
@@ -70,7 +74,8 @@
               "title": "Bookmarks"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "horizontal",
@@ -90,6 +95,7 @@
             "state": {
               "type": "backlink",
               "state": {
+                "file": "OPEN_TASKS.md",
                 "collapseAll": false,
                 "extraContext": false,
                 "sortOrder": "alphabetical",
@@ -99,7 +105,7 @@
                 "unlinkedCollapsed": true
               },
               "icon": "links-coming-in",
-              "title": "Backlinks"
+              "title": "Backlinks for OPEN_TASKS"
             }
           },
           {
@@ -108,11 +114,12 @@
             "state": {
               "type": "outgoing-link",
               "state": {
+                "file": "OPEN_TASKS.md",
                 "linksCollapsed": false,
                 "unlinkedCollapsed": true
               },
               "icon": "links-going-out",
-              "title": "Outgoing links"
+              "title": "Outgoing links from OPEN_TASKS"
             }
           },
           {
@@ -150,12 +157,13 @@
             "state": {
               "type": "outline",
               "state": {
+                "file": "OPEN_TASKS.md",
                 "followCursor": false,
                 "showSearch": false,
                 "searchQuery": ""
               },
               "icon": "lucide-list",
-              "title": "Outline"
+              "title": "Outline of OPEN_TASKS"
             }
           }
         ]
@@ -178,19 +186,19 @@
   },
   "active": "268f5357324f5b40",
   "lastOpenFiles": [
+    "COMMANDS_RUN.md.tmp.13720.7560d8911b5b",
+    "COMMANDS_RUN.md.tmp.13720.a98f459b50d9",
+    "FILE_MAP.md.tmp.13720.bff572bda5cd",
+    "FILE_MAP.md.tmp.13720.fb008002b16f",
+    "CURRENT_STATE.md.tmp.13720.e539f93904d1",
+    "OPEN_TASKS.md.tmp.13720.39b7371546db",
+    "OPEN_TASKS.md.tmp.13720.c08741ea35fa",
     "CURRENT_STATE.md.tmp.12152.64e59d24ea7e",
     "FILE_MAP.md",
     "CURRENT_STATE.md.tmp.12152.e239a25a9632",
     "FILE_MAP.md.tmp.18620.b6392b63f6d4",
     "FILE_MAP.md.tmp.18620.65bd663a8e69",
-    "COMMANDS_RUN.md.tmp.18620.2a5dd5e336a0",
-    "CURRENT_STATE.md.tmp.18620.866f683402dd",
     "OPEN_TASKS.md",
-    "FILE_MAP.md.tmp.18620.e66d64f0daee",
-    "DECISIONS.md.tmp.18620.2be61be32cc2",
-    "OPEN_TASKS.md.tmp.18620.d839eda2dcd4",
-    "OPEN_TASKS.md.tmp.18620.32fa76295771",
-    "OPEN_TASKS.md.tmp.18620.7e6d6a2100db",
     "BUGS_AND_FIXES.md",
     "CURRENT_STATE.md",
     "Untitled.canvas",

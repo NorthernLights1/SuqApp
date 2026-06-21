@@ -29,6 +29,19 @@ final measurementUnitsProvider =
   return ref.read(inventoryRepositoryProvider).getMeasurementUnits(shop.id);
 });
 
+// ─── Product batches (wholesale: lots with expiry) ──────────────────────────
+
+final productBatchesProvider =
+    FutureProvider.family<List<ProductBatchView>, String>((ref, productId) async {
+  final branches = await ref.watch(currentShopBranchesProvider.future);
+  final branch = ref.watch(activeBranchProvider) ??
+      (branches.isNotEmpty ? branches.first : null);
+  if (branch == null) return [];
+  return ref
+      .read(inventoryRepositoryProvider)
+      .getProductBatches(branch.id, productId);
+});
+
 // ─── Product categories ────────────────────────────────────────────────────
 
 final productCategoriesProvider = FutureProvider<List<ProductCategory>>((ref) async {
@@ -267,6 +280,18 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
             expiryDate: expiryDate,
           );
       ref.invalidate(stockLevelsProvider);
+      ref.invalidate(productBatchesProvider(productId));
+    });
+    return !state.hasError;
+  }
+
+  /// Discard a lot (wholesale): expired/damaged stock written off.
+  Future<bool> discardBatch(String batchId, String productId) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(inventoryRepositoryProvider).discardBatch(batchId);
+      ref.invalidate(stockLevelsProvider);
+      ref.invalidate(productBatchesProvider(productId));
     });
     return !state.hasError;
   }

@@ -242,5 +242,24 @@ void main() {
       );
       expect(await db.getPendingBatchProductIds(branchId), contains('p-1'));
     });
+
+    test('discardBatch drops the lot remaining from the rollup and hides it',
+        () async {
+      await repo.addStockBatch(
+        branchId: branchId,
+        productId: 'p-1',
+        quantity: Decimal.parse('10'),
+        adjustedBy: 'u-1',
+        batchNumber: 'L1',
+      );
+      final batches = await db.getBatchesForProduct(branchId, 'p-1');
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('10'));
+
+      await repo.discardBatch(batches.first.id);
+
+      // Discarded lot is excluded everywhere: rollup back to 0, lot hidden.
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.zero);
+      expect(await db.getBatchesForProduct(branchId, 'p-1'), isEmpty);
+    });
   });
 }

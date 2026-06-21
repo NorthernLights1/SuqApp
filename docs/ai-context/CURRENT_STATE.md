@@ -103,15 +103,18 @@ Suq now serves two business types, chosen at onboarding and **locked** afterward
   (idempotent upsert); a server rollup trigger keeps `inventory.quantity` = sum of
   batches, so all existing reads + oversell detection are unchanged. Next: Phase 3
   (FEFO depletion on sale), Phase 2.5 (wholesale Correct Stock/oversell-resolve).
-- **Phase 3 (FEFO depletion) DONE + tested, unverified end-to-end:** immutable
-  batches + append-only `sale_item_batches` ledger; `remaining = received − Σsib`;
-  rollup = `Σreceived − Σsib`. Migration `029` (applied): batch-aware rollup,
-  **batch-level conflict detection** (a lot can go negative while the product total
-  stays positive), sale RPC `p_item_batches`, wholesale void = soft-delete ledger.
-  Sale draws soonest-expiry-first; expired lot = warn-but-allow.
-- **Next for wholesale:** Phase 3.5 batch-conflict resolution UI, Phase 2.5
-  (wholesale Correct Stock/oversell-resolve), then refunds. Extra customer fields
-  (business_name/TIN/address) deferred to an invoice feature.
+- **Batch tracking FEATURE-COMPLETE (Phases 1–4), unverified end-to-end.**
+  Immutable batches + append-only `sale_item_batches` ledger; `remaining =
+  received − Σsib`; rollup = `Σreceived − Σsib`. Migrations `028`/`029`/`030` all
+  applied live via MCP. `029`: batch-aware rollup + **batch-level conflict
+  detection** (a lot can go negative while the product total stays positive) +
+  sale RPC `p_item_batches` + wholesale void = soft-delete ledger. `030`: lot
+  discard + conflict auto-close. Sale draws soonest-expiry-first; expired = warn-
+  but-allow. Inventory sheet shows a BATCHES section (number/expiry badge/remaining)
+  with a Discard action (owner-gated). Schema v14. 149 tests pass.
+- **Deferred (post-pilot, rare):** partial lot correction (write off *some* of a
+  lot), bespoke batch-conflict resolution screen, recall report. **Next features:**
+  refunds (couples to batches), extra customer fields (with an invoice feature).
 
 ---
 

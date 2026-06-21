@@ -141,6 +141,8 @@ class SyncService implements ISyncService {
                     'quantity': b.quantity.toString(),
                     'cost_price': b.costPrice?.toString(),
                     'received_at': b.receivedAt.toUtc().toIso8601String(),
+                    // Carries a lot discard up; null for a normal received batch.
+                    'deleted_at': b.deletedAt?.toUtc().toIso8601String(),
                   })
               .toList(),
           onConflict: 'id',

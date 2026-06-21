@@ -276,6 +276,12 @@ void _showStockSheet(
                 color: entry == null ? AppColors.error : AppColors.textSecondary,
               ),
             ),
+            if (isWholesale && entry != null)
+              _ProductBatchesSection(
+                productId: product.id,
+                unitAbbr: entry.unitAbbr,
+                canDiscard: canCorrect,
+              ),
             const SizedBox(height: 24),
             if (canAdjust)
               SizedBox(
@@ -334,6 +340,148 @@ void _showStockSheet(
       ),
     ),
   );
+}
+
+// ─── Batches section (wholesale: lots with expiry) ────────────────────────────
+
+class _ProductBatchesSection extends ConsumerWidget {
+  const _ProductBatchesSection({
+    required this.productId,
+    required this.unitAbbr,
+    required this.canDiscard,
+  });
+  final String productId;
+  final String unitAbbr;
+  final bool canDiscard;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final batches = ref.watch(productBatchesProvider(productId));
+    return batches.maybeWhen(
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            Text('BATCHES', style: AppTextStyles.label),
+            const SizedBox(height: 4),
+            ...list.map((b) => _BatchRow(
+                  batch: b,
+                  unitAbbr: unitAbbr,
+                  onDiscard: canDiscard
+                      ? () => _confirmDiscardBatch(context, ref, b, productId)
+                      : null,
+                )),
+          ],
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+Future<void> _confirmDiscardBatch(
+  BuildContext context,
+  WidgetRef ref,
+  ProductBatchView b,
+  String productId,
+) async {
+  final label = b.batchNumber?.isNotEmpty == true ? ' (${b.batchNumber})' : '';
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Discard lot?'),
+      content: Text(
+          'Write off the remaining ${b.remaining.toStringAsFixed(2)} from this lot$label? '
+          'Use this for expired or damaged stock — it lowers your stock count.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child:
+              const Text('Discard', style: TextStyle(color: AppColors.error)),
+        ),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  final success =
+      await ref.read(stockAdjustmentProvider.notifier).discardBatch(b.id, productId);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text(success ? 'Lot discarded' : 'Failed to discard lot'),
+    backgroundColor: success ? AppColors.success : AppColors.error,
+  ));
+}
+
+class _BatchRow extends StatelessWidget {
+  const _BatchRow({
+    required this.batch,
+    required this.unitAbbr,
+    this.onDiscard,
+  });
+  final ProductBatchView batch;
+  final String unitAbbr;
+  final VoidCallback? onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color color, String? tag) = batch.isExpired
+        ? (AppColors.error, 'Expired')
+        : batch.isExpiringSoon
+            ? (Colors.orange.shade700, 'Expiring soon')
+            : (AppColors.textSecondary, null);
+
+    final expiryText = batch.expiryDate != null
+        ? formatDate(batch.expiryDate!)
+        : 'No expiry';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(Icons.circle, size: 8, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  batch.batchNumber?.isNotEmpty == true
+                      ? batch.batchNumber!
+                      : 'No batch number',
+                  style: AppTextStyles.body,
+                ),
+                Row(
+                  children: [
+                    Text(expiryText, style: AppTextStyles.bodySmall),
+                    if (tag != null) ...[
+                      const SizedBox(width: 6),
+                      Text('• $tag',
+                          style: AppTextStyles.bodySmall.copyWith(color: color)),
+                    ],
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Text('${batch.remaining.toStringAsFixed(2)} $unitAbbr',
+              style: AppTextStyles.body),
+          if (onDiscard != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 18),
+              color: AppColors.textSecondary,
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Discard lot',
+              onPressed: onDiscard,
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 // ─── Add Stock dialog (additive) ──────────────────────────────────────────────

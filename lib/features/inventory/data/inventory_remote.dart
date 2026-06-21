@@ -275,6 +275,35 @@ class StockEntry {
   }
 }
 
+/// A single batch/lot for display: its remaining (received − depleted) quantity
+/// and expiry status. Built locally from the batch mirror + depletion ledger.
+class ProductBatchView {
+  const ProductBatchView({
+    required this.id,
+    this.batchNumber,
+    this.expiryDate,
+    required this.remaining,
+  });
+
+  final String id;
+  final String? batchNumber;
+  final DateTime? expiryDate;
+  final Decimal remaining;
+
+  static DateTime get _today {
+    final n = DateTime.now();
+    return DateTime(n.year, n.month, n.day);
+  }
+
+  bool get isExpired => expiryDate != null && expiryDate!.isBefore(_today);
+
+  /// Within 30 days (wholesale plans ahead further than the retail 7-day window).
+  bool get isExpiringSoon =>
+      expiryDate != null &&
+      !isExpired &&
+      expiryDate!.isBefore(_today.add(const Duration(days: 30)));
+}
+
 class MeasurementUnit {
   const MeasurementUnit({
     required this.id,

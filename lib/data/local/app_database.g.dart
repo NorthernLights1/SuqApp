@@ -1264,6 +1264,17 @@ class $LocalProductBatchesTable extends LocalProductBatches
     type: DriftSqlType.dateTime,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _isSyncedMeta = const VerificationMeta(
     'isSynced',
   );
@@ -1290,6 +1301,7 @@ class $LocalProductBatchesTable extends LocalProductBatches
     costPrice,
     receivedAt,
     syncedAt,
+    deletedAt,
     isSynced,
   ];
   @override
@@ -1356,6 +1368,12 @@ class $LocalProductBatchesTable extends LocalProductBatches
     } else if (isInserting) {
       context.missing(_syncedAtMeta);
     }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
     if (data.containsKey('is_synced')) {
       context.handle(
         _isSyncedMeta,
@@ -1411,6 +1429,10 @@ class $LocalProductBatchesTable extends LocalProductBatches
         DriftSqlType.dateTime,
         data['${effectivePrefix}synced_at'],
       )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
       isSynced: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_synced'],
@@ -1438,6 +1460,7 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
   final Decimal? costPrice;
   final DateTime receivedAt;
   final DateTime syncedAt;
+  final DateTime? deletedAt;
   final bool isSynced;
   const ProductBatchRow({
     required this.id,
@@ -1449,6 +1472,7 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
     this.costPrice,
     required this.receivedAt,
     required this.syncedAt,
+    this.deletedAt,
     required this.isSynced,
   });
   @override
@@ -1475,6 +1499,9 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
     }
     map['received_at'] = Variable<DateTime>(receivedAt);
     map['synced_at'] = Variable<DateTime>(syncedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
     map['is_synced'] = Variable<bool>(isSynced);
     return map;
   }
@@ -1496,6 +1523,9 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
           : Value(costPrice),
       receivedAt: Value(receivedAt),
       syncedAt: Value(syncedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
       isSynced: Value(isSynced),
     );
   }
@@ -1515,6 +1545,7 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
       costPrice: serializer.fromJson<Decimal?>(json['costPrice']),
       receivedAt: serializer.fromJson<DateTime>(json['receivedAt']),
       syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       isSynced: serializer.fromJson<bool>(json['isSynced']),
     );
   }
@@ -1531,6 +1562,7 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
       'costPrice': serializer.toJson<Decimal?>(costPrice),
       'receivedAt': serializer.toJson<DateTime>(receivedAt),
       'syncedAt': serializer.toJson<DateTime>(syncedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'isSynced': serializer.toJson<bool>(isSynced),
     };
   }
@@ -1545,6 +1577,7 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
     Value<Decimal?> costPrice = const Value.absent(),
     DateTime? receivedAt,
     DateTime? syncedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
     bool? isSynced,
   }) => ProductBatchRow(
     id: id ?? this.id,
@@ -1556,6 +1589,7 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
     costPrice: costPrice.present ? costPrice.value : this.costPrice,
     receivedAt: receivedAt ?? this.receivedAt,
     syncedAt: syncedAt ?? this.syncedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     isSynced: isSynced ?? this.isSynced,
   );
   ProductBatchRow copyWithCompanion(LocalProductBatchesCompanion data) {
@@ -1575,6 +1609,7 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
           ? data.receivedAt.value
           : this.receivedAt,
       syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
     );
   }
@@ -1591,6 +1626,7 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
           ..write('costPrice: $costPrice, ')
           ..write('receivedAt: $receivedAt, ')
           ..write('syncedAt: $syncedAt, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('isSynced: $isSynced')
           ..write(')'))
         .toString();
@@ -1607,6 +1643,7 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
     costPrice,
     receivedAt,
     syncedAt,
+    deletedAt,
     isSynced,
   );
   @override
@@ -1622,6 +1659,7 @@ class ProductBatchRow extends DataClass implements Insertable<ProductBatchRow> {
           other.costPrice == this.costPrice &&
           other.receivedAt == this.receivedAt &&
           other.syncedAt == this.syncedAt &&
+          other.deletedAt == this.deletedAt &&
           other.isSynced == this.isSynced);
 }
 
@@ -1635,6 +1673,7 @@ class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
   final Value<Decimal?> costPrice;
   final Value<DateTime> receivedAt;
   final Value<DateTime> syncedAt;
+  final Value<DateTime?> deletedAt;
   final Value<bool> isSynced;
   final Value<int> rowid;
   const LocalProductBatchesCompanion({
@@ -1647,6 +1686,7 @@ class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
     this.costPrice = const Value.absent(),
     this.receivedAt = const Value.absent(),
     this.syncedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   });
@@ -1660,6 +1700,7 @@ class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
     this.costPrice = const Value.absent(),
     required DateTime receivedAt,
     required DateTime syncedAt,
+    this.deletedAt = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
@@ -1678,6 +1719,7 @@ class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
     Expression<String>? costPrice,
     Expression<DateTime>? receivedAt,
     Expression<DateTime>? syncedAt,
+    Expression<DateTime>? deletedAt,
     Expression<bool>? isSynced,
     Expression<int>? rowid,
   }) {
@@ -1691,6 +1733,7 @@ class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
       if (costPrice != null) 'cost_price': costPrice,
       if (receivedAt != null) 'received_at': receivedAt,
       if (syncedAt != null) 'synced_at': syncedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
       if (isSynced != null) 'is_synced': isSynced,
       if (rowid != null) 'rowid': rowid,
     });
@@ -1706,6 +1749,7 @@ class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
     Value<Decimal?>? costPrice,
     Value<DateTime>? receivedAt,
     Value<DateTime>? syncedAt,
+    Value<DateTime?>? deletedAt,
     Value<bool>? isSynced,
     Value<int>? rowid,
   }) {
@@ -1719,6 +1763,7 @@ class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
       costPrice: costPrice ?? this.costPrice,
       receivedAt: receivedAt ?? this.receivedAt,
       syncedAt: syncedAt ?? this.syncedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
       isSynced: isSynced ?? this.isSynced,
       rowid: rowid ?? this.rowid,
     );
@@ -1758,6 +1803,9 @@ class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
     if (syncedAt.present) {
       map['synced_at'] = Variable<DateTime>(syncedAt.value);
     }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
     if (isSynced.present) {
       map['is_synced'] = Variable<bool>(isSynced.value);
     }
@@ -1779,6 +1827,7 @@ class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
           ..write('costPrice: $costPrice, ')
           ..write('receivedAt: $receivedAt, ')
           ..write('syncedAt: $syncedAt, ')
+          ..write('deletedAt: $deletedAt, ')
           ..write('isSynced: $isSynced, ')
           ..write('rowid: $rowid')
           ..write(')'))
@@ -10029,6 +10078,7 @@ typedef $$LocalProductBatchesTableCreateCompanionBuilder =
       Value<Decimal?> costPrice,
       required DateTime receivedAt,
       required DateTime syncedAt,
+      Value<DateTime?> deletedAt,
       Value<bool> isSynced,
       Value<int> rowid,
     });
@@ -10043,6 +10093,7 @@ typedef $$LocalProductBatchesTableUpdateCompanionBuilder =
       Value<Decimal?> costPrice,
       Value<DateTime> receivedAt,
       Value<DateTime> syncedAt,
+      Value<DateTime?> deletedAt,
       Value<bool> isSynced,
       Value<int> rowid,
     });
@@ -10100,6 +10151,11 @@ class $$LocalProductBatchesTableFilterComposer
 
   ColumnFilters<DateTime> get syncedAt => $composableBuilder(
     column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -10163,6 +10219,11 @@ class $$LocalProductBatchesTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isSynced => $composableBuilder(
     column: $table.isSynced,
     builder: (column) => ColumnOrderings(column),
@@ -10210,6 +10271,9 @@ class $$LocalProductBatchesTableAnnotationComposer
 
   GeneratedColumn<DateTime> get syncedAt =>
       $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
 
   GeneratedColumn<bool> get isSynced =>
       $composableBuilder(column: $table.isSynced, builder: (column) => column);
@@ -10267,6 +10331,7 @@ class $$LocalProductBatchesTableTableManager
                 Value<Decimal?> costPrice = const Value.absent(),
                 Value<DateTime> receivedAt = const Value.absent(),
                 Value<DateTime> syncedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalProductBatchesCompanion(
@@ -10279,6 +10344,7 @@ class $$LocalProductBatchesTableTableManager
                 costPrice: costPrice,
                 receivedAt: receivedAt,
                 syncedAt: syncedAt,
+                deletedAt: deletedAt,
                 isSynced: isSynced,
                 rowid: rowid,
               ),
@@ -10293,6 +10359,7 @@ class $$LocalProductBatchesTableTableManager
                 Value<Decimal?> costPrice = const Value.absent(),
                 required DateTime receivedAt,
                 required DateTime syncedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalProductBatchesCompanion.insert(
@@ -10305,6 +10372,7 @@ class $$LocalProductBatchesTableTableManager
                 costPrice: costPrice,
                 receivedAt: receivedAt,
                 syncedAt: syncedAt,
+                deletedAt: deletedAt,
                 isSynced: isSynced,
                 rowid: rowid,
               ),

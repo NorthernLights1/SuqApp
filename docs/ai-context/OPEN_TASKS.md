@@ -14,9 +14,11 @@ shop_type chosen at onboarding, locked. `shopTypeProvider.isWholesale` is the ga
   "required" cue on the picker.
 - [x] Custom units of measurement (both types) — inline "New unit" in product form.
   Online-only create; ponytail shortcut (offline add deferred).
-- **Batch numbers + expiry (wholesale)** — LARGE, on branch `feat/batch-tracking`.
-  Decisions (2026-06-21): auto-FEFO, expired = warn-but-allow, recall traceability
-  IN (`sale_item_batches`), retail untouched.
+- **Batch numbers + expiry (wholesale)** — ✅ FEATURE-COMPLETE for pilot, on
+  branch `feat/batch-tracking`. Migrations `028`/`029`/`030` all applied live (via
+  MCP). Decisions (2026-06-21): auto-FEFO, expired = warn-but-allow, recall
+  traceability IN (`sale_item_batches`), retail untouched. **Unverified end-to-end
+  — needs a wholesale shop exercised on a device.**
   - [x] **Phase 1 — schema + local mirror.** Migration `028_product_batches.sql`
     (product_batches + sale_item_batches + rollup trigger keeping
     `inventory.quantity` = sum of batches + wholesale-only backfill). Drift
@@ -31,9 +33,6 @@ shop_type chosen at onboarding, locked. `shopTypeProvider.isWholesale` is the ga
     to the pending-work watcher. Correct Stock hidden for wholesale. Unit-tested
     (rollup sum, soonest-expiry, pending flag). **NOT verified end-to-end** — needs
     `028` applied + a wholesale shop on device.
-  - [ ] **Phase 2.5 — wholesale Correct Stock + oversell-resolution** at the
-    batch level (`conflicts_provider`); both currently hidden/retail-only because
-    they write `inventory.quantity` directly, which the rollup would overwrite.
   - [x] **Phase 3 — FEFO depletion on sale.** Immutable-batch / append-only
     ledger model: `product_batches.quantity` = received (never mutated);
     depletion lives in `sale_item_batches`; `remaining = received − Σsib`;
@@ -45,12 +44,23 @@ shop_type chosen at onboarding, locked. `shopTypeProvider.isWholesale` is the ga
     void reverses locally; SyncService passes allocations; expired-lot warn-but-
     allow dialog. Pure FEFO allocator + 14 tests. **Unverified end-to-end** (needs
     a wholesale shop on device).
-  - [ ] **Phase 3.5 — batch-conflict RESOLUTION UI.** Detection ships in `029`;
-    resolving an overdrawn lot under the immutable-ledger model (can't just edit a
-    lot's qty) needs its own flow. `stock_conflicts.batch_id` is populated.
-  - [ ] **Phase 4 — surface expiry:** per-batch rows + expiry badges (wholesale
-    inventory screen); optional near-expiry digest. Recall report (which customers
-    got batch X) is a server-side query — small later task.
+  - [x] **Phase 4 — surface expiry + lot disposal.** Inventory action sheet shows
+    a BATCHES section per wholesale product: each lot's batch number, expiry
+    (Expired / Expiring-soon ≤30d badges), and remaining qty, FEFO-ordered.
+    `productBatchesProvider`. **Discard lot** (`030`): soft-delete a lot
+    (expired/damaged) → rollup drops exactly its remaining; owner-gated
+    (`settings.manage`); offline-first (pushes the soft-delete). `030` also fixed
+    the rollup to ignore discarded lots' depletions and **auto-closes a batch
+    conflict** when the lot's remaining recovers (owner re-adds stock) or is
+    discarded — so detection (`029`) has a close path without a bespoke screen.
+    Schema v14. Tests: discard restates the rollup. 149 tests pass.
+  - [ ] **Deferred (optional, post-pilot):** (a) PARTIAL lot correction — writing
+    off *some* of a lot (miscount) vs the whole lot; needs a write-off ledger
+    (nullable `sale_item_id` + reason). Up-correction already = Add Stock (new
+    lot); whole-lot disposal = Discard. (b) Bespoke batch-conflict resolution
+    screen — current path is add-stock-to-recover + auto-close. (c) Recall report
+    ("which customers got lot X") — server-side query over `sale_item_batches`.
+    All rare for single-device pilot shops.
 - [ ] **Refunds / returns** — schema (`refunds`/`refund_items`) already exists,
   unused. Must be offline-first. Restock-to-batch couples to batch tracking — do
   after it. (See "Blocked / Deferred" for the original deferral decision.)

@@ -67,6 +67,26 @@ class InventoryRepository {
     return unit;
   }
 
+  /// A product's live batches (remaining > 0) at a branch, FEFO-ordered
+  /// (soonest expiry first). Wholesale display only; empty when there's no local
+  /// DB (web) or no batches.
+  Future<List<ProductBatchView>> getProductBatches(
+      String branchId, String productId) async {
+    if (_db == null) return [];
+    final batches = await _db.getBatchesForProduct(branchId, productId);
+    final depleted =
+        await _db.depletionByBatch(batches.map((b) => b.id).toList());
+    return [
+      for (final b in batches)
+        ProductBatchView(
+          id: b.id,
+          batchNumber: b.batchNumber,
+          expiryDate: b.expiryDate,
+          remaining: b.quantity - (depleted[b.id] ?? Decimal.zero),
+        ),
+    ].where((v) => v.remaining > Decimal.zero).toList();
+  }
+
   Future<List<ProductCategory>> getProductCategories(String shopId) async {
     // Local-first: categories can legitimately be empty (a shop may have none),
     // so when the local DB is present we trust it outright — never error offline.
@@ -418,6 +438,17 @@ class InventoryRepository {
   Future<void> _recomputeLocalRollup(String branchId, String productId) =>
       _db?.recomputeStockFromBatches(branchId, productId, DateTime.now()) ??
       Future.value();
+
+  /// Discard a lot (expired/damaged): soft-delete it + recompute the rollup so
+  /// its remaining drops out immediately and offline. SyncService pushes the
+  /// soft-delete; the server rollup trigger restates inventory.quantity.
+  Future<void> discardBatch(String batchId) async {
+    if (_db == null) return;
+    final batch = await _db.getBatch(batchId);
+    if (batch == null) return;
+    await _db.discardBatch(batchId, DateTime.now());
+    await _recomputeLocalRollup(batch.branchId, batch.productId);
+  }
 
   Future<void> manualAdjustment({
     required String branchId,
