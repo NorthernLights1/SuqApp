@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/constants/setting_keys.dart';
 import '../../../../domain/models/product.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -568,7 +569,8 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
     // optional batch number); retail bumps the single stock quantity. Read the
     // authoritative shop_type (await the future) so a still-loading wholesale
     // shop can't fall through to the direct-write retail path.
-    final isWholesale = await ref.read(shopTypeProvider.future) == 'wholesale';
+    final isWholesale =
+        await ref.read(shopTypeProvider.future) == ShopType.wholesale;
     if (!mounted) return;
     final notifier = ref.read(stockAdjustmentProvider.notifier);
     final ok = isWholesale

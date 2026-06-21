@@ -11,7 +11,7 @@ class OnboardingState {
     this.step = OnboardingStep.selectShopType,
     this.shopId,
     this.branchId,
-    this.shopType = 'retail',
+    this.shopType = ShopType.retail,
     this.loading = false,
     this.error,
   });

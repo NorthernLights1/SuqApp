@@ -1,5 +1,6 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/constants/setting_keys.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
@@ -119,7 +120,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
             // not a direct inventory write, which the rollup trigger would
             // overwrite on the first restock, losing the opening quantity.
             final isWholesale =
-                await ref.read(shopTypeProvider.future) == 'wholesale';
+                await ref.read(shopTypeProvider.future) == ShopType.wholesale;
             if (isWholesale) {
               await repo.addStockBatch(
                 branchId: branch.id,

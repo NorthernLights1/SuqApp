@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/setting_keys.dart';
 import '../../../../shared/router/app_routes.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -105,7 +106,7 @@ class _SelectShopTypeStep extends ConsumerWidget {
             title: 'Retail Shop',
             description:
                 'Sell directly to walk-in customers. Great for general stores, boutiques, and small shops.',
-            onTap: () => select('retail'),
+            onTap: () => select(ShopType.retail),
           ),
           const SizedBox(height: 16),
           _TypeCard(
@@ -113,7 +114,7 @@ class _SelectShopTypeStep extends ConsumerWidget {
             title: 'Wholesale / Distributor',
             description:
                 'Sell in bulk to other businesses. Includes batch tracking, expiry dates, and invoice printing.',
-            onTap: () => select('wholesale'),
+            onTap: () => select(ShopType.wholesale),
           ),
           const Spacer(),
         ],

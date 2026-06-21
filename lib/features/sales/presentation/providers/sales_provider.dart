@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:decimal/decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/constants/setting_keys.dart';
 import '../../../../core/services/sync_providers.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../data/local/seed_service.dart';
@@ -213,7 +214,7 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
   /// Wholesale only: true if completing this sale would draw from an expired lot
   /// (FEFO). The UI warns and asks to confirm before submitting (warn-but-allow).
   Future<bool> wouldUseExpiredBatch(List<CartItem> items) async {
-    final useBatches = await ref.read(shopTypeProvider.future) == 'wholesale';
+    final useBatches = await ref.read(shopTypeProvider.future) == ShopType.wholesale;
     if (!useBatches) return false;
     final branches = await ref.read(currentShopBranchesProvider.future);
     final branch = ref.read(activeBranchProvider) ??
@@ -244,7 +245,7 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
     // Wholesale shops deplete stock by batch (FEFO); retail decrements the
     // single quantity. Authoritative read (awaited) so a still-loading shop type
     // can't pick the wrong path.
-    final useBatches = await ref.read(shopTypeProvider.future) == 'wholesale';
+    final useBatches = await ref.read(shopTypeProvider.future) == ShopType.wholesale;
 
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {

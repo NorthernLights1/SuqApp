@@ -4,6 +4,7 @@ import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/setting_keys.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/settings/presentation/providers/shop_type_provider.dart';
@@ -114,7 +115,7 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
     if (customer == null) {
       final shopType = await ref.read(shopTypeProvider.future);
       if (!mounted) return;
-      if (shopType == 'wholesale') {
+      if (shopType == ShopType.wholesale) {
         _showSnack('Wholesale sales require a customer. Select or add one.');
         return;
       }
