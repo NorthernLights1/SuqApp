@@ -103,8 +103,15 @@ Suq now serves two business types, chosen at onboarding and **locked** afterward
   (idempotent upsert); a server rollup trigger keeps `inventory.quantity` = sum of
   batches, so all existing reads + oversell detection are unchanged. Next: Phase 3
   (FEFO depletion on sale), Phase 2.5 (wholesale Correct Stock/oversell-resolve).
-- **Next for wholesale:** Phase 3 FEFO sale depletion, then refunds. Extra
-  customer fields (business_name/TIN/address) deferred to an invoice feature.
+- **Phase 3 (FEFO depletion) DONE + tested, unverified end-to-end:** immutable
+  batches + append-only `sale_item_batches` ledger; `remaining = received − Σsib`;
+  rollup = `Σreceived − Σsib`. Migration `029` (applied): batch-aware rollup,
+  **batch-level conflict detection** (a lot can go negative while the product total
+  stays positive), sale RPC `p_item_batches`, wholesale void = soft-delete ledger.
+  Sale draws soonest-expiry-first; expired lot = warn-but-allow.
+- **Next for wholesale:** Phase 3.5 batch-conflict resolution UI, Phase 2.5
+  (wholesale Correct Stock/oversell-resolve), then refunds. Extra customer fields
+  (business_name/TIN/address) deferred to an invoice feature.
 
 ---
 

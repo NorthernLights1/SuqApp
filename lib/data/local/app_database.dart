@@ -79,6 +79,24 @@ class LocalProductBatches extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// The depletion ledger (wholesale): how much of each sale line was drawn from
+/// each batch. Append-only; a void soft-deletes (sets deletedAt). Mirrors
+/// `sale_item_batches`. No isSynced — these ride the sale's push (the sale RPC
+/// inserts them via p_item_batches), and are pulled back for cross-device
+/// per-batch remaining accuracy.
+@DataClassName('SaleItemBatchRow')
+class LocalSaleItemBatches extends Table {
+  TextColumn get id => text()();
+  TextColumn get saleItemId => text()();
+  TextColumn get batchId => text()();
+  TextColumn get quantity => text().map(const _Dec())();
+  DateTimeColumn get syncedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('SaleRow')
 class LocalSales extends Table {
   TextColumn get id => text()();
@@ -330,6 +348,7 @@ class LocalSyncState extends Table {
   LocalProducts,
   LocalStock,
   LocalProductBatches,
+  LocalSaleItemBatches,
   LocalSales,
   LocalSaleItems,
   LocalCustomers,
@@ -350,7 +369,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 12;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -422,6 +441,8 @@ class AppDatabase extends _$AppDatabase {
           }
           // v11 -> v12: wholesale batch/expiry mirror (FEFO depletion + expiry).
           if (from < 12) await m.createTable(localProductBatches);
+          // v12 -> v13: wholesale depletion ledger (sale_item_batches mirror).
+          if (from < 13) await m.createTable(localSaleItemBatches);
         },
       );
 
@@ -490,6 +511,65 @@ class AppDatabase extends _$AppDatabase {
           ..where((t) => t.branchId.equals(branchId) & t.isSynced.equals(false)))
         .get();
     return rows.map((r) => r.productId).toSet();
+  }
+
+  // ── Sale-item batches (depletion ledger, wholesale) ──────────────────────────
+
+  Future<void> upsertSaleItemBatches(
+          List<LocalSaleItemBatchesCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localSaleItemBatches, rows));
+
+  /// Non-deleted depletion summed per batch, for the given batch ids. Used to
+  /// compute FEFO `remaining(batch) = received − depleted`.
+  Future<Map<String, Decimal>> depletionByBatch(List<String> batchIds) async {
+    if (batchIds.isEmpty) return {};
+    final rows = await (select(localSaleItemBatches)
+          ..where((t) => t.batchId.isIn(batchIds) & t.deletedAt.isNull()))
+        .get();
+    final map = <String, Decimal>{};
+    for (final r in rows) {
+      map[r.batchId] = (map[r.batchId] ?? Decimal.zero) + r.quantity;
+    }
+    return map;
+  }
+
+  /// The active depletions for a sale's items — used to build the sale RPC's
+  /// `p_item_batches` payload on push.
+  Future<List<SaleItemBatchRow>> getSaleItemBatchesForItems(
+      List<String> saleItemIds) {
+    if (saleItemIds.isEmpty) return Future.value(const []);
+    return (select(localSaleItemBatches)
+          ..where((t) => t.saleItemId.isIn(saleItemIds) & t.deletedAt.isNull()))
+        .get();
+  }
+
+  /// Void: soft-delete a sale's depletions so the local rollup restores.
+  Future<void> softDeleteSaleItemBatches(
+      List<String> saleItemIds, DateTime when) async {
+    if (saleItemIds.isEmpty) return;
+    await (update(localSaleItemBatches)
+          ..where((t) => t.saleItemId.isIn(saleItemIds)))
+        .write(LocalSaleItemBatchesCompanion(deletedAt: Value(when)));
+  }
+
+  /// Recompute the local stock rollup for a wholesale product from its batches:
+  /// `LocalStock.quantity = Σ(received) − Σ(non-deleted depletions)` — the same
+  /// derivation as the server rollup trigger (029). The stock row's expiry = the
+  /// soonest expiry among lots that still have remaining stock.
+  Future<void> recomputeStockFromBatches(
+      String branchId, String productId, DateTime now) async {
+    final batches = await getBatchesForProduct(branchId, productId);
+    final depleted = await depletionByBatch(batches.map((b) => b.id).toList());
+    var total = Decimal.zero;
+    DateTime? soonest;
+    for (final b in batches) {
+      final remaining = b.quantity - (depleted[b.id] ?? Decimal.zero);
+      total += remaining;
+      if (remaining <= Decimal.zero) continue; // exhausted lot — ignore expiry
+      final e = b.expiryDate;
+      if (e != null && (soonest == null || e.isBefore(soonest))) soonest = e;
+    }
+    await setStockLevel(branchId, productId, total, expiryDate: soonest);
   }
 
   Future<List<StockRow>> getStockByBranch(String branchId) =>
@@ -1027,6 +1107,7 @@ class AppDatabase extends _$AppDatabase {
     'local_measurement_units',
     'local_products',
     'local_product_batches',
+    'local_sale_item_batches',
     'local_customers',
     'local_expense_categories',
     'local_expenses',

@@ -18,6 +18,7 @@ import '../../../../features/customers/presentation/providers/customers_provider
 import '../../../../features/reports/presentation/providers/reports_provider.dart'
     show reportSummaryProvider;
 import '../../../../features/inventory/presentation/providers/inventory_provider.dart';
+import '../../../../features/settings/presentation/providers/shop_type_provider.dart';
 import '../../data/sales_remote.dart';
 import '../../domain/sales_repository.dart';
 
@@ -209,6 +210,20 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
   @override
   Future<Sale?> build() async => null;
 
+  /// Wholesale only: true if completing this sale would draw from an expired lot
+  /// (FEFO). The UI warns and asks to confirm before submitting (warn-but-allow).
+  Future<bool> wouldUseExpiredBatch(List<CartItem> items) async {
+    final useBatches = await ref.read(shopTypeProvider.future) == 'wholesale';
+    if (!useBatches) return false;
+    final branches = await ref.read(currentShopBranchesProvider.future);
+    final branch = ref.read(activeBranchProvider) ??
+        (branches.isNotEmpty ? branches.first : null);
+    if (branch == null) return false;
+    return ref
+        .read(salesRepositoryProvider)
+        .wouldUseExpiredBatch(branchId: branch.id, items: items);
+  }
+
   Future<Sale?> submit({
     required String paymentMethodId,
     required List<CartItem> items,
@@ -226,6 +241,11 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
       throw Exception('Missing shop, branch, or user context');
     }
 
+    // Wholesale shops deplete stock by batch (FEFO); retail decrements the
+    // single quantity. Authoritative read (awaited) so a still-loading shop type
+    // can't pick the wrong path.
+    final useBatches = await ref.read(shopTypeProvider.future) == 'wholesale';
+
     state = const AsyncLoading();
     state = await AsyncValue.guard(() async {
       final sale = await ref.read(salesRepositoryProvider).createSale(
@@ -238,6 +258,7 @@ class CreateSaleNotifier extends AsyncNotifier<Sale?> {
             isCredit: isCredit,
             notes: notes,
             discountReason: discountReason,
+            useBatches: useBatches,
           );
       ref.read(cartProvider.notifier).clear();
       ref.read(selectedCustomerProvider.notifier).set(null);

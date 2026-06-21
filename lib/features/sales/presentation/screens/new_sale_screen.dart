@@ -135,6 +135,33 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       }
     }
 
+    // Wholesale warn-but-allow: if FEFO would draw from an expired lot, confirm
+    // before selling. (No-op for retail and for non-expired stock.)
+    if (await ref.read(createSaleProvider.notifier).wouldUseExpiredBatch(cart)) {
+      if (!mounted) return;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Expired stock'),
+          content: const Text(
+              'This sale includes stock past its expiry date. Sell it anyway?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Sell anyway',
+                  style: TextStyle(color: AppColors.error)),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+      if (!mounted) return;
+    }
+
     final sale = await ref.read(createSaleProvider.notifier).submit(
           paymentMethodId: paymentMethod.id,
           items: cart,

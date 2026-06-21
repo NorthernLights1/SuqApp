@@ -413,20 +413,11 @@ class InventoryRepository {
     await _recomputeLocalRollup(branchId, productId);
   }
 
-  /// LocalStock.quantity = sum of the product's local batches; the stock row's
-  /// expiry = the soonest batch expiry (drives the list's "expiring" badge).
-  /// Mirrors the server-side rollup trigger so offline reads stay consistent.
-  Future<void> _recomputeLocalRollup(String branchId, String productId) async {
-    if (_db == null) return;
-    final batches = await _db.getBatchesForProduct(branchId, productId);
-    final total = batches.fold(Decimal.zero, (s, b) => s + b.quantity);
-    DateTime? soonest;
-    for (final b in batches) {
-      final e = b.expiryDate;
-      if (e != null && (soonest == null || e.isBefore(soonest))) soonest = e;
-    }
-    await _db.setStockLevel(branchId, productId, total, expiryDate: soonest);
-  }
+  /// Recompute the local stock rollup from this product's batches (= Σ received
+  /// − Σ depletions). Shared with the sale path via the DB helper.
+  Future<void> _recomputeLocalRollup(String branchId, String productId) =>
+      _db?.recomputeStockFromBatches(branchId, productId, DateTime.now()) ??
+      Future.value();
 
   Future<void> manualAdjustment({
     required String branchId,

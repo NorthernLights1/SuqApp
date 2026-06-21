@@ -182,9 +182,23 @@ class SyncService implements ISyncService {
     for (final operation in operations) {
       final sale = operation.sale;
       if (sale != null) {
-        final items = (await db.getSaleItems(
-          sale.id,
-        )).map(_saleItemJson).toList();
+        final itemRows = await db.getSaleItems(sale.id);
+        final items = itemRows.map(_saleItemJson).toList();
+        // Wholesale: the FEFO depletion ledger. Null for retail → the RPC takes
+        // the inventory.quantity decrement path. Idempotent by allocation id.
+        final sib = await db
+            .getSaleItemBatchesForItems(itemRows.map((i) => i.id).toList());
+        final itemBatches = sib.isEmpty
+            ? null
+            : [
+                for (final s in sib)
+                  {
+                    'id': s.id,
+                    'sale_item_id': s.saleItemId,
+                    'batch_id': s.batchId,
+                    'quantity': s.quantity.toString(),
+                  }
+              ];
         await _supabase.rpc(
           'upsert_sale_with_inventory',
           params: {
@@ -192,6 +206,7 @@ class SyncService implements ISyncService {
             'p_items': items,
             'p_allow_oversell': true,
             'p_discount_reason': null,
+            'p_item_batches': itemBatches,
           },
         );
         await db.markSaleSynced(sale.id);

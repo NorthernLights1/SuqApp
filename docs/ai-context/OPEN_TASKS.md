@@ -34,9 +34,20 @@ shop_type chosen at onboarding, locked. `shopTypeProvider.isWholesale` is the ga
   - [ ] **Phase 2.5 — wholesale Correct Stock + oversell-resolution** at the
     batch level (`conflicts_provider`); both currently hidden/retail-only because
     they write `inventory.quantity` directly, which the rollup would overwrite.
-  - [ ] **Phase 3 — FEFO depletion on sale:** local + server FEFO (expiry asc,
-    nulls last); warn on expired; write `sale_item_batches`; oversell via existing
-    `stock_conflicts` (rollup feeds it).
+  - [x] **Phase 3 — FEFO depletion on sale.** Immutable-batch / append-only
+    ledger model: `product_batches.quantity` = received (never mutated);
+    depletion lives in `sale_item_batches`; `remaining = received − Σsib`;
+    rollup = `Σreceived − Σsib`. Migration `029` (applied): batch-aware rollup +
+    BATCH-LEVEL conflict detection (a lot can go negative while the product total
+    stays positive) + sale RPC `p_item_batches` + wholesale void = soft-delete
+    the ledger. Local: `LocalSaleItemBatches` (schema v13) + pull descriptor;
+    `createSale(useBatches)` FEFO-allocates + writes ledger + recomputes rollup;
+    void reverses locally; SyncService passes allocations; expired-lot warn-but-
+    allow dialog. Pure FEFO allocator + 14 tests. **Unverified end-to-end** (needs
+    a wholesale shop on device).
+  - [ ] **Phase 3.5 — batch-conflict RESOLUTION UI.** Detection ships in `029`;
+    resolving an overdrawn lot under the immutable-ledger model (can't just edit a
+    lot's qty) needs its own flow. `stock_conflicts.batch_id` is populated.
   - [ ] **Phase 4 — surface expiry:** per-batch rows + expiry badges (wholesale
     inventory screen); optional near-expiry digest. Recall report (which customers
     got batch X) is a server-side query — small later task.

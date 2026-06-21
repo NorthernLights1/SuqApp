@@ -1786,6 +1786,423 @@ class LocalProductBatchesCompanion extends UpdateCompanion<ProductBatchRow> {
   }
 }
 
+class $LocalSaleItemBatchesTable extends LocalSaleItemBatches
+    with TableInfo<$LocalSaleItemBatchesTable, SaleItemBatchRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalSaleItemBatchesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _saleItemIdMeta = const VerificationMeta(
+    'saleItemId',
+  );
+  @override
+  late final GeneratedColumn<String> saleItemId = GeneratedColumn<String>(
+    'sale_item_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _batchIdMeta = const VerificationMeta(
+    'batchId',
+  );
+  @override
+  late final GeneratedColumn<String> batchId = GeneratedColumn<String>(
+    'batch_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<Decimal, String> quantity =
+      GeneratedColumn<String>(
+        'quantity',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<Decimal>($LocalSaleItemBatchesTable.$converterquantity);
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+    'synced_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    saleItemId,
+    batchId,
+    quantity,
+    syncedAt,
+    deletedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_sale_item_batches';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SaleItemBatchRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('sale_item_id')) {
+      context.handle(
+        _saleItemIdMeta,
+        saleItemId.isAcceptableOrUnknown(
+          data['sale_item_id']!,
+          _saleItemIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_saleItemIdMeta);
+    }
+    if (data.containsKey('batch_id')) {
+      context.handle(
+        _batchIdMeta,
+        batchId.isAcceptableOrUnknown(data['batch_id']!, _batchIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_batchIdMeta);
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  SaleItemBatchRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SaleItemBatchRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      saleItemId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sale_item_id'],
+      )!,
+      batchId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}batch_id'],
+      )!,
+      quantity: $LocalSaleItemBatchesTable.$converterquantity.fromSql(
+        attachedDatabase.typeMapping.read(
+          DriftSqlType.string,
+          data['${effectivePrefix}quantity'],
+        )!,
+      ),
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}synced_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+    );
+  }
+
+  @override
+  $LocalSaleItemBatchesTable createAlias(String alias) {
+    return $LocalSaleItemBatchesTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<Decimal, String> $converterquantity = const _Dec();
+}
+
+class SaleItemBatchRow extends DataClass
+    implements Insertable<SaleItemBatchRow> {
+  final String id;
+  final String saleItemId;
+  final String batchId;
+  final Decimal quantity;
+  final DateTime syncedAt;
+  final DateTime? deletedAt;
+  const SaleItemBatchRow({
+    required this.id,
+    required this.saleItemId,
+    required this.batchId,
+    required this.quantity,
+    required this.syncedAt,
+    this.deletedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['sale_item_id'] = Variable<String>(saleItemId);
+    map['batch_id'] = Variable<String>(batchId);
+    {
+      map['quantity'] = Variable<String>(
+        $LocalSaleItemBatchesTable.$converterquantity.toSql(quantity),
+      );
+    }
+    map['synced_at'] = Variable<DateTime>(syncedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    return map;
+  }
+
+  LocalSaleItemBatchesCompanion toCompanion(bool nullToAbsent) {
+    return LocalSaleItemBatchesCompanion(
+      id: Value(id),
+      saleItemId: Value(saleItemId),
+      batchId: Value(batchId),
+      quantity: Value(quantity),
+      syncedAt: Value(syncedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+    );
+  }
+
+  factory SaleItemBatchRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SaleItemBatchRow(
+      id: serializer.fromJson<String>(json['id']),
+      saleItemId: serializer.fromJson<String>(json['saleItemId']),
+      batchId: serializer.fromJson<String>(json['batchId']),
+      quantity: serializer.fromJson<Decimal>(json['quantity']),
+      syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'saleItemId': serializer.toJson<String>(saleItemId),
+      'batchId': serializer.toJson<String>(batchId),
+      'quantity': serializer.toJson<Decimal>(quantity),
+      'syncedAt': serializer.toJson<DateTime>(syncedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+    };
+  }
+
+  SaleItemBatchRow copyWith({
+    String? id,
+    String? saleItemId,
+    String? batchId,
+    Decimal? quantity,
+    DateTime? syncedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+  }) => SaleItemBatchRow(
+    id: id ?? this.id,
+    saleItemId: saleItemId ?? this.saleItemId,
+    batchId: batchId ?? this.batchId,
+    quantity: quantity ?? this.quantity,
+    syncedAt: syncedAt ?? this.syncedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+  );
+  SaleItemBatchRow copyWithCompanion(LocalSaleItemBatchesCompanion data) {
+    return SaleItemBatchRow(
+      id: data.id.present ? data.id.value : this.id,
+      saleItemId: data.saleItemId.present
+          ? data.saleItemId.value
+          : this.saleItemId,
+      batchId: data.batchId.present ? data.batchId.value : this.batchId,
+      quantity: data.quantity.present ? data.quantity.value : this.quantity,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SaleItemBatchRow(')
+          ..write('id: $id, ')
+          ..write('saleItemId: $saleItemId, ')
+          ..write('batchId: $batchId, ')
+          ..write('quantity: $quantity, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('deletedAt: $deletedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode =>
+      Object.hash(id, saleItemId, batchId, quantity, syncedAt, deletedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SaleItemBatchRow &&
+          other.id == this.id &&
+          other.saleItemId == this.saleItemId &&
+          other.batchId == this.batchId &&
+          other.quantity == this.quantity &&
+          other.syncedAt == this.syncedAt &&
+          other.deletedAt == this.deletedAt);
+}
+
+class LocalSaleItemBatchesCompanion extends UpdateCompanion<SaleItemBatchRow> {
+  final Value<String> id;
+  final Value<String> saleItemId;
+  final Value<String> batchId;
+  final Value<Decimal> quantity;
+  final Value<DateTime> syncedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<int> rowid;
+  const LocalSaleItemBatchesCompanion({
+    this.id = const Value.absent(),
+    this.saleItemId = const Value.absent(),
+    this.batchId = const Value.absent(),
+    this.quantity = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalSaleItemBatchesCompanion.insert({
+    required String id,
+    required String saleItemId,
+    required String batchId,
+    required Decimal quantity,
+    required DateTime syncedAt,
+    this.deletedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       saleItemId = Value(saleItemId),
+       batchId = Value(batchId),
+       quantity = Value(quantity),
+       syncedAt = Value(syncedAt);
+  static Insertable<SaleItemBatchRow> custom({
+    Expression<String>? id,
+    Expression<String>? saleItemId,
+    Expression<String>? batchId,
+    Expression<String>? quantity,
+    Expression<DateTime>? syncedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (saleItemId != null) 'sale_item_id': saleItemId,
+      if (batchId != null) 'batch_id': batchId,
+      if (quantity != null) 'quantity': quantity,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalSaleItemBatchesCompanion copyWith({
+    Value<String>? id,
+    Value<String>? saleItemId,
+    Value<String>? batchId,
+    Value<Decimal>? quantity,
+    Value<DateTime>? syncedAt,
+    Value<DateTime?>? deletedAt,
+    Value<int>? rowid,
+  }) {
+    return LocalSaleItemBatchesCompanion(
+      id: id ?? this.id,
+      saleItemId: saleItemId ?? this.saleItemId,
+      batchId: batchId ?? this.batchId,
+      quantity: quantity ?? this.quantity,
+      syncedAt: syncedAt ?? this.syncedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (saleItemId.present) {
+      map['sale_item_id'] = Variable<String>(saleItemId.value);
+    }
+    if (batchId.present) {
+      map['batch_id'] = Variable<String>(batchId.value);
+    }
+    if (quantity.present) {
+      map['quantity'] = Variable<String>(
+        $LocalSaleItemBatchesTable.$converterquantity.toSql(quantity.value),
+      );
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalSaleItemBatchesCompanion(')
+          ..write('id: $id, ')
+          ..write('saleItemId: $saleItemId, ')
+          ..write('batchId: $batchId, ')
+          ..write('quantity: $quantity, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $LocalSalesTable extends LocalSales
     with TableInfo<$LocalSalesTable, SaleRow> {
   @override
@@ -8984,6 +9401,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $LocalStockTable localStock = $LocalStockTable(this);
   late final $LocalProductBatchesTable localProductBatches =
       $LocalProductBatchesTable(this);
+  late final $LocalSaleItemBatchesTable localSaleItemBatches =
+      $LocalSaleItemBatchesTable(this);
   late final $LocalSalesTable localSales = $LocalSalesTable(this);
   late final $LocalSaleItemsTable localSaleItems = $LocalSaleItemsTable(this);
   late final $LocalCustomersTable localCustomers = $LocalCustomersTable(this);
@@ -9014,6 +9433,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localProducts,
     localStock,
     localProductBatches,
+    localSaleItemBatches,
     localSales,
     localSaleItems,
     localCustomers,
@@ -9915,6 +10335,244 @@ typedef $$LocalProductBatchesTableProcessedTableManager =
         >,
       ),
       ProductBatchRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LocalSaleItemBatchesTableCreateCompanionBuilder =
+    LocalSaleItemBatchesCompanion Function({
+      required String id,
+      required String saleItemId,
+      required String batchId,
+      required Decimal quantity,
+      required DateTime syncedAt,
+      Value<DateTime?> deletedAt,
+      Value<int> rowid,
+    });
+typedef $$LocalSaleItemBatchesTableUpdateCompanionBuilder =
+    LocalSaleItemBatchesCompanion Function({
+      Value<String> id,
+      Value<String> saleItemId,
+      Value<String> batchId,
+      Value<Decimal> quantity,
+      Value<DateTime> syncedAt,
+      Value<DateTime?> deletedAt,
+      Value<int> rowid,
+    });
+
+class $$LocalSaleItemBatchesTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalSaleItemBatchesTable> {
+  $$LocalSaleItemBatchesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get saleItemId => $composableBuilder(
+    column: $table.saleItemId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get batchId => $composableBuilder(
+    column: $table.batchId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<Decimal, Decimal, String> get quantity =>
+      $composableBuilder(
+        column: $table.quantity,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalSaleItemBatchesTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalSaleItemBatchesTable> {
+  $$LocalSaleItemBatchesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get saleItemId => $composableBuilder(
+    column: $table.saleItemId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get batchId => $composableBuilder(
+    column: $table.batchId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get quantity => $composableBuilder(
+    column: $table.quantity,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalSaleItemBatchesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalSaleItemBatchesTable> {
+  $$LocalSaleItemBatchesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get saleItemId => $composableBuilder(
+    column: $table.saleItemId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get batchId =>
+      $composableBuilder(column: $table.batchId, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<Decimal, String> get quantity =>
+      $composableBuilder(column: $table.quantity, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+}
+
+class $$LocalSaleItemBatchesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalSaleItemBatchesTable,
+          SaleItemBatchRow,
+          $$LocalSaleItemBatchesTableFilterComposer,
+          $$LocalSaleItemBatchesTableOrderingComposer,
+          $$LocalSaleItemBatchesTableAnnotationComposer,
+          $$LocalSaleItemBatchesTableCreateCompanionBuilder,
+          $$LocalSaleItemBatchesTableUpdateCompanionBuilder,
+          (
+            SaleItemBatchRow,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalSaleItemBatchesTable,
+              SaleItemBatchRow
+            >,
+          ),
+          SaleItemBatchRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalSaleItemBatchesTableTableManager(
+    _$AppDatabase db,
+    $LocalSaleItemBatchesTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalSaleItemBatchesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LocalSaleItemBatchesTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LocalSaleItemBatchesTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> saleItemId = const Value.absent(),
+                Value<String> batchId = const Value.absent(),
+                Value<Decimal> quantity = const Value.absent(),
+                Value<DateTime> syncedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalSaleItemBatchesCompanion(
+                id: id,
+                saleItemId: saleItemId,
+                batchId: batchId,
+                quantity: quantity,
+                syncedAt: syncedAt,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String saleItemId,
+                required String batchId,
+                required Decimal quantity,
+                required DateTime syncedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalSaleItemBatchesCompanion.insert(
+                id: id,
+                saleItemId: saleItemId,
+                batchId: batchId,
+                quantity: quantity,
+                syncedAt: syncedAt,
+                deletedAt: deletedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalSaleItemBatchesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalSaleItemBatchesTable,
+      SaleItemBatchRow,
+      $$LocalSaleItemBatchesTableFilterComposer,
+      $$LocalSaleItemBatchesTableOrderingComposer,
+      $$LocalSaleItemBatchesTableAnnotationComposer,
+      $$LocalSaleItemBatchesTableCreateCompanionBuilder,
+      $$LocalSaleItemBatchesTableUpdateCompanionBuilder,
+      (
+        SaleItemBatchRow,
+        BaseReferences<
+          _$AppDatabase,
+          $LocalSaleItemBatchesTable,
+          SaleItemBatchRow
+        >,
+      ),
+      SaleItemBatchRow,
       PrefetchHooks Function()
     >;
 typedef $$LocalSalesTableCreateCompanionBuilder =
@@ -13751,6 +14409,8 @@ class $AppDatabaseManager {
       $$LocalStockTableTableManager(_db, _db.localStock);
   $$LocalProductBatchesTableTableManager get localProductBatches =>
       $$LocalProductBatchesTableTableManager(_db, _db.localProductBatches);
+  $$LocalSaleItemBatchesTableTableManager get localSaleItemBatches =>
+      $$LocalSaleItemBatchesTableTableManager(_db, _db.localSaleItemBatches);
   $$LocalSalesTableTableManager get localSales =>
       $$LocalSalesTableTableManager(_db, _db.localSales);
   $$LocalSaleItemsTableTableManager get localSaleItems =>

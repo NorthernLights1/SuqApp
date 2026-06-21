@@ -701,4 +701,95 @@ void main() {
       expect(results, isEmpty);
     });
   });
+
+  // ── Wholesale batch depletion (useBatches) ──────────────────────────────────
+
+  group('createSale — wholesale FEFO depletion', () {
+    Future<void> seedBatch(String id, Decimal qty, DateTime? expiry) =>
+        db.upsertProductBatches([
+          LocalProductBatchesCompanion(
+            id: Value(id),
+            branchId: const Value(branchId),
+            productId: const Value('p-1'),
+            quantity: Value(qty),
+            expiryDate: Value(expiry),
+            receivedAt: Value(DateTime.now()),
+            syncedAt: Value(DateTime.now()),
+            isSynced: const Value(true),
+          )
+        ]);
+
+    test('depletes the soonest-expiry lot first and records the ledger',
+        () async {
+      await _seedProduct(db);
+      await seedBatch('late', Decimal.parse('10'), DateTime(2027, 1, 1));
+      await seedBatch('soon', Decimal.parse('3'), DateTime(2026, 9, 1));
+      await db.recomputeStockFromBatches(branchId, 'p-1', DateTime.now());
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('13'));
+
+      await repo.createSale(
+        branchId: branchId,
+        shopId: shopId,
+        cashierId: cashierId,
+        paymentMethodId: pmId,
+        items: [_item(quantity: Decimal.parse('5'))],
+        useBatches: true,
+      );
+
+      // Rollup dropped by 5.
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('8'));
+      // FEFO: soon (3) fully drawn, late drawn by 2.
+      final depl = await db.depletionByBatch(['soon', 'late']);
+      expect(depl['soon'], Decimal.parse('3'));
+      expect(depl['late'], Decimal.parse('2'));
+    });
+
+    test('void reverses the depletion and restores the rollup', () async {
+      await _seedProduct(db);
+      await seedBatch('b1', Decimal.parse('10'), DateTime(2027, 1, 1));
+      await db.recomputeStockFromBatches(branchId, 'p-1', DateTime.now());
+
+      final sale = await repo.createSale(
+        branchId: branchId,
+        shopId: shopId,
+        cashierId: cashierId,
+        paymentMethodId: pmId,
+        items: [_item(quantity: Decimal.parse('4'))],
+        useBatches: true,
+      );
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('6'));
+
+      await repo.voidSale(
+        saleId: sale.id,
+        voidedBy: cashierId,
+        reason: 'mistake',
+        branchId: branchId,
+      );
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('10'));
+    });
+
+    test('wouldUseExpiredBatch flags a draw from an expired lot', () async {
+      await _seedProduct(db);
+      await seedBatch('exp', Decimal.parse('10'), DateTime(2020, 1, 1));
+      await db.recomputeStockFromBatches(branchId, 'p-1', DateTime.now());
+
+      expect(
+        await repo.wouldUseExpiredBatch(
+            branchId: branchId, items: [_item(quantity: Decimal.one)]),
+        isTrue,
+      );
+    });
+
+    test('wouldUseExpiredBatch is false when the drawn lot is fresh', () async {
+      await _seedProduct(db);
+      await seedBatch('fresh', Decimal.parse('10'), DateTime(2030, 1, 1));
+      await db.recomputeStockFromBatches(branchId, 'p-1', DateTime.now());
+
+      expect(
+        await repo.wouldUseExpiredBatch(
+            branchId: branchId, items: [_item(quantity: Decimal.one)]),
+        isFalse,
+      );
+    });
+  });
 }

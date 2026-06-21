@@ -59,6 +59,7 @@ class SeedService {
       _guard(() => _seedSales(shopId)),
       _guard(() => _seedExpenses(shopId)),
       _guard(_seedCreditPayments),
+      _guard(_seedSaleItemBatches),
     ]);
   }
 
@@ -315,6 +316,30 @@ class SeedService {
                           _now),
                   syncedAt: Value(_now),
                   isSynced: const Value(true),
+                ))
+            .toList()),
+      );
+
+  // ── Sale-item batches (wholesale depletion ledger) ───────────────────────────
+
+  Future<void> _seedSaleItemBatches() => _deltaPull(
+        tableKey: 'sale_item_batches',
+        // Soft-deleted (voided) depletions are hard-removed locally → they stop
+        // counting against the rollup, restoring stock.
+        deleteFromTable: 'local_sale_item_batches',
+        fetch: (cursorIso) async {
+          var q = _client.from('sale_item_batches').select(
+              'id, sale_item_id, batch_id, quantity, updated_at, deleted_at');
+          if (cursorIso != null) q = q.gte('updated_at', cursorIso);
+          return (await q as List).cast<Map<String, dynamic>>();
+        },
+        applyLive: (rows) => _db.upsertSaleItemBatches(rows
+            .map((s) => LocalSaleItemBatchesCompanion(
+                  id: Value(s['id'] as String),
+                  saleItemId: Value(s['sale_item_id'] as String),
+                  batchId: Value(s['batch_id'] as String),
+                  quantity: Value(_dec(s['quantity'])),
+                  syncedAt: Value(_now),
                 ))
             .toList()),
       );
