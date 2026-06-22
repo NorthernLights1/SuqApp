@@ -176,6 +176,11 @@ class SalesRepository implements ISalesRepository {
     // When DB is available: write locally first (offline-safe), then sync to Supabase.
     // When DB is null (web): write directly to Supabase and return its result.
     if (_db == null) {
+      if (useBatches) {
+        throw StateError(
+          'Wholesale sales require local batch allocation before checkout.',
+        );
+      }
       return _remote.createSale(
         id: saleId,
         branchId: branchId,

@@ -192,6 +192,10 @@ declare
   v_alloc jsonb;
   v_item_id uuid;
   v_product_id uuid;
+  v_alloc_id uuid;
+  v_alloc_sale_item_id uuid;
+  v_alloc_batch_id uuid;
+  v_alloc_quantity numeric(15,4);
   v_quantity numeric(15,4);
   v_unit_price numeric(15,4);
   v_item_discount numeric(15,4);
@@ -343,12 +347,34 @@ begin
     -- here regardless of p_allow_oversell — the conflict surfaces it.)
     for v_alloc in select value from jsonb_array_elements(p_item_batches)
     loop
+      v_alloc_id := (v_alloc->>'id')::uuid;
+      v_alloc_sale_item_id := (v_alloc->>'sale_item_id')::uuid;
+      v_alloc_batch_id := (v_alloc->>'batch_id')::uuid;
+      v_alloc_quantity := (v_alloc->>'quantity')::numeric;
+
+      if v_alloc_quantity <= 0 then
+        raise exception 'Invalid batch allocation quantity';
+      end if;
+
+      if not exists (
+        select 1
+        from public.sale_items si
+        join public.product_batches pb
+          on pb.id = v_alloc_batch_id
+         and pb.branch_id = v_branch_id
+         and pb.product_id = si.product_id
+        where si.id = v_alloc_sale_item_id
+          and si.sale_id = v_sale_id
+      ) then
+        raise exception 'Invalid batch allocation';
+      end if;
+
       insert into public.sale_item_batches (id, sale_item_id, batch_id, quantity)
       values (
-        (v_alloc->>'id')::uuid,
-        (v_alloc->>'sale_item_id')::uuid,
-        (v_alloc->>'batch_id')::uuid,
-        (v_alloc->>'quantity')::numeric
+        v_alloc_id,
+        v_alloc_sale_item_id,
+        v_alloc_batch_id,
+        v_alloc_quantity
       )
       on conflict (id) do nothing;
     end loop;

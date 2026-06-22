@@ -719,6 +719,23 @@ void main() {
           )
         ]);
 
+    test('blocks wholesale checkout on web when batch allocation is unavailable',
+        () async {
+      final repoNoDb = SalesRepository(_SuccessStubRemote(), null);
+
+      await expectLater(
+        repoNoDb.createSale(
+          branchId: branchId,
+          shopId: shopId,
+          cashierId: cashierId,
+          paymentMethodId: pmId,
+          items: [_item(quantity: Decimal.parse('5'))],
+          useBatches: true,
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
     test('depletes the soonest-expiry lot first and records the ledger',
         () async {
       await _seedProduct(db);
