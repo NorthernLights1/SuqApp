@@ -135,7 +135,8 @@ void main() {
     expect(refunded['si-1'], d('3')); // 2 + 1 → remaining-refundable = 5 − 3 = 2
   });
 
-  test('retail restock bumps stock and queues a restock adjustment', () async {
+  test('retail restock bumps stock optimistically (RPC applies on push)',
+      () async {
     await db.setStockLevel(branchId, 'p-1', d('10'));
     await _seedSale(db, saleId: 's-1', itemId: 'si-1', qty: d('4'), total: d('20'));
 
@@ -157,12 +158,11 @@ void main() {
       useBatches: false,
     );
 
+    // Local stock reflects the return immediately; the authoritative
+    // inventory_adjustment is created server-side by the refund RPC on push, so
+    // there is no local adjustment row to push separately.
     expect(await db.getStockLevel(branchId, 'p-1'), d('12'));
-    final adj = await db.getPendingInventoryAdjustments();
-    expect(adj.length, 1);
-    expect(adj.first.type, 'restock');
-    expect(adj.first.quantityBefore, d('10'));
-    expect(adj.first.quantityAfter, d('12'));
+    expect(await db.getPendingInventoryAdjustments(), isEmpty);
   });
 
   test('no restock leaves stock untouched', () async {
@@ -240,6 +240,15 @@ void main() {
     expect(await db.getStockLevel(branchId, 'p-1'), d('8'));
     final adjusted = await db.adjustmentByBatch(['lot-1']);
     expect(adjusted['lot-1'], d('-2')); // negative delta = added back
+
+    // The restock row is linked to the refund (so the push can gather it) and
+    // marked synced so the generic batch-adjustment push skips it.
+    final refunds = await db.getPendingRefunds();
+    final linked = await db.getRefundRestockAdjustments(refunds.first.id);
+    expect(linked.length, 1);
+    expect(linked.first.batchId, 'lot-1');
+    final genericPending = await db.getPendingBatchAdjustments();
+    expect(genericPending, isEmpty);
   });
 
   test('rejects a refund that exceeds remaining-refundable (domain guard)',

@@ -126,9 +126,19 @@ Suq now serves two business types, chosen at onboarding and **locked** afterward
 
 ## 2026-06-22 (later session) — Reports segregation + Refunds + Phase D
 
-All three committed locally on `feat/batch-tracking`, UNPUSHED. Migrations `033`
-+ `034` + `035` **applied live** 2026-06-22 (no prod users). Schema **v18**. 161 tests.
-(`035` = post-apply advisor follow-up revoking RPC EXECUTE on batch trigger fns.)
+All committed locally on `feat/batch-tracking`, UNPUSHED. Migrations `033`–`036`
+**applied live** 2026-06-22 (no prod users). Schema **v19**. 163 tests.
+(`035` = advisor follow-up; `036` = atomic refund RPC from CodeRabbit review.)
+
+**CodeRabbit BLOCK addressed (2026-06-22):** over-refund now enforced at the
+repository boundary AND server-side in the RPC; web `refundedQtyBySaleItem`
+queries the server (no longer `{}`); wholesale restock FAILS if the lots can't
+absorb the return; refund push is now ONE transactional idempotent RPC
+(`upsert_refund_with_inventory`) for both web + native-sync — refund + items +
+restock commit together (was multi-call). Retail restock is server-derived from
+the lines (optimistic local stock bump); wholesale restock rows carry client ids
+the RPC reuses (`batch_adjustments.refundId` link, schema v19) so they reconcile
+on pull. Mirrors `upsert_sale_with_inventory`.
 
 - **Reports segregation (#4) — DONE** `c17c0d1`. Reports is now a **card hub**
   (period selector + 4 tappable cards) opening dedicated **Sales / Inventory /

@@ -120,6 +120,11 @@ class LocalBatchAdjustments extends Table {
   DateTimeColumn get syncedAt => dateTime()();
   DateTimeColumn get deletedAt => dateTime().nullable()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
+  // Local-only link: when this correction is a refund restock, the originating
+  // refund id. Lets the refund push gather + send these lots' ids to the RPC
+  // (so server + device rows share ids and reconcile on pull). Never pushed as a
+  // column; absent in the pull companion, so it's preserved on reconciliation.
+  TextColumn get refundId => text().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -441,7 +446,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 18;
+  int get schemaVersion => 19;
 
   /// Hot-path indexes on the local replica: pending-scan (`is_synced`), FK joins
   /// used by the per-sale/-batch lookups, and shop/branch filters. Idempotent
@@ -576,6 +581,13 @@ class AppDatabase extends _$AppDatabase {
           }
           // v17 -> v18: hot-path indexes on the local replica.
           if (from < 18) await _createPerformanceIndexes();
+          // v18 -> v19: local-only refund link on batch adjustments. Guarded
+          // from >= 16 because the v16 createTable already builds the current
+          // schema (a < 16 upgrade gets refundId there, must not re-add it).
+          if (from >= 16 && from < 19) {
+            await m.addColumn(
+                localBatchAdjustments, localBatchAdjustments.refundId);
+          }
         },
       );
 
@@ -754,6 +766,15 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<RefundItemRow>> getRefundItems(String refundId) =>
       (select(localRefundItems)
+            ..where((t) => t.refundId.equals(refundId) & t.deletedAt.isNull()))
+          .get();
+
+  /// The wholesale restock corrections written for a refund (negative deltas),
+  /// gathered so the refund push can send their ids to the RPC. Excludes
+  /// soft-deleted rows.
+  Future<List<BatchAdjustmentRow>> getRefundRestockAdjustments(
+          String refundId) =>
+      (select(localBatchAdjustments)
             ..where((t) => t.refundId.equals(refundId) & t.deletedAt.isNull()))
           .get();
 

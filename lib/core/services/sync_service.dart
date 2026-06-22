@@ -317,47 +317,58 @@ class SyncService implements ISyncService {
     'cost_price_snapshot': item.costPriceSnapshot?.toString(),
   };
 
-  /// Pushes pending refunds + their returned lines (idempotent by id). Pushed
-  /// after inventory work so the refund's original_sale_id / refund_items'
-  /// sale_item_id FKs exist on the server. The stock restoration (if any) rides
-  /// the inventory_adjustments / batch_adjustments push paths, not this one.
+  /// Pushes pending refunds through one transactional, idempotent RPC per refund
+  /// (upsert_refund_with_inventory) so the financial record + items + restock
+  /// commit together server-side or not at all. Pushed after inventory work so
+  /// the original_sale_id / sale_item_id FKs exist. Wholesale restock rows are
+  /// gathered by refund id (their ids are reused server-side so the device's
+  /// optimistic rows reconcile on pull); retail restock is derived server-side
+  /// from the refunded lines.
   Future<int> _pushPendingRefunds() async {
     final db = _db!;
     final pending = await db.getPendingRefunds();
     if (pending.isEmpty) return 0;
-    await _supabase.from('refunds').upsert(
-          pending
-              .map((r) => {
-                    'id': r.id,
-                    'original_sale_id': r.originalSaleId,
-                    'branch_id': r.branchId,
-                    'refunded_by': r.refundedBy,
-                    'reason': r.reason,
-                    'total_amount': r.totalAmount.toString(),
-                    'restock': r.restock,
-                    'created_at': r.createdAt.toUtc().toIso8601String(),
-                    'deleted_at': r.deletedAt?.toUtc().toIso8601String(),
-                  })
-              .toList(),
-          onConflict: 'id',
-        );
     for (final r in pending) {
       final items = await db.getRefundItems(r.id);
-      if (items.isNotEmpty) {
-        await _supabase.from('refund_items').upsert(
-              items
-                  .map((i) => {
-                        'id': i.id,
-                        'refund_id': i.refundId,
-                        'sale_item_id': i.saleItemId,
-                        'quantity': i.quantity.toString(),
-                        'amount': i.amount.toString(),
-                        'deleted_at': i.deletedAt?.toUtc().toIso8601String(),
-                      })
-                  .toList(),
-              onConflict: 'id',
-            );
-      }
+      final restockAdj = r.restock
+          ? await db.getRefundRestockAdjustments(r.id)
+          : const <BatchAdjustmentRow>[];
+      await _supabase.rpc(
+        'upsert_refund_with_inventory',
+        params: {
+          'p_refund': {
+            'id': r.id,
+            'original_sale_id': r.originalSaleId,
+            'branch_id': r.branchId,
+            'reason': r.reason,
+            'total_amount': r.totalAmount.toString(),
+            'restock': r.restock,
+            'created_at': r.createdAt.toUtc().toIso8601String(),
+          },
+          'p_items': [
+            for (final i in items)
+              {
+                'id': i.id,
+                'sale_item_id': i.saleItemId,
+                'quantity': i.quantity.toString(),
+                'amount': i.amount.toString(),
+              }
+          ],
+          // Wholesale only; empty/absent ⇒ the RPC derives retail restock from
+          // the lines. quantity is the positive returned amount (RPC negates).
+          'p_batch_adjustments': restockAdj.isEmpty
+              ? null
+              : [
+                  for (final a in restockAdj)
+                    {
+                      'id': a.id,
+                      'batch_id': a.batchId,
+                      'product_id': a.productId,
+                      'quantity': (-a.quantityDelta).toString(),
+                    }
+                ],
+        },
+      );
       await db.markRefundSynced(r.id);
     }
     return pending.length;

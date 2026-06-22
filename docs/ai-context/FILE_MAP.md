@@ -42,7 +42,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 
 | Path | Purpose | Edit when |
 |---|---|---|
-| `data/local/app_database.dart` | Drift DB schema (**v18**) — tables, type converters, all queries. Refund tables (v17) + `_createPerformanceIndexes` (v18) + `pendingPushCount`/`refundedQtyBySaleItem`/`getRefundTotalByBranchRange` | Adding tables or queries |
+| `data/local/app_database.dart` | Drift DB schema (**v19**) — tables, type converters, all queries. Refund tables (v17) + perf indexes (v18) + `batch_adjustments.refundId` link (v19) + `pendingPushCount`/`refundedQtyBySaleItem`/`getRefundTotalByBranchRange`/`getRefundRestockAdjustments` | Adding tables or queries |
 | `data/local/database_provider.dart` | `appDatabaseProvider` — returns `AppDatabase?` (null on web) | Changing DB provider behavior |
 | `data/local/open_database.dart` | Web stub — throws UnsupportedError | Rarely |
 | `data/local/open_database_native.dart` | Native DB opener — `LazyDatabase` pointing to `suq.db` in documents dir | Rarely |
@@ -133,7 +133,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 |---|---|
 | `features/expenses/` | Record expense, categories, date filter |
 | `features/reports/` | **Card hub** (`reports_screen.dart`) → dedicated `report_sales_screen` / `report_inventory_screen` / `report_expenses_screen` / `report_revenue_screen`; shared `widgets/report_filters.dart` (period/category/stat). `reports_provider.dart` `ReportSummary` now carries `refundTotal` (nets revenue) |
-| `features/refunds/` | Offline-first refunds. `domain/refund_restock.dart` (pure `allocateRestock` FEFO-reverse + `proportionalRefund`), `domain/refunds_repository.dart` (local-first create + restock via existing ledgers), `data/refunds_remote.dart` (web path), `presentation/providers/refunds_provider.dart` (`createRefundProvider`, `refundedQtyProvider`), `presentation/screens/refund_screen.dart` (partial picker). Entry: Refund action on SaleDetailScreen |
+| `features/refunds/` | Offline-first refunds. `domain/refund_restock.dart` (pure `allocateRestock` FEFO-reverse + `proportionalRefund`), `domain/refunds_repository.dart` (local-first create, optimistic stock, over-refund guard), `data/refunds_remote.dart` (web path). **Both web + native-sync push via the `upsert_refund_with_inventory` RPC (atomic refund+items+restock).** `presentation/providers/refunds_provider.dart` (`createRefundProvider`, `refundedQtyProvider`), `presentation/screens/refund_screen.dart` (partial picker). Entry: Refund action on SaleDetailScreen |
 | `features/staff/` | Staff list, invite via Edge Function (OTP code flow), suspend/restore |
 | `features/dashboard/` | Bottom nav shell, home tab, summary cards |
 | `features/licensing/presentation/providers/license_provider.dart` | `licenseStatusProvider` (trial/expired/blocked), `ActivateLicenseNotifier` |
@@ -187,8 +187,9 @@ Run `flutter gen-l10n` after editing `app_en.arb`.
 | `033_refunds.sql` | Refunds offline-first: `refunds.branch_id` + `refunds.restock` + sync metadata (updated_at/deleted_at/trigger/index) on refunds + refund_items. |
 | `034_harden_handle_new_user.sql` | Pin `search_path` on `handle_new_user()` (Phase D security audit). |
 | `035_lock_down_batch_trigger_functions.sql` | Revoke RPC EXECUTE on the batch trigger functions (`detect_batch_conflict`, `recompute_product_rollup`, `on_*_change`) — advisor 0028/0029, mirrors 027. |
+| `036_upsert_refund_with_inventory.sql` | Atomic+idempotent refund RPC (refund+items+restock in one txn; server-side over-refund validation). Mirrors `upsert_sale_with_inventory`. Both web + native-sync push refunds through it. |
 
-**All migrations `001`–`035` are applied to the live project** (via Supabase MCP).
+**All migrations `001`–`036` are applied to the live project** (via Supabase MCP).
 
 ---
 

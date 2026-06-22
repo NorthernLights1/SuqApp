@@ -120,50 +120,40 @@ class RefundsRepository implements IRefundsRepository {
         final productId = l.productId;
         if (productId == null) continue;
         if (useBatches) {
-          await _restockBatchesLocal(db, branchId, productId, l, refundedBy, now);
+          await _restockBatchesLocal(
+              db, branchId, productId, l, refundId, refundedBy, now);
         } else {
-          await _restockRetailLocal(db, branchId, productId, l, refundedBy, now);
+          await _restockRetailLocal(db, branchId, productId, l);
         }
       }
     });
   }
 
-  /// Retail restock = an additive 'restock' inventory adjustment (idempotent by
-  /// id, pushed via the existing inventory-work path) + the optimistic local
-  /// stock bump.
+  /// Retail restock: optimistic local stock bump only. The authoritative effect
+  /// (an inventory_adjustments row of type 'refund' + the inventory increment)
+  /// is applied server-side by upsert_refund_with_inventory on push, derived
+  /// from the refunded lines — so there's no separate local row to push.
   Future<void> _restockRetailLocal(
     AppDatabase db,
     String branchId,
     String productId,
     RefundLineInput line,
-    String refundedBy,
-    DateTime now,
   ) async {
     final before = await db.getStockLevel(branchId, productId) ?? Decimal.zero;
-    final after = before + line.quantity;
-    await db.setStockLevel(branchId, productId, after);
-    await db.insertInventoryAdjustment(LocalInventoryAdjustmentsCompanion(
-      id: Value(const Uuid().v4()),
-      branchId: Value(branchId),
-      productId: Value(productId),
-      type: const Value('restock'),
-      quantityBefore: Value(before),
-      quantityAfter: Value(after),
-      adjustedBy: Value(refundedBy),
-      notes: const Value('Refund restock'),
-      createdAt: Value(now),
-      isSynced: const Value(false),
-    ));
+    await db.setStockLevel(branchId, productId, before + line.quantity);
   }
 
-  /// Wholesale restock = negative batch_adjustments against the lots the line
-  /// drew from (so remaining = received − depletions − corrections rises), then
-  /// recompute the local rollup. Pushed via the existing batch-adjustment path.
+  /// Wholesale restock: negative batch_adjustments against the lots the line
+  /// drew from (remaining = received − depletions − corrections rises), then
+  /// recompute the local rollup. Marked isSynced=true + linked to the refund so
+  /// the generic batch-adjustment push skips them — they ride the refund RPC
+  /// (which inserts server rows with these same ids, reconciling on pull).
   Future<void> _restockBatchesLocal(
     AppDatabase db,
     String branchId,
     String productId,
     RefundLineInput line,
+    String refundId,
     String refundedBy,
     DateTime now,
   ) async {
@@ -196,7 +186,9 @@ class RefundsRepository implements IRefundsRepository {
           createdBy: Value(refundedBy),
           createdAt: Value(now),
           syncedAt: Value(now),
-          isSynced: const Value(false),
+          // Synced=true: the generic push skips it; the refund RPC carries it.
+          isSynced: const Value(true),
+          refundId: Value(refundId),
         ),
     ]);
     await db.recomputeStockFromBatches(branchId, productId, now);

@@ -2,7 +2,6 @@ import 'package:decimal/decimal.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../../../core/constants/app_constants.dart';
-import '../../inventory/data/inventory_remote.dart';
 import '../domain/refund_restock.dart';
 
 /// A line being returned: which sale_item, how many units, the money back, and
@@ -16,15 +15,13 @@ typedef RefundLineInput = ({
   Decimal soldQuantity,
 });
 
-/// Web / no-local-DB path for refunds. Writes the refund + items directly to
-/// Supabase, and (when restocking) routes the stock effect through the existing
-/// idempotent ledgers — retail via apply_inventory_adjustment (additive
-/// 'restock'), wholesale via negative batch_adjustments on the original lots.
+/// Web / no-local-DB path for refunds. Routes through the same transactional,
+/// idempotent RPC as the native sync (upsert_refund_with_inventory) so the
+/// refund record + items + restock commit atomically server-side.
 class RefundsRemote {
-  RefundsRemote(this._client) : _inventory = InventoryRemote(_client);
+  RefundsRemote(this._client);
 
   final SupabaseClient _client;
-  final InventoryRemote _inventory;
 
   /// Units already refunded per sale_item for a sale (web/no-local-DB path), so
   /// the screen + the repository can cap each line at its remaining-refundable.
@@ -64,93 +61,69 @@ class RefundsRemote {
     required List<({String id, RefundLineInput line})> items,
     required bool useBatches,
   }) async {
-    await _client.from('refunds').insert({
-      'id': id,
-      'original_sale_id': originalSaleId,
-      'branch_id': branchId,
-      'refunded_by': refundedBy,
-      'reason': reason,
-      'total_amount': totalAmount.toString(),
-      'restock': restock,
-    });
-    await _client.from('refund_items').insert([
-      for (final it in items)
-        {
-          'id': it.id,
-          'refund_id': id,
-          'sale_item_id': it.line.saleItemId,
-          'quantity': it.line.quantity.toString(),
-          'amount': it.line.amount.toString(),
+    // Wholesale restock: resolve the lots each line drew from and build negative
+    // adjustments (the RPC applies them). Retail leaves this null → the RPC
+    // derives the restock from the refunded lines.
+    List<Map<String, dynamic>>? batchAdjustments;
+    if (restock && useBatches) {
+      batchAdjustments = [];
+      for (final it in items) {
+        final line = it.line;
+        final productId = line.productId;
+        if (productId == null) continue;
+        final sib = (await _client
+            .from('sale_item_batches')
+            .select('batch_id, quantity')
+            .eq('sale_item_id', line.saleItemId)
+            .isFilter('deleted_at', null)
+            .timeout(AppConstants.remoteReadTimeout)) as List;
+        final draws = [
+          for (final s in sib)
+            (
+              batchId: s['batch_id'] as String,
+              depleted:
+                  Decimal.tryParse(s['quantity'].toString()) ?? Decimal.zero,
+            )
+        ];
+        final returns = allocateRestock(draws, line.quantity);
+        final allocated =
+            returns.fold(Decimal.zero, (sum, r) => sum + r.quantity);
+        if (allocated < line.quantity) {
+          throw StateError(
+            'Cannot restock the returned units to their original lots. '
+            'Refund without restock, or correct the stock manually.',
+          );
         }
-    ]);
-
-    if (!restock) return;
-    for (final it in items) {
-      final line = it.line;
-      final productId = line.productId;
-      if (productId == null) continue;
-      if (useBatches) {
-        await _restockBatchesRemote(
-            branchId, productId, line, refundedBy);
-      } else {
-        // Additive restock: pass before=0, after=qty so the server adds the
-        // returned units on top of the authoritative quantity.
-        await _inventory.applyAdjustment(
-          id: const Uuid().v4(),
-          type: 'restock',
-          branchId: branchId,
-          productId: productId,
-          quantityBefore: Decimal.zero,
-          quantityAfter: line.quantity,
-          adjustedBy: refundedBy,
-          notes: 'Refund restock',
-        );
+        for (final r in returns) {
+          batchAdjustments.add({
+            'id': const Uuid().v4(),
+            'batch_id': r.batchId,
+            'product_id': productId,
+            'quantity': r.quantity.toString(),
+          });
+        }
       }
     }
-  }
 
-  Future<void> _restockBatchesRemote(
-    String branchId,
-    String productId,
-    RefundLineInput line,
-    String refundedBy,
-  ) async {
-    final sib = (await _client
-        .from('sale_item_batches')
-        .select('batch_id, quantity')
-        .eq('sale_item_id', line.saleItemId)
-        .isFilter('deleted_at', null)
-        .timeout(AppConstants.remoteReadTimeout)) as List;
-    final draws = [
-      for (final s in sib)
-        (
-          batchId: s['batch_id'] as String,
-          depleted:
-              Decimal.tryParse(s['quantity'].toString()) ?? Decimal.zero,
-        )
-    ];
-    final returns = allocateRestock(draws, line.quantity);
-    final allocated =
-        returns.fold(Decimal.zero, (sum, r) => sum + r.quantity);
-    if (allocated < line.quantity) {
-      // The lots this line drew from can't absorb the return (missing/short
-      // depletion ledger). Don't record a restock that doesn't restore stock.
-      throw StateError(
-        'Cannot restock the returned units to their original lots. '
-        'Refund without restock, or correct the stock manually.',
-      );
-    }
-    for (final r in returns) {
-      await _inventory.insertBatchAdjustment(
-        id: const Uuid().v4(),
-        batchId: r.batchId,
-        branchId: branchId,
-        productId: productId,
-        // Negative delta = add stock back to the lot.
-        quantityDelta: -r.quantity,
-        reason: 'Refund restock',
-        createdBy: refundedBy,
-      );
-    }
+    await _client.rpc('upsert_refund_with_inventory', params: {
+      'p_refund': {
+        'id': id,
+        'original_sale_id': originalSaleId,
+        'branch_id': branchId,
+        'reason': reason,
+        'total_amount': totalAmount.toString(),
+        'restock': restock,
+      },
+      'p_items': [
+        for (final it in items)
+          {
+            'id': it.id,
+            'sale_item_id': it.line.saleItemId,
+            'quantity': it.line.quantity.toString(),
+            'amount': it.line.amount.toString(),
+          }
+      ],
+      'p_batch_adjustments': batchAdjustments,
+    });
   }
 }
