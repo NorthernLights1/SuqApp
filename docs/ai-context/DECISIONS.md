@@ -2,6 +2,41 @@
 
 ---
 
+## Decision: Per-lot stock correction = append-only adjustment ledger
+Date: 2026-06-22 | Status: Active (`feat/batch-tracking`, migration `032`)
+
+Correcting ONE lot's remaining (miscount / partial damage) is recorded as a
+`batch_adjustments` row (delta + reason + created_by), NOT by mutating the
+immutable `product_batches.quantity`. Temesgen chose "log an adjustment + reason"
+over "just edit the quantity" — keeps a full audit trail and stays offline-safe
+(append-only, idempotent, order-independent), matching the depletion model.
+`remaining = received − Σ(sale_item_batches) − Σ(batch_adjustments)`. The rollup
+and batch-conflict functions gain the adjustment term; everything that computes
+remaining (local recompute, getProductBatches, sale FEFO availability) subtracts
+it, so a corrected-down lot drops from stock AND from what's sellable.
+
+## Decision: Sale↔batch traceability lives on Reports, not the inventory tap
+Date: 2026-06-22 | Status: Active
+
+Per-item inventory detail shows CURRENT state (what's on hand per lot). The
+historical "which sale/customer drew from which lot, who sold it" is a recall/
+audit need → a dedicated **recall report on the Reports screen** (server query
+over `sale_item_batches`), not embedded under each batch. Keeps inventory about
+"what do I have now"; reports about "what happened". (Recall report deferred.)
+
+## Decision: web stays online-only (no WASM SQLite) — phone is the offline target
+Date: 2026-06-22 | Status: Active
+
+Drift/SQLite runs on phones, not in the browser (as configured), so web is
+Supabase-direct (online-only) while the phone is offline-first. Same single
+Supabase schema — only the read/write PATH differs. Every read must have a
+web/Supabase-direct fallback (batch reads were missing one → fixed `8ff3b48`).
+Enabling WASM SQLite on web (so browser testing matches the phone) was considered
+and DEFERRED — extra setup (wasm+worker assets, COOP/COEP headers, "reset = clear
+site data"); revisit if browser↔phone discrepancies become costly.
+
+---
+
 ## Decision: Offline-first — local DB is the read source; Supabase is sync only
 Date: 2026-06-12 | Status: Active (branch `offline-first`, in progress)
 

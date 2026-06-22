@@ -1,6 +1,27 @@
 # Open Tasks — Suq ERP
 
-Last updated: 2026-06-21
+Last updated: 2026-06-22
+
+---
+
+## 2026-06-22 session — wholesale batch follow-ups (committed, UNPUSHED)
+
+Branch `feat/batch-tracking`. Migrations `031`/`032` applied live via MCP. 154 tests.
+- [x] #1 batch/lot number REQUIRED at first stock-in (wholesale) — `384c620`.
+- [x] #2 per-lot **Batch details** page + **added-by** (`031`, Drift v15) — `6d684ee`.
+- [x] #3 per-lot **correction** (`batch_adjustments` ledger `032`, Drift v16) +
+  **add-batch** action on the details page — `905ad18`. Chosen model: append-only
+  adjustment + reason (audit trail), offline-safe.
+- [x] BLOCK-MERGE review fixes — `1365841` (v14 migration crash guard; atomic
+  createSale; reject no-lot wholesale sale; rollup clears stale expiry).
+- [x] Web batch-details fallback (`8ff3b48`) — Chrome has no Drift; batch reads now
+  fall back to Supabase like every other read.
+- [ ] **#4 Reports segregation** (Sales / Inventory / Expenses / Revenue) — NOT
+  STARTED. Independent, no schema. **Recommended fresh-chat starting point.**
+- [ ] **Verify on device/web + CodeRabbit pass** before pushing.
+- ECC agent harness installed globally (passive: 67 agents / 198 skills / 92
+  commands; hooks NOT wired). WASM-SQLite-on-web considered, **deferred** (web
+  stays online-only; phone is the offline-first target).
 
 ---
 
@@ -54,13 +75,12 @@ shop_type chosen at onboarding, locked. `shopTypeProvider.isWholesale` is the ga
     conflict** when the lot's remaining recovers (owner re-adds stock) or is
     discarded — so detection (`029`) has a close path without a bespoke screen.
     Schema v14. Tests: discard restates the rollup. 149 tests pass.
-  - [ ] **Deferred (optional, post-pilot):** (a) PARTIAL lot correction — writing
-    off *some* of a lot (miscount) vs the whole lot; needs a write-off ledger
-    (nullable `sale_item_id` + reason). Up-correction already = Add Stock (new
-    lot); whole-lot disposal = Discard. (b) Bespoke batch-conflict resolution
-    screen — current path is add-stock-to-recover + auto-close. (c) Recall report
-    ("which customers got lot X") — server-side query over `sale_item_batches`.
-    All rare for single-device pilot shops.
+  - [x] **Partial lot correction — DONE 2026-06-22** (`032` `batch_adjustments`).
+  - [x] **Per-lot details incl. "added by" — DONE 2026-06-22** (`031`).
+  - [ ] **Still deferred (post-pilot):** (a) bespoke batch-conflict resolution
+    screen — current path is add-stock/correct-to-recover + auto-close. (b) Recall
+    report ("which customers got lot X") — server query over `sale_item_batches`;
+    will live on the **Reports** screen. Rare for single-device pilot shops.
 - [ ] **Refunds / returns** — schema (`refunds`/`refund_items`) already exists,
   unused. Must be offline-first. Restock-to-batch couples to batch tracking — do
   after it. (See "Blocked / Deferred" for the original deferral decision.)

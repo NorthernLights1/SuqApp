@@ -88,10 +88,11 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 
 | Path | Purpose | Edit when |
 |---|---|---|
-| `inventory/data/inventory_remote.dart` | All Supabase inventory calls — products, stock levels, `addStock`, `correctStock`, `manualAdjustment`, categories, units, `createMeasurementUnit`, `insertBatch`; `ProductBatchView` model | Adding inventory operations |
+| `inventory/data/inventory_remote.dart` | Supabase inventory calls — products, stock, `addStock`, `correctStock`, `manualAdjustment`, categories, units, `insertBatch`, `insertBatchAdjustment`, web `getProductBatches` (remaining from depletion+adjustment ledgers); `ProductBatchView` (incl. `received`, `receivedAt`, `addedByName`) | Adding inventory operations |
 | `inventory/domain/batch_allocation.dart` | Pure FEFO allocator (`allocateFefo`, `BatchAvailability`, `FefoResult`) — soonest-expiry-first, nulls last, oversell-to-last-lot | Changing FEFO depletion logic |
-| `inventory/presentation/providers/inventory_provider.dart` | `productsProvider`, `stockLevelsProvider`, `ProductFormNotifier`, `StockAdjustmentNotifier` (with `addStock`, `correctStock`) | Adding inventory providers |
-| `inventory/presentation/screens/inventory_screen.dart` | Unified product+stock list, bottom sheet actions, `_AddStockDialog`, `_CorrectStockDialog`, `ProductFormScreen` | Changing inventory UI |
+| `inventory/presentation/providers/inventory_provider.dart` | `productsProvider`, `stockLevelsProvider`, `productBatchesProvider` (family), `ProductFormNotifier`, `StockAdjustmentNotifier` (`addStock`, `correctStock`, `addStockBatch`, `discardBatch`, `correctBatch`) | Adding inventory providers |
+| `inventory/presentation/screens/inventory_screen.dart` | Unified product+stock list, bottom sheet actions (incl. wholesale BATCHES section + "Batch details"), `_AddStockDialog`, `_CorrectStockDialog`, `ProductFormScreen` (wholesale batch# field) | Changing inventory UI |
+| `inventory/presentation/screens/product_batch_detail_screen.dart` | Wholesale per-lot Details page: card per batch (number/expiry/remaining/received/added-on/added-by) + per-lot **Correct** dialog + **Add batch** dialog | Per-lot detail/correction UI |
 
 ---
 
@@ -180,7 +181,10 @@ Run `flutter gen-l10n` after editing `app_en.arb`.
 | `028_product_batches.sql` | Wholesale batches + sale_item_batches + rollup trigger + wholesale-only backfill |
 | `029_batch_depletion.sql` | Batch-aware rollup (received−depletions), batch-level conflict detection, sale RPC `p_item_batches`, wholesale void = soft-delete ledger |
 | `030_batch_discard_and_conflict_autoclose.sql` | Rollup ignores discarded lots' depletions; `detect_batch_conflict` auto-closes on recovery/discard |
-| `028_product_batches.sql` | **NOT yet applied.** Wholesale batch/expiry: product_batches + sale_item_batches, rollup trigger (`inventory.quantity` = sum of batches), wholesale-only backfill |
+| `031_batch_created_by.sql` | `product_batches.created_by` (nullable uuid) — "added by" on the batch details page |
+| `032_batch_adjustments.sql` | Per-lot correction ledger; rollup + conflict gain the adjustment term (`remaining = received − depletions − corrections`), trigger recomputes; preserves 030 |
+
+**All migrations `001`–`032` are applied to the live project** (batch chain via Supabase MCP).
 
 ---
 

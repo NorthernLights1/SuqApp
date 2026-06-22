@@ -23,7 +23,7 @@ Primary dev target. Drift/SQLite not available on web — all DB falls back to S
 ```powershell
 flutter analyze
 ```
-Result: 0 issues (last run 2026-06-19). Run before every commit.
+Result: 0 issues (last run 2026-06-22). Run before every commit.
 
 ---
 
@@ -50,7 +50,7 @@ Run after editing `lib/l10n/app_en.arb`.
 dart run build_runner build --delete-conflicting-outputs
 ```
 Run after changing Drift table definitions in `app_database.dart` or adding `@riverpod` annotations.
-Current schema version: **v14** (v12 `LocalProductBatches`, v13 `LocalSaleItemBatches` depletion ledger, v14 batch `deletedAt` for lot discard).
+Current schema version: **v16** (v12 `LocalProductBatches`, v13 `LocalSaleItemBatches` depletion ledger, v14 batch `deletedAt` discard, v15 batch `createdBy`, v16 `LocalBatchAdjustments` correction ledger). NOTE: batch-table `addColumn` migration steps are guarded `from >= 12` (the v12 createTable already builds the current schema, so a <12 upgrade must not re-add the column).
 
 ---
 
@@ -58,7 +58,7 @@ Current schema version: **v14** (v12 `LocalProductBatches`, v13 `LocalSaleItemBa
 ```powershell
 flutter test
 ```
-Result: 149 tests passing (last run 2026-06-21).
+Result: 154 tests passing (last run 2026-06-22).
 Test files:
 - `test/features/auth/friendly_auth_error_test.dart` — sign-in error classification (Bug 8/9) + unknown exception fallback
 - `test/data/local/app_database_test.dart` — Drift DB ops + edge cases
@@ -79,10 +79,13 @@ Add in Windows Security → Virus & threat protection → Exclusions:
 
 ---
 
-## Apply Supabase changes (manual — no CLI)
-Open Supabase Dashboard → SQL Editor and run SQL directly.
-Migrations in `supabase/migrations/001` through `028` — 001–027 applied to live
-project; **028 (product_batches) NOT yet applied** (run in SQL editor).
+## Apply Supabase changes (via Supabase MCP `apply_migration`)
+The Supabase MCP is connected (stdio server, PAT in `SUPABASE_ACCESS_TOKEN`);
+apply DDL with `mcp__supabase__apply_migration`. Dashboard SQL editor is the
+manual fallback.
+Migrations `001` through **`032`** — **ALL applied to the live project.** Batch
+chain: `028` product_batches, `029` depletion+conflict, `030` discard+autoclose,
+`031` `created_by`, `032` `batch_adjustments` correction ledger.
 
 ### Useful diagnostic queries
 ```sql

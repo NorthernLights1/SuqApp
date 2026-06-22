@@ -1,6 +1,6 @@
 # Current State — Suq ERP
 
-Last updated: 2026-06-21
+Last updated: 2026-06-22
 
 ---
 
@@ -9,9 +9,10 @@ Last updated: 2026-06-21
 **Suq** — mobile ERP for small shop owners. Flutter + Supabase.
 Package: `com.temesgen.suq` | Repo: `NorthernLights1/SuqApp`
 Flutter app root: `c:/Projects/SuqApp/`
-Active branch: `feat/action-feedback` (in progress — action feedback / UX polish).
+Active branch: `feat/batch-tracking` (wholesale batch/expiry + per-lot details +
+correction). Cut from `feat/wholesale-support` ← `feat/action-feedback`.
 `security` merged to `main` (PR #1). `offline-first_v2` merged to `main` (PR #4).
-Push: `git push origin <branch>`
+Push: `git push origin <branch>` — NOT pushed yet (awaiting CodeRabbit pass).
 
 ## Build & Distribution
 - APK built on GitHub Actions (`.github/workflows/build-apk.yml`, manual
@@ -57,8 +58,8 @@ Push: `git push origin <branch>`
 
 ## What Works Right Now
 
-- `flutter analyze` — 0 issues ✅ (last run 2026-06-21)
-- `flutter test` — 134 tests passing ✅ (last run 2026-06-21)
+- `flutter analyze` — 0 issues ✅ (last run 2026-06-22)
+- `flutter test` — 154 tests passing ✅ (last run 2026-06-22)
 - Auth (signup/login/logout) ✅
 - Onboarding: shop + branch creation + default settings ✅
 - Dashboard: home summary, sales tab (color-coded), inventory tab, **credits tab**, more tab ✅
@@ -96,25 +97,30 @@ Suq now serves two business types, chosen at onboarding and **locked** afterward
   form unit picker → `InventoryRepository.createMeasurementUnit` (remote create +
   optimistic local mirror; `measurement_units` already shop-scoped + in delta pull).
   Online-only create (ponytail: reference data, added rarely while connected).
-- **Batch + expiry (wholesale, branch `feat/batch-tracking`):** Phase 1 (schema
-  `028` + Drift mirror) + Phase 2 (stock-IN via batches — Add Stock batch field,
-  opening stock → batch, batch push) DONE + unit-tested, NOT verified end-to-end
-  (migration `028` not yet applied to live DB). Batches push as a replica table
-  (idempotent upsert); a server rollup trigger keeps `inventory.quantity` = sum of
-  batches, so all existing reads + oversell detection are unchanged. Next: Phase 3
-  (FEFO depletion on sale), Phase 2.5 (wholesale Correct Stock/oversell-resolve).
-- **Batch tracking FEATURE-COMPLETE (Phases 1–4), unverified end-to-end.**
-  Immutable batches + append-only `sale_item_batches` ledger; `remaining =
-  received − Σsib`; rollup = `Σreceived − Σsib`. Migrations `028`/`029`/`030` all
-  applied live via MCP. `029`: batch-aware rollup + **batch-level conflict
-  detection** (a lot can go negative while the product total stays positive) +
+- **Batch tracking FEATURE-COMPLETE (Phases 1–4 + the 2026-06-22 follow-ups),
+  unverified on a device.** Immutable batches + append-only ledgers;
+  `remaining = received − Σ(sale_item_batches) − Σ(batch_adjustments)`; the
+  rollup is the same minus the product total. Migrations `028`–`032` all applied
+  live via MCP. `029`: batch-aware rollup + **batch-level conflict detection** +
   sale RPC `p_item_batches` + wholesale void = soft-delete ledger. `030`: lot
-  discard + conflict auto-close. Sale draws soonest-expiry-first; expired = warn-
-  but-allow. Inventory sheet shows a BATCHES section (number/expiry badge/remaining)
-  with a Discard action (owner-gated). Schema v14. 149 tests pass.
-- **Deferred (post-pilot, rare):** partial lot correction (write off *some* of a
-  lot), bespoke batch-conflict resolution screen, recall report. **Next features:**
-  refunds (couples to batches), extra customer fields (with an invoice feature).
+  discard + conflict auto-close. `031`: `product_batches.created_by` ("added by").
+  `032`: `batch_adjustments` per-lot correction ledger (rollup/conflict gain the
+  adjustment term, preserving 030). Sale draws soonest-expiry-first; expired =
+  warn-but-allow. **Schema v16. 154 tests pass.**
+- **2026-06-22 wholesale follow-ups (this session, all committed, unpushed):**
+  - #1 batch/lot number REQUIRED at first stock-in (wholesale) `384c620`.
+  - #2 **Batch details page** (`product_batch_detail_screen.dart`): per-lot card —
+    batch #, expiry, remaining, received qty, added-on, **added-by** (`031`) `6d684ee`.
+  - #3 **per-lot correction** (counted qty + reason → `batch_adjustments`, audit
+    trail; lowers remaining + stock + sellable) + **add-batch** action `905ad18`.
+  - Plus the BLOCK-MERGE review fixes `1365841` (v14 migration crash guard,
+    atomic createSale, no-lot guard, rollup clears stale expiry) and a web
+    fallback for batch reads `8ff3b48` (Chrome has no local DB).
+- **Deferred (post-pilot, rare):** bespoke batch-conflict resolution screen,
+  recall report ("which customers got lot X" — server query over
+  `sale_item_batches`; tracked, will live on the **Reports** screen).
+- **Next:** #4 reports segregation (Sales / Inventory / Expenses / Revenue — no
+  schema). Then refunds (couples to batches), extra customer fields.
 
 ---
 
@@ -264,14 +270,19 @@ Auth methods live in `AuthNotifier`: `sendInviteCode()`, `claimInvite()`.
 
 ## Drift / Offline Architecture (Phase 5)
 
-**Local DB**: `lib/data/local/app_database.dart` — tables: LocalProducts, LocalStock, LocalProductBatches (wholesale, schema v12), LocalSales, LocalSaleItems, LocalCustomers. Schema **v12**.
+**Local DB**: `lib/data/local/app_database.dart` — tables incl. LocalProducts,
+LocalStock, LocalProductBatches, LocalSaleItemBatches, **LocalBatchAdjustments**,
+LocalSales, LocalSaleItems, LocalCustomers. Schema **v16** (v12 batches, v13
+sale-item-batches ledger, v14 batch `deletedAt`, v15 batch `createdBy`, v16
+`local_batch_adjustments`). **Migration-guard caveat:** batch-table `addColumn`
+steps are guarded `from >= 12` because the v12 `createTable` already builds the
+current schema (a <12 upgrade must not re-add the column — see the v14/v15 steps).
 
-**Batch tracking (wholesale, Phase 1 done — branch `feat/batch-tracking`)**:
-`product_batches` (server) holds qty/expiry/batch per batch; a trigger keeps
-`inventory.quantity` = sum(batches) so all existing reads are unchanged. Device
-mirrors via `LocalProductBatches` + `_seedProductBatches` delta pull. Retail
-untouched (no batches). Phases 2 (batch-aware add-stock), 3 (FEFO depletion +
-`sale_item_batches`), 4 (expiry UI) still to do. Migration 028 awaits live apply.
+**Batch tracking (wholesale) — Phases 1–4 + per-lot correction DONE**:
+`product_batches` (server) holds qty/expiry/batch/created_by per lot;
+`sale_item_batches` = depletion ledger; `batch_adjustments` = correction ledger.
+Triggers keep `inventory.quantity = Σreceived − Σdepletions − Σcorrections`.
+Device mirrors all three via delta pulls. Retail untouched (no batches).
 
 **Write path (sales)**: `SalesRepository.createSale` → write to Drift
 (`isSynced=false`) + update local stock. No inline push (offline-first v2 single
@@ -318,7 +329,9 @@ adjustments remain per-row (server-side delta accumulator).
 - Product/category **edit** (updateProduct) still remote-only; create is now offline-first
 - Hardcoded strings throughout screens violate l10n rule (`app_en.arb` not used)
 - No error boundaries — raw Supabase exceptions reach snackbars
-- Permission cache TTL not implemented (role changes need app restart)
+- Permission cache TTL not implemented (mid-session role changes still need an
+  app restart). 2026-06-22: hardened so it never caches an EMPTY result and
+  refreshes on onboarding finish — fixed "new owner stuck at cashier-level".
 - `Decimal.parse()` without try-catch in models — can throw on malformed DB data
 - `FilteringTextInputFormatter` allows multiple decimal points (e.g. "1.2.3") — `Decimal.tryParse` returns null and validation catches it, but a smarter formatter could reject mid-input
 - Expenses & customers push as bulk upsert — a single invalid row blocks that batch (sales/adjustments/credit payments already per-row failure-isolated)
