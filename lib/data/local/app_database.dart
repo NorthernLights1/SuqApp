@@ -76,6 +76,9 @@ class LocalProductBatches extends Table {
   // Discard (expired/damaged lot): set locally, pushed up, then the pull
   // hard-removes the row once the server soft-delete comes back.
   DateTimeColumn get deletedAt => dateTime().nullable()();
+  // User who added this lot (stock-in / opening stock); null for backfilled or
+  // server-origin rows. Resolved to a display name via the profiles mirror.
+  TextColumn get createdBy => text().nullable()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
 
   @override
@@ -372,7 +375,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 14;
+  int get schemaVersion => 15;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -454,6 +457,12 @@ class AppDatabase extends _$AppDatabase {
           // before deletedAt existed) need the retrofit.
           if (from >= 12 && from < 14) {
             await m.addColumn(localProductBatches, localProductBatches.deletedAt);
+          }
+          // v14 -> v15: record who added each lot. Same createTable caveat as
+          // v14 — a DB from < 12 already has createdBy from the v12 step, so only
+          // DBs already at v12-v14 need the retrofit.
+          if (from >= 12 && from < 15) {
+            await m.addColumn(localProductBatches, localProductBatches.createdBy);
           }
         },
       );

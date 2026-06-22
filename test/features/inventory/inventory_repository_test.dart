@@ -261,5 +261,26 @@ void main() {
       expect(await db.getStockLevel(branchId, 'p-1'), Decimal.zero);
       expect(await db.getBatchesForProduct(branchId, 'p-1'), isEmpty);
     });
+
+    test('records the adder and resolves "added by" to a profile name',
+        () async {
+      await db.upsertProfiles([
+        LocalProfilesCompanion(
+          id: const Value('u-1'),
+          fullName: const Value('Sara T.'),
+          syncedAt: Value(DateTime.now()),
+        ),
+      ]);
+      await repo.addStockBatch(
+        branchId: branchId,
+        productId: 'p-1',
+        quantity: Decimal.parse('5'),
+        adjustedBy: 'u-1',
+        batchNumber: 'L1',
+      );
+
+      final views = await repo.getProductBatches(branchId, 'p-1');
+      expect(views.single.addedByName, 'Sara T.');
+    });
   });
 }

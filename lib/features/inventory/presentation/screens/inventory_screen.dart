@@ -17,6 +17,7 @@ import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../features/settings/presentation/providers/shop_type_provider.dart';
 import '../../data/inventory_remote.dart';
 import '../providers/inventory_provider.dart';
+import 'product_batch_detail_screen.dart';
 import '../../../../shared/widgets/decimal_input_formatter.dart';
 
 class InventoryScreen extends ConsumerWidget {
@@ -283,6 +284,26 @@ void _showStockSheet(
                 unitAbbr: entry.unitAbbr,
                 canDiscard: canCorrect,
               ),
+            if (isWholesale && entry != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                  label: const Text('Batch details'),
+                  onPressed: () {
+                    Navigator.pop(sheetCtx);
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ProductBatchDetailScreen(
+                        productId: product.id,
+                        productName: product.name,
+                        unitAbbr: entry.unitAbbr,
+                      ),
+                    ));
+                  },
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             if (canAdjust)
               SizedBox(

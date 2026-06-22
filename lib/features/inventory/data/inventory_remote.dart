@@ -137,6 +137,7 @@ class InventoryRemote {
     DateTime? expiryDate,
     required Decimal quantity,
     Decimal? costPrice,
+    String? createdBy,
   }) async {
     await _client.from('product_batches').insert({
       'id': id,
@@ -146,6 +147,7 @@ class InventoryRemote {
       'expiry_date': expiryDate?.toIso8601String().substring(0, 10),
       'quantity': quantity.toString(),
       'cost_price': costPrice?.toString(),
+      'created_by': createdBy,
     });
   }
 
@@ -285,6 +287,7 @@ class ProductBatchView {
     required this.remaining,
     required this.received,
     required this.receivedAt,
+    this.addedByName,
   });
 
   final String id;
@@ -297,6 +300,10 @@ class ProductBatchView {
 
   /// When the lot was added (stock-in / opening stock).
   final DateTime receivedAt;
+
+  /// Display name of who added the lot, resolved from the profiles mirror;
+  /// null for backfilled/server-origin rows or an unknown user.
+  final String? addedByName;
 
   static DateTime get _today {
     final n = DateTime.now();

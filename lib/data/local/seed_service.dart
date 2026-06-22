@@ -291,7 +291,7 @@ class SeedService {
         fetch: (cursorIso) async {
           // No shop filter: RLS returns only this shop's batches.
           var q = _client.from('product_batches').select(
-              'id, branch_id, product_id, batch_number, expiry_date, quantity, cost_price, received_at, updated_at, deleted_at');
+              'id, branch_id, product_id, batch_number, expiry_date, quantity, cost_price, received_at, created_by, updated_at, deleted_at');
           if (cursorIso != null) q = q.gte('updated_at', cursorIso);
           return (await q as List).cast<Map<String, dynamic>>();
         },
@@ -314,6 +314,7 @@ class SeedService {
                   receivedAt: Value(
                       DateTime.tryParse(b['received_at']?.toString() ?? '') ??
                           _now),
+                  createdBy: Value(b['created_by'] as String?),
                   syncedAt: Value(_now),
                   isSynced: const Value(true),
                 ))

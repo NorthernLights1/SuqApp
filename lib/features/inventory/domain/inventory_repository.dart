@@ -76,6 +76,10 @@ class InventoryRepository {
     final batches = await _db.getBatchesForProduct(branchId, productId);
     final depleted =
         await _db.depletionByBatch(batches.map((b) => b.id).toList());
+    // Resolve "added by" ids to display names from the profiles mirror.
+    final names = {
+      for (final p in await _db.getProfiles()) p.id: p.fullName,
+    };
     return [
       for (final b in batches)
         ProductBatchView(
@@ -85,6 +89,7 @@ class InventoryRepository {
           remaining: b.quantity - (depleted[b.id] ?? Decimal.zero),
           received: b.quantity,
           receivedAt: b.receivedAt,
+          addedByName: b.createdBy == null ? null : names[b.createdBy],
         ),
     ].where((v) => v.remaining > Decimal.zero).toList();
   }
@@ -414,6 +419,7 @@ class InventoryRepository {
         expiryDate: expiryDate,
         quantity: quantity,
         costPrice: costPrice,
+        createdBy: adjustedBy,
       );
       return;
     }
@@ -429,6 +435,7 @@ class InventoryRepository {
         costPrice: Value(costPrice),
         receivedAt: Value(DateTime.now()),
         syncedAt: Value(DateTime.now()),
+        createdBy: Value(adjustedBy),
         isSynced: const Value(false),
       ),
     ]);
