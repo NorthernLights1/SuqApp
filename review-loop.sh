@@ -93,7 +93,7 @@ run_checks() {
 for i in $(seq 1 "$MAX_ITERS"); do
   echo "== Review pass $i/$MAX_ITERS (fresh session, no memory of prior fixes) =="
 
-  REVIEW_OUTPUT=$(codex exec --ask-for-approval never --sandbox workspace-write --ephemeral \
+  REVIEW_OUTPUT=$(codex exec --dangerously-bypass-approvals-and-sandbox --ephemeral \
     --output-schema "$SCHEMA_FILE" "$REVIEW_PROMPT") \
     || { echo "Codex review call failed."; exit 1; }
 
@@ -133,7 +133,7 @@ Additionally, here are tests flagged as missing: $MISSING_TESTS
 Add only the ones that directly cover the blocking issues above. Ignore the rest."
   fi
 
-  echo "$BLOCKING_JSON" | codex exec --ask-for-approval never --sandbox workspace-write "$FIX_PROMPT" \
+  echo "$BLOCKING_JSON" | codex exec --dangerously-bypass-approvals-and-sandbox "$FIX_PROMPT" \
     || { echo "Codex fix pass failed."; exit 1; }
 
   echo "-- Running real checks after fix --"
@@ -146,7 +146,7 @@ Add only the ones that directly cover the blocking issues above. Ignore the rest
 
   if [ "$CHECK_STATUS" -ne 0 ]; then
     echo "Fix broke verification. Feeding last 200 lines of real output back to the same fix session."
-    tail -n 200 "$CHECK_LOG" | codex exec resume --last --ask-for-approval never --sandbox workspace-write \
+    tail -n 200 "$CHECK_LOG" | codex exec resume --last --dangerously-bypass-approvals-and-sandbox \
       "Your fix broke verification. Here is the real output (last 200 lines) above. Fix the root cause without reintroducing the blocking issue you just fixed." \
       || { echo "Codex resume fix pass failed."; exit 1; }
   fi
