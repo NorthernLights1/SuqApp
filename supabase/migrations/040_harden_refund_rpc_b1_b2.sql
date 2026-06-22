@@ -13,6 +13,14 @@
 --   2 units and send batch_adjustments for 10 (if 10 were drawn), inflating stock.
 --   Fix: before the per-batch loop, assert that restock qty by product equals
 --   refunded qty by product (full-outer-join mismatch raises an exception).
+alter table public.batch_adjustments
+  add column if not exists refund_id uuid references public.refunds(id),
+  add column if not exists sale_item_id uuid references public.sale_items(id);
+
+create index if not exists idx_batch_adjustments_refund_sale_item_batch
+  on public.batch_adjustments (sale_item_id, batch_id)
+  where refund_id is not null and deleted_at is null;
+
 create or replace function public.upsert_refund_with_inventory(
   p_refund jsonb,
   p_items jsonb,
@@ -42,6 +50,7 @@ declare
   v_batch_id      uuid;
   v_adj_product   uuid;
   v_drawn         numeric(15,4);
+  v_adj_sale_item_id uuid;
   v_is_wholesale  boolean;
 begin
   if auth.uid() is null then
@@ -170,6 +179,7 @@ begin
       select 1
       from jsonb_array_elements(p_batch_adjustments) adj
       where (adj->>'quantity')::numeric <= 0
+         or nullif(adj->>'sale_item_id', '') is null
     ) then
       raise exception 'Invalid restock quantity';
     end if;
@@ -199,13 +209,14 @@ begin
       raise exception 'Batch restock quantity must equal refunded quantity per product';
     end if;
 
-    -- Validation pass: aggregate by batch_id to check drawn-qty cap.
+    -- Validation pass: aggregate by sale_item_id + batch_id to check drawn-qty cap.
     -- Aggregation is for validation only — insertion uses original rows below.
-    for v_batch_id, v_qty in
-      select (adj->>'batch_id')::uuid,
+    for v_adj_sale_item_id, v_batch_id, v_qty in
+      select (adj->>'sale_item_id')::uuid,
+             (adj->>'batch_id')::uuid,
              sum((adj->>'quantity')::numeric)
       from jsonb_array_elements(p_batch_adjustments) adj
-      group by (adj->>'batch_id')::uuid
+      group by (adj->>'sale_item_id')::uuid, (adj->>'batch_id')::uuid
     loop
       if v_qty <= 0 then
         raise exception 'Invalid restock quantity';
@@ -219,22 +230,36 @@ begin
         raise exception 'Batch % not found', v_batch_id;
       end if;
 
-      -- Batch must have been drawn for a refunded sale item.
+      if not exists (
+        select 1
+        from jsonb_array_elements(p_items) it
+        where (it->>'sale_item_id')::uuid = v_adj_sale_item_id
+      ) then
+        raise exception 'Batch restock sale item % is not being refunded', v_adj_sale_item_id;
+      end if;
+
+      -- Batch must have been drawn for this refunded sale item.
       select coalesce(sum(sib.quantity), 0) into v_drawn
       from public.sale_item_batches sib
       where sib.batch_id = v_batch_id
-        and sib.sale_item_id in (
-          select (it->>'sale_item_id')::uuid from jsonb_array_elements(p_items) it
-        )
+        and sib.sale_item_id = v_adj_sale_item_id
         and sib.deleted_at is null;
 
       if v_drawn = 0 then
-        raise exception 'Batch % was not drawn for any refunded sale item', v_batch_id;
+        raise exception 'Batch % was not drawn for refunded sale item %', v_batch_id, v_adj_sale_item_id;
       end if;
 
+      select coalesce(sum(-ba.quantity_delta), 0) into v_prior
+      from public.batch_adjustments ba
+      where ba.sale_item_id = v_adj_sale_item_id
+        and ba.batch_id = v_batch_id
+        and ba.refund_id is not null
+        and ba.quantity_delta < 0
+        and ba.deleted_at is null;
+
       -- Combined restock qty may not exceed drawn qty.
-      if v_qty > v_drawn then
-        raise exception 'Restock qty exceeds drawn qty % for batch %', v_drawn, v_batch_id;
+      if v_prior + v_qty > v_drawn then
+        raise exception 'Restock qty exceeds drawn qty % for sale item % batch %', v_drawn, v_adj_sale_item_id, v_batch_id;
       end if;
     end loop;
 
@@ -250,11 +275,13 @@ begin
       where pb.id = v_batch_id;
 
       insert into public.batch_adjustments (
-        id, batch_id, branch_id, product_id, quantity_delta, reason, created_by
+        id, batch_id, branch_id, product_id, quantity_delta, reason, created_by,
+        refund_id, sale_item_id
       ) values (
         coalesce(nullif(v_item->>'id', '')::uuid, gen_random_uuid()),
         v_batch_id, v_branch_id, v_adj_product,
-        -(v_item->>'quantity')::numeric, 'Refund restock', auth.uid()
+        -(v_item->>'quantity')::numeric, 'Refund restock', auth.uid(),
+        v_refund_id, (v_item->>'sale_item_id')::uuid
       );
     end loop;
   else

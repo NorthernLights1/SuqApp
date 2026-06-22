@@ -2439,6 +2439,17 @@ class $LocalBatchAdjustmentsTable extends LocalBatchAdjustments
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _saleItemIdMeta = const VerificationMeta(
+    'saleItemId',
+  );
+  @override
+  late final GeneratedColumn<String> saleItemId = GeneratedColumn<String>(
+    'sale_item_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -2453,6 +2464,7 @@ class $LocalBatchAdjustmentsTable extends LocalBatchAdjustments
     deletedAt,
     isSynced,
     refundId,
+    saleItemId,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -2541,6 +2553,15 @@ class $LocalBatchAdjustmentsTable extends LocalBatchAdjustments
         refundId.isAcceptableOrUnknown(data['refund_id']!, _refundIdMeta),
       );
     }
+    if (data.containsKey('sale_item_id')) {
+      context.handle(
+        _saleItemIdMeta,
+        saleItemId.isAcceptableOrUnknown(
+          data['sale_item_id']!,
+          _saleItemIdMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -2601,6 +2622,10 @@ class $LocalBatchAdjustmentsTable extends LocalBatchAdjustments
         DriftSqlType.string,
         data['${effectivePrefix}refund_id'],
       ),
+      saleItemId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}sale_item_id'],
+      ),
     );
   }
 
@@ -2626,6 +2651,7 @@ class BatchAdjustmentRow extends DataClass
   final DateTime? deletedAt;
   final bool isSynced;
   final String? refundId;
+  final String? saleItemId;
   const BatchAdjustmentRow({
     required this.id,
     required this.batchId,
@@ -2639,6 +2665,7 @@ class BatchAdjustmentRow extends DataClass
     this.deletedAt,
     required this.isSynced,
     this.refundId,
+    this.saleItemId,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -2669,6 +2696,9 @@ class BatchAdjustmentRow extends DataClass
     if (!nullToAbsent || refundId != null) {
       map['refund_id'] = Variable<String>(refundId);
     }
+    if (!nullToAbsent || saleItemId != null) {
+      map['sale_item_id'] = Variable<String>(saleItemId);
+    }
     return map;
   }
 
@@ -2694,6 +2724,9 @@ class BatchAdjustmentRow extends DataClass
       refundId: refundId == null && nullToAbsent
           ? const Value.absent()
           : Value(refundId),
+      saleItemId: saleItemId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(saleItemId),
     );
   }
 
@@ -2715,6 +2748,7 @@ class BatchAdjustmentRow extends DataClass
       deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
       isSynced: serializer.fromJson<bool>(json['isSynced']),
       refundId: serializer.fromJson<String?>(json['refundId']),
+      saleItemId: serializer.fromJson<String?>(json['saleItemId']),
     );
   }
   @override
@@ -2733,6 +2767,7 @@ class BatchAdjustmentRow extends DataClass
       'deletedAt': serializer.toJson<DateTime?>(deletedAt),
       'isSynced': serializer.toJson<bool>(isSynced),
       'refundId': serializer.toJson<String?>(refundId),
+      'saleItemId': serializer.toJson<String?>(saleItemId),
     };
   }
 
@@ -2749,6 +2784,7 @@ class BatchAdjustmentRow extends DataClass
     Value<DateTime?> deletedAt = const Value.absent(),
     bool? isSynced,
     Value<String?> refundId = const Value.absent(),
+    Value<String?> saleItemId = const Value.absent(),
   }) => BatchAdjustmentRow(
     id: id ?? this.id,
     batchId: batchId ?? this.batchId,
@@ -2762,6 +2798,7 @@ class BatchAdjustmentRow extends DataClass
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     isSynced: isSynced ?? this.isSynced,
     refundId: refundId.present ? refundId.value : this.refundId,
+    saleItemId: saleItemId.present ? saleItemId.value : this.saleItemId,
   );
   BatchAdjustmentRow copyWithCompanion(LocalBatchAdjustmentsCompanion data) {
     return BatchAdjustmentRow(
@@ -2779,6 +2816,9 @@ class BatchAdjustmentRow extends DataClass
       deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
       refundId: data.refundId.present ? data.refundId.value : this.refundId,
+      saleItemId: data.saleItemId.present
+          ? data.saleItemId.value
+          : this.saleItemId,
     );
   }
 
@@ -2796,7 +2836,8 @@ class BatchAdjustmentRow extends DataClass
           ..write('syncedAt: $syncedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('isSynced: $isSynced, ')
-          ..write('refundId: $refundId')
+          ..write('refundId: $refundId, ')
+          ..write('saleItemId: $saleItemId')
           ..write(')'))
         .toString();
   }
@@ -2815,6 +2856,7 @@ class BatchAdjustmentRow extends DataClass
     deletedAt,
     isSynced,
     refundId,
+    saleItemId,
   );
   @override
   bool operator ==(Object other) =>
@@ -2831,7 +2873,8 @@ class BatchAdjustmentRow extends DataClass
           other.syncedAt == this.syncedAt &&
           other.deletedAt == this.deletedAt &&
           other.isSynced == this.isSynced &&
-          other.refundId == this.refundId);
+          other.refundId == this.refundId &&
+          other.saleItemId == this.saleItemId);
 }
 
 class LocalBatchAdjustmentsCompanion
@@ -2848,6 +2891,7 @@ class LocalBatchAdjustmentsCompanion
   final Value<DateTime?> deletedAt;
   final Value<bool> isSynced;
   final Value<String?> refundId;
+  final Value<String?> saleItemId;
   final Value<int> rowid;
   const LocalBatchAdjustmentsCompanion({
     this.id = const Value.absent(),
@@ -2862,6 +2906,7 @@ class LocalBatchAdjustmentsCompanion
     this.deletedAt = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.refundId = const Value.absent(),
+    this.saleItemId = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LocalBatchAdjustmentsCompanion.insert({
@@ -2877,6 +2922,7 @@ class LocalBatchAdjustmentsCompanion
     this.deletedAt = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.refundId = const Value.absent(),
+    this.saleItemId = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        batchId = Value(batchId),
@@ -2898,6 +2944,7 @@ class LocalBatchAdjustmentsCompanion
     Expression<DateTime>? deletedAt,
     Expression<bool>? isSynced,
     Expression<String>? refundId,
+    Expression<String>? saleItemId,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -2913,6 +2960,7 @@ class LocalBatchAdjustmentsCompanion
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (isSynced != null) 'is_synced': isSynced,
       if (refundId != null) 'refund_id': refundId,
+      if (saleItemId != null) 'sale_item_id': saleItemId,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -2930,6 +2978,7 @@ class LocalBatchAdjustmentsCompanion
     Value<DateTime?>? deletedAt,
     Value<bool>? isSynced,
     Value<String?>? refundId,
+    Value<String?>? saleItemId,
     Value<int>? rowid,
   }) {
     return LocalBatchAdjustmentsCompanion(
@@ -2945,6 +2994,7 @@ class LocalBatchAdjustmentsCompanion
       deletedAt: deletedAt ?? this.deletedAt,
       isSynced: isSynced ?? this.isSynced,
       refundId: refundId ?? this.refundId,
+      saleItemId: saleItemId ?? this.saleItemId,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -2992,6 +3042,9 @@ class LocalBatchAdjustmentsCompanion
     if (refundId.present) {
       map['refund_id'] = Variable<String>(refundId.value);
     }
+    if (saleItemId.present) {
+      map['sale_item_id'] = Variable<String>(saleItemId.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -3013,6 +3066,7 @@ class LocalBatchAdjustmentsCompanion
           ..write('deletedAt: $deletedAt, ')
           ..write('isSynced: $isSynced, ')
           ..write('refundId: $refundId, ')
+          ..write('saleItemId: $saleItemId, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -12587,6 +12641,7 @@ typedef $$LocalBatchAdjustmentsTableCreateCompanionBuilder =
       Value<DateTime?> deletedAt,
       Value<bool> isSynced,
       Value<String?> refundId,
+      Value<String?> saleItemId,
       Value<int> rowid,
     });
 typedef $$LocalBatchAdjustmentsTableUpdateCompanionBuilder =
@@ -12603,6 +12658,7 @@ typedef $$LocalBatchAdjustmentsTableUpdateCompanionBuilder =
       Value<DateTime?> deletedAt,
       Value<bool> isSynced,
       Value<String?> refundId,
+      Value<String?> saleItemId,
       Value<int> rowid,
     });
 
@@ -12675,6 +12731,11 @@ class $$LocalBatchAdjustmentsTableFilterComposer
     column: $table.refundId,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<String> get saleItemId => $composableBuilder(
+    column: $table.saleItemId,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$LocalBatchAdjustmentsTableOrderingComposer
@@ -12745,6 +12806,11 @@ class $$LocalBatchAdjustmentsTableOrderingComposer
     column: $table.refundId,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<String> get saleItemId => $composableBuilder(
+    column: $table.saleItemId,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LocalBatchAdjustmentsTableAnnotationComposer
@@ -12794,6 +12860,11 @@ class $$LocalBatchAdjustmentsTableAnnotationComposer
 
   GeneratedColumn<String> get refundId =>
       $composableBuilder(column: $table.refundId, builder: (column) => column);
+
+  GeneratedColumn<String> get saleItemId => $composableBuilder(
+    column: $table.saleItemId,
+    builder: (column) => column,
+  );
 }
 
 class $$LocalBatchAdjustmentsTableTableManager
@@ -12854,6 +12925,7 @@ class $$LocalBatchAdjustmentsTableTableManager
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> isSynced = const Value.absent(),
                 Value<String?> refundId = const Value.absent(),
+                Value<String?> saleItemId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalBatchAdjustmentsCompanion(
                 id: id,
@@ -12868,6 +12940,7 @@ class $$LocalBatchAdjustmentsTableTableManager
                 deletedAt: deletedAt,
                 isSynced: isSynced,
                 refundId: refundId,
+                saleItemId: saleItemId,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -12884,6 +12957,7 @@ class $$LocalBatchAdjustmentsTableTableManager
                 Value<DateTime?> deletedAt = const Value.absent(),
                 Value<bool> isSynced = const Value.absent(),
                 Value<String?> refundId = const Value.absent(),
+                Value<String?> saleItemId = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LocalBatchAdjustmentsCompanion.insert(
                 id: id,
@@ -12898,6 +12972,7 @@ class $$LocalBatchAdjustmentsTableTableManager
                 deletedAt: deletedAt,
                 isSynced: isSynced,
                 refundId: refundId,
+                saleItemId: saleItemId,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

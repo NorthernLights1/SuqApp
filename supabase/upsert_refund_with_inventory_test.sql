@@ -67,6 +67,13 @@ values
     10
   ),
   (
+    'bbbbbbbb-0000-0000-0000-000000000042',
+    'bbbbbbbb-0000-0000-0000-000000000020',
+    'bbbbbbbb-0000-0000-0000-000000000030',
+    'A-2',
+    10
+  ),
+  (
     'bbbbbbbb-0000-0000-0000-000000000041',
     'bbbbbbbb-0000-0000-0000-000000000020',
     'bbbbbbbb-0000-0000-0000-000000000031',
@@ -120,7 +127,13 @@ values
     'bbbbbbbb-0000-0000-0000-000000000070',
     'bbbbbbbb-0000-0000-0000-000000000060',
     'bbbbbbbb-0000-0000-0000-000000000040',
-    5
+    3
+  ),
+  (
+    'bbbbbbbb-0000-0000-0000-000000000072',
+    'bbbbbbbb-0000-0000-0000-000000000060',
+    'bbbbbbbb-0000-0000-0000-000000000042',
+    2
   ),
   (
     'bbbbbbbb-0000-0000-0000-000000000071',
@@ -179,6 +192,7 @@ begin
       jsonb_build_array(jsonb_build_object(
         'id', 'bbbbbbbb-0000-0000-0000-000000000120',
         'batch_id', 'bbbbbbbb-0000-0000-0000-000000000040',
+        'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000060',
         'quantity', '2'
       ))
     );
@@ -209,11 +223,13 @@ begin
       jsonb_build_object(
         'id', 'bbbbbbbb-0000-0000-0000-000000000121',
         'batch_id', 'bbbbbbbb-0000-0000-0000-000000000040',
+        'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000060',
         'quantity', '1'
       ),
       jsonb_build_object(
         'id', 'bbbbbbbb-0000-0000-0000-000000000122',
         'batch_id', 'bbbbbbbb-0000-0000-0000-000000000040',
+        'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000060',
         'quantity', '1'
       )
     )
@@ -256,6 +272,28 @@ begin
 
   begin
     perform public.upsert_refund_with_inventory(
+      v_refund_base || jsonb_build_object('id', 'bbbbbbbb-0000-0000-0000-000000000104'),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'bbbbbbbb-0000-0000-0000-000000000116',
+        'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000060',
+        'quantity', '2'
+      )),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'bbbbbbbb-0000-0000-0000-000000000124',
+        'batch_id', 'bbbbbbbb-0000-0000-0000-000000000040',
+        'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000060',
+        'quantity', '2'
+      ))
+    );
+    raise exception 'FAIL: cumulative sale-item batch over-restock was accepted';
+  exception when others then
+    if sqlerrm not like 'Restock qty exceeds drawn qty%' then
+      raise;
+    end if;
+  end;
+
+  begin
+    perform public.upsert_refund_with_inventory(
       v_refund_base || jsonb_build_object('id', 'bbbbbbbb-0000-0000-0000-000000000103'),
       jsonb_build_array(jsonb_build_object(
         'id', 'bbbbbbbb-0000-0000-0000-000000000115',
@@ -265,6 +303,7 @@ begin
       jsonb_build_array(jsonb_build_object(
         'id', 'bbbbbbbb-0000-0000-0000-000000000123',
         'batch_id', 'bbbbbbbb-0000-0000-0000-000000000040',
+        'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000060',
         'quantity', '4'
       ))
     );

@@ -27,24 +27,29 @@ class RefundsRemote {
   /// the screen + the repository can cap each line at its remaining-refundable.
   /// Excludes soft-deleted refunds/items.
   Future<Map<String, Decimal>> refundedQtyBySaleItem(String saleId) async {
-    final refundRows = (await _client
-        .from('refunds')
-        .select('id')
-        .eq('original_sale_id', saleId)
-        .isFilter('deleted_at', null)
-        .timeout(AppConstants.remoteReadTimeout)) as List;
+    final refundRows =
+        (await _client
+                .from('refunds')
+                .select('id')
+                .eq('original_sale_id', saleId)
+                .isFilter('deleted_at', null)
+                .timeout(AppConstants.remoteReadTimeout))
+            as List;
     final ids = [for (final r in refundRows) r['id'] as String];
     if (ids.isEmpty) return {};
-    final itemRows = (await _client
-        .from('refund_items')
-        .select('sale_item_id, quantity')
-        .inFilter('refund_id', ids)
-        .isFilter('deleted_at', null)
-        .timeout(AppConstants.remoteReadTimeout)) as List;
+    final itemRows =
+        (await _client
+                .from('refund_items')
+                .select('sale_item_id, quantity')
+                .inFilter('refund_id', ids)
+                .isFilter('deleted_at', null)
+                .timeout(AppConstants.remoteReadTimeout))
+            as List;
     final map = <String, Decimal>{};
     for (final i in itemRows) {
       final sid = i['sale_item_id'] as String;
-      map[sid] = (map[sid] ?? Decimal.zero) +
+      map[sid] =
+          (map[sid] ?? Decimal.zero) +
           (Decimal.tryParse(i['quantity'].toString()) ?? Decimal.zero);
     }
     return map;
@@ -71,23 +76,47 @@ class RefundsRemote {
         final line = it.line;
         final productId = line.productId;
         if (productId == null) continue;
-        final sib = (await _client
-            .from('sale_item_batches')
-            .select('batch_id, quantity')
-            .eq('sale_item_id', line.saleItemId)
-            .isFilter('deleted_at', null)
-            .timeout(AppConstants.remoteReadTimeout)) as List;
+        final sib =
+            (await _client
+                    .from('sale_item_batches')
+                    .select('batch_id, quantity')
+                    .eq('sale_item_id', line.saleItemId)
+                    .isFilter('deleted_at', null)
+                    .timeout(AppConstants.remoteReadTimeout))
+                as List;
+        final priorRows =
+            (await _client
+                    .from('batch_adjustments')
+                    .select('batch_id, quantity_delta')
+                    .eq('sale_item_id', line.saleItemId)
+                    .not('refund_id', 'is', null)
+                    .isFilter('deleted_at', null)
+                    .timeout(AppConstants.remoteReadTimeout))
+                as List;
+        final priorRestocked = <String, Decimal>{};
+        for (final r in priorRows) {
+          final delta =
+              Decimal.tryParse(r['quantity_delta'].toString()) ?? Decimal.zero;
+          if (delta < Decimal.zero) {
+            final batchId = r['batch_id'] as String;
+            priorRestocked[batchId] =
+                (priorRestocked[batchId] ?? Decimal.zero) + (-delta);
+          }
+        }
         final draws = [
           for (final s in sib)
             (
               batchId: s['batch_id'] as String,
               depleted:
-                  Decimal.tryParse(s['quantity'].toString()) ?? Decimal.zero,
-            )
+                  (Decimal.tryParse(s['quantity'].toString()) ?? Decimal.zero) -
+                  (priorRestocked[s['batch_id'] as String] ?? Decimal.zero),
+            ),
         ];
         final returns = allocateRestock(draws, line.quantity);
-        final allocated =
-            returns.fold(Decimal.zero, (sum, r) => sum + r.quantity);
+        final allocated = returns.fold(
+          Decimal.zero,
+          (sum, r) => sum + r.quantity,
+        );
         if (allocated < line.quantity) {
           throw StateError(
             'Cannot restock the returned units to their original lots. '
@@ -99,31 +128,35 @@ class RefundsRemote {
             'id': const Uuid().v4(),
             'batch_id': r.batchId,
             'product_id': productId,
+            'sale_item_id': line.saleItemId,
             'quantity': r.quantity.toString(),
           });
         }
       }
     }
 
-    await _client.rpc('upsert_refund_with_inventory', params: {
-      'p_refund': {
-        'id': id,
-        'original_sale_id': originalSaleId,
-        'branch_id': branchId,
-        'reason': reason,
-        'total_amount': totalAmount.toString(),
-        'restock': restock,
+    await _client.rpc(
+      'upsert_refund_with_inventory',
+      params: {
+        'p_refund': {
+          'id': id,
+          'original_sale_id': originalSaleId,
+          'branch_id': branchId,
+          'reason': reason,
+          'total_amount': totalAmount.toString(),
+          'restock': restock,
+        },
+        'p_items': [
+          for (final it in items)
+            {
+              'id': it.id,
+              'sale_item_id': it.line.saleItemId,
+              'quantity': it.line.quantity.toString(),
+              'amount': it.line.amount.toString(),
+            },
+        ],
+        'p_batch_adjustments': batchAdjustments,
       },
-      'p_items': [
-        for (final it in items)
-          {
-            'id': it.id,
-            'sale_item_id': it.line.saleItemId,
-            'quantity': it.line.quantity.toString(),
-            'amount': it.line.amount.toString(),
-          }
-      ],
-      'p_batch_adjustments': batchAdjustments,
-    });
+    );
   }
 }

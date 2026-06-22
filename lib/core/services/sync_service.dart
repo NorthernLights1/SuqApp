@@ -96,13 +96,11 @@ class SyncService implements ISyncService {
     final db = _db!;
     final pending = await db.getPendingCategories();
     if (pending.isEmpty) return 0;
-    await _supabase.from('product_categories').upsert(
+    await _supabase
+        .from('product_categories')
+        .upsert(
           pending
-              .map((c) => {
-                    'id': c.id,
-                    'shop_id': c.shopId,
-                    'name': c.name,
-                  })
+              .map((c) => {'id': c.id, 'shop_id': c.shopId, 'name': c.name})
               .toList(),
           onConflict: 'id',
         );
@@ -116,20 +114,24 @@ class SyncService implements ISyncService {
     final db = _db!;
     final pending = await db.getPendingProducts();
     if (pending.isEmpty) return 0;
-    await _supabase.from('products').upsert(
+    await _supabase
+        .from('products')
+        .upsert(
           pending
-              .map((p) => {
-                    'id': p.id,
-                    'shop_id': p.shopId,
-                    'name': p.name,
-                    'description': p.description,
-                    'measurement_unit_id': p.measurementUnitId,
-                    'low_stock_threshold': p.lowStockThreshold.toString(),
-                    'selling_price': p.sellingPrice?.toString(),
-                    'cost_price': p.costPrice?.toString(),
-                    'category_id': p.categoryId,
-                    'is_active': p.isActive,
-                  })
+              .map(
+                (p) => {
+                  'id': p.id,
+                  'shop_id': p.shopId,
+                  'name': p.name,
+                  'description': p.description,
+                  'measurement_unit_id': p.measurementUnitId,
+                  'low_stock_threshold': p.lowStockThreshold.toString(),
+                  'selling_price': p.sellingPrice?.toString(),
+                  'cost_price': p.costPrice?.toString(),
+                  'category_id': p.categoryId,
+                  'is_active': p.isActive,
+                },
+              )
               .toList(),
           onConflict: 'id',
         );
@@ -147,22 +149,28 @@ class SyncService implements ISyncService {
     final db = _db!;
     final pending = await db.getPendingProductBatches();
     if (pending.isEmpty) return 0;
-    await _supabase.from('product_batches').upsert(
+    await _supabase
+        .from('product_batches')
+        .upsert(
           pending
-              .map((b) => {
-                    'id': b.id,
-                    'branch_id': b.branchId,
-                    'product_id': b.productId,
-                    'batch_number': b.batchNumber,
-                    'expiry_date':
-                        b.expiryDate?.toIso8601String().substring(0, 10),
-                    'quantity': b.quantity.toString(),
-                    'cost_price': b.costPrice?.toString(),
-                    'received_at': b.receivedAt.toUtc().toIso8601String(),
-                    'created_by': b.createdBy,
-                    // Carries a lot discard up; null for a normal received batch.
-                    'deleted_at': b.deletedAt?.toUtc().toIso8601String(),
-                  })
+              .map(
+                (b) => {
+                  'id': b.id,
+                  'branch_id': b.branchId,
+                  'product_id': b.productId,
+                  'batch_number': b.batchNumber,
+                  'expiry_date': b.expiryDate?.toIso8601String().substring(
+                    0,
+                    10,
+                  ),
+                  'quantity': b.quantity.toString(),
+                  'cost_price': b.costPrice?.toString(),
+                  'received_at': b.receivedAt.toUtc().toIso8601String(),
+                  'created_by': b.createdBy,
+                  // Carries a lot discard up; null for a normal received batch.
+                  'deleted_at': b.deletedAt?.toUtc().toIso8601String(),
+                },
+              )
               .toList(),
           onConflict: 'id',
         );
@@ -179,19 +187,23 @@ class SyncService implements ISyncService {
     final db = _db!;
     final pending = await db.getPendingBatchAdjustments();
     if (pending.isEmpty) return 0;
-    await _supabase.from('batch_adjustments').upsert(
+    await _supabase
+        .from('batch_adjustments')
+        .upsert(
           pending
-              .map((a) => {
-                    'id': a.id,
-                    'batch_id': a.batchId,
-                    'branch_id': a.branchId,
-                    'product_id': a.productId,
-                    'quantity_delta': a.quantityDelta.toString(),
-                    'reason': a.reason,
-                    'created_by': a.createdBy,
-                    'created_at': a.createdAt.toUtc().toIso8601String(),
-                    'deleted_at': a.deletedAt?.toUtc().toIso8601String(),
-                  })
+              .map(
+                (a) => {
+                  'id': a.id,
+                  'batch_id': a.batchId,
+                  'branch_id': a.branchId,
+                  'product_id': a.productId,
+                  'quantity_delta': a.quantityDelta.toString(),
+                  'reason': a.reason,
+                  'created_by': a.createdBy,
+                  'created_at': a.createdAt.toUtc().toIso8601String(),
+                  'deleted_at': a.deletedAt?.toUtc().toIso8601String(),
+                },
+              )
               .toList(),
           onConflict: 'id',
         );
@@ -236,8 +248,9 @@ class SyncService implements ISyncService {
         final items = itemRows.map(_saleItemJson).toList();
         // Wholesale: the FEFO depletion ledger. Null for retail → the RPC takes
         // the inventory.quantity decrement path. Idempotent by allocation id.
-        final sib = await db
-            .getSaleItemBatchesForItems(itemRows.map((i) => i.id).toList());
+        final sib = await db.getSaleItemBatchesForItems(
+          itemRows.map((i) => i.id).toList(),
+        );
         final itemBatches = sib.isEmpty
             ? null
             : [
@@ -247,7 +260,7 @@ class SyncService implements ISyncService {
                     'sale_item_id': s.saleItemId,
                     'batch_id': s.batchId,
                     'quantity': s.quantity.toString(),
-                  }
+                  },
               ];
         await _supabase.rpc(
           'upsert_sale_with_inventory',
@@ -352,7 +365,7 @@ class SyncService implements ISyncService {
                 'sale_item_id': i.saleItemId,
                 'quantity': i.quantity.toString(),
                 'amount': i.amount.toString(),
-              }
+              },
           ],
           // retail: null (RPC derives restock from lines); wholesale: non-empty required.
           // quantity is the positive returned amount (RPC negates it on insert).
@@ -364,8 +377,9 @@ class SyncService implements ISyncService {
                       'id': a.id,
                       'batch_id': a.batchId,
                       'product_id': a.productId,
+                      'sale_item_id': a.saleItemId,
                       'quantity': (-a.quantityDelta).toString(),
-                    }
+                    },
                 ],
         },
       );

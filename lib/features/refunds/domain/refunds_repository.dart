@@ -47,8 +47,7 @@ class RefundsRepository implements IRefundsRepository {
     required bool useBatches,
   }) async {
     final refundId = const Uuid().v4();
-    final total =
-        lines.fold(Decimal.zero, (sum, l) => sum + l.amount);
+    final total = lines.fold(Decimal.zero, (sum, l) => sum + l.amount);
     final now = DateTime.now();
 
     // Over-refund guard at the mutation boundary (not just the UI): re-read the
@@ -77,9 +76,7 @@ class RefundsRepository implements IRefundsRepository {
         reason: reason,
         totalAmount: total,
         restock: restock,
-        items: [
-          for (final l in lines) (id: const Uuid().v4(), line: l),
-        ],
+        items: [for (final l in lines) (id: const Uuid().v4(), line: l)],
         useBatches: useBatches,
       );
       return;
@@ -121,7 +118,14 @@ class RefundsRepository implements IRefundsRepository {
         if (productId == null) continue;
         if (useBatches) {
           await _restockBatchesLocal(
-              db, branchId, productId, l, refundId, refundedBy, now);
+            db,
+            branchId,
+            productId,
+            l,
+            refundId,
+            refundedBy,
+            now,
+          );
         } else {
           await _restockRetailLocal(db, branchId, productId, l);
         }
@@ -158,12 +162,18 @@ class RefundsRepository implements IRefundsRepository {
     DateTime now,
   ) async {
     final sib = await db.getSaleItemBatchesForItems([line.saleItemId]);
+    final priorRestocked = await db.refundRestockedQtyByBatchForSaleItem(
+      line.saleItemId,
+    );
     final draws = [
-      for (final s in sib) (batchId: s.batchId, depleted: s.quantity),
+      for (final s in sib)
+        (
+          batchId: s.batchId,
+          depleted: s.quantity - (priorRestocked[s.batchId] ?? Decimal.zero),
+        ),
     ];
     final returns = allocateRestock(draws, line.quantity);
-    final allocated =
-        returns.fold(Decimal.zero, (sum, r) => sum + r.quantity);
+    final allocated = returns.fold(Decimal.zero, (sum, r) => sum + r.quantity);
     if (allocated < line.quantity) {
       // The lots this line drew from can't absorb the return (missing/short
       // depletion ledger). Fail the whole refund transaction rather than record
@@ -189,6 +199,7 @@ class RefundsRepository implements IRefundsRepository {
           // Synced=true: the generic push skips it; the refund RPC carries it.
           isSynced: const Value(true),
           refundId: Value(refundId),
+          saleItemId: Value(line.saleItemId),
         ),
     ]);
     await db.recomputeStockFromBatches(branchId, productId, now);
