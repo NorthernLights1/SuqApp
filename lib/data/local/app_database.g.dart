@@ -2301,6 +2301,675 @@ class LocalSaleItemBatchesCompanion extends UpdateCompanion<SaleItemBatchRow> {
   }
 }
 
+class $LocalBatchAdjustmentsTable extends LocalBatchAdjustments
+    with TableInfo<$LocalBatchAdjustmentsTable, BatchAdjustmentRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LocalBatchAdjustmentsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _batchIdMeta = const VerificationMeta(
+    'batchId',
+  );
+  @override
+  late final GeneratedColumn<String> batchId = GeneratedColumn<String>(
+    'batch_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _branchIdMeta = const VerificationMeta(
+    'branchId',
+  );
+  @override
+  late final GeneratedColumn<String> branchId = GeneratedColumn<String>(
+    'branch_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _productIdMeta = const VerificationMeta(
+    'productId',
+  );
+  @override
+  late final GeneratedColumn<String> productId = GeneratedColumn<String>(
+    'product_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  late final GeneratedColumnWithTypeConverter<Decimal, String> quantityDelta =
+      GeneratedColumn<String>(
+        'quantity_delta',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      ).withConverter<Decimal>(
+        $LocalBatchAdjustmentsTable.$converterquantityDelta,
+      );
+  static const VerificationMeta _reasonMeta = const VerificationMeta('reason');
+  @override
+  late final GeneratedColumn<String> reason = GeneratedColumn<String>(
+    'reason',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdByMeta = const VerificationMeta(
+    'createdBy',
+  );
+  @override
+  late final GeneratedColumn<String> createdBy = GeneratedColumn<String>(
+    'created_by',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> createdAt = GeneratedColumn<DateTime>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _syncedAtMeta = const VerificationMeta(
+    'syncedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+    'synced_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _deletedAtMeta = const VerificationMeta(
+    'deletedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> deletedAt = GeneratedColumn<DateTime>(
+    'deleted_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+    'is_synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(true),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    batchId,
+    branchId,
+    productId,
+    quantityDelta,
+    reason,
+    createdBy,
+    createdAt,
+    syncedAt,
+    deletedAt,
+    isSynced,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'local_batch_adjustments';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<BatchAdjustmentRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('batch_id')) {
+      context.handle(
+        _batchIdMeta,
+        batchId.isAcceptableOrUnknown(data['batch_id']!, _batchIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_batchIdMeta);
+    }
+    if (data.containsKey('branch_id')) {
+      context.handle(
+        _branchIdMeta,
+        branchId.isAcceptableOrUnknown(data['branch_id']!, _branchIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_branchIdMeta);
+    }
+    if (data.containsKey('product_id')) {
+      context.handle(
+        _productIdMeta,
+        productId.isAcceptableOrUnknown(data['product_id']!, _productIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_productIdMeta);
+    }
+    if (data.containsKey('reason')) {
+      context.handle(
+        _reasonMeta,
+        reason.isAcceptableOrUnknown(data['reason']!, _reasonMeta),
+      );
+    }
+    if (data.containsKey('created_by')) {
+      context.handle(
+        _createdByMeta,
+        createdBy.isAcceptableOrUnknown(data['created_by']!, _createdByMeta),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(
+        _syncedAtMeta,
+        syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    if (data.containsKey('deleted_at')) {
+      context.handle(
+        _deletedAtMeta,
+        deletedAt.isAcceptableOrUnknown(data['deleted_at']!, _deletedAtMeta),
+      );
+    }
+    if (data.containsKey('is_synced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  BatchAdjustmentRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return BatchAdjustmentRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      batchId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}batch_id'],
+      )!,
+      branchId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}branch_id'],
+      )!,
+      productId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}product_id'],
+      )!,
+      quantityDelta: $LocalBatchAdjustmentsTable.$converterquantityDelta
+          .fromSql(
+            attachedDatabase.typeMapping.read(
+              DriftSqlType.string,
+              data['${effectivePrefix}quantity_delta'],
+            )!,
+          ),
+      reason: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}reason'],
+      ),
+      createdBy: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}created_by'],
+      ),
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}created_at'],
+      )!,
+      syncedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}synced_at'],
+      )!,
+      deletedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}deleted_at'],
+      ),
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_synced'],
+      )!,
+    );
+  }
+
+  @override
+  $LocalBatchAdjustmentsTable createAlias(String alias) {
+    return $LocalBatchAdjustmentsTable(attachedDatabase, alias);
+  }
+
+  static TypeConverter<Decimal, String> $converterquantityDelta = const _Dec();
+}
+
+class BatchAdjustmentRow extends DataClass
+    implements Insertable<BatchAdjustmentRow> {
+  final String id;
+  final String batchId;
+  final String branchId;
+  final String productId;
+  final Decimal quantityDelta;
+  final String? reason;
+  final String? createdBy;
+  final DateTime createdAt;
+  final DateTime syncedAt;
+  final DateTime? deletedAt;
+  final bool isSynced;
+  const BatchAdjustmentRow({
+    required this.id,
+    required this.batchId,
+    required this.branchId,
+    required this.productId,
+    required this.quantityDelta,
+    this.reason,
+    this.createdBy,
+    required this.createdAt,
+    required this.syncedAt,
+    this.deletedAt,
+    required this.isSynced,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['batch_id'] = Variable<String>(batchId);
+    map['branch_id'] = Variable<String>(branchId);
+    map['product_id'] = Variable<String>(productId);
+    {
+      map['quantity_delta'] = Variable<String>(
+        $LocalBatchAdjustmentsTable.$converterquantityDelta.toSql(
+          quantityDelta,
+        ),
+      );
+    }
+    if (!nullToAbsent || reason != null) {
+      map['reason'] = Variable<String>(reason);
+    }
+    if (!nullToAbsent || createdBy != null) {
+      map['created_by'] = Variable<String>(createdBy);
+    }
+    map['created_at'] = Variable<DateTime>(createdAt);
+    map['synced_at'] = Variable<DateTime>(syncedAt);
+    if (!nullToAbsent || deletedAt != null) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt);
+    }
+    map['is_synced'] = Variable<bool>(isSynced);
+    return map;
+  }
+
+  LocalBatchAdjustmentsCompanion toCompanion(bool nullToAbsent) {
+    return LocalBatchAdjustmentsCompanion(
+      id: Value(id),
+      batchId: Value(batchId),
+      branchId: Value(branchId),
+      productId: Value(productId),
+      quantityDelta: Value(quantityDelta),
+      reason: reason == null && nullToAbsent
+          ? const Value.absent()
+          : Value(reason),
+      createdBy: createdBy == null && nullToAbsent
+          ? const Value.absent()
+          : Value(createdBy),
+      createdAt: Value(createdAt),
+      syncedAt: Value(syncedAt),
+      deletedAt: deletedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(deletedAt),
+      isSynced: Value(isSynced),
+    );
+  }
+
+  factory BatchAdjustmentRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return BatchAdjustmentRow(
+      id: serializer.fromJson<String>(json['id']),
+      batchId: serializer.fromJson<String>(json['batchId']),
+      branchId: serializer.fromJson<String>(json['branchId']),
+      productId: serializer.fromJson<String>(json['productId']),
+      quantityDelta: serializer.fromJson<Decimal>(json['quantityDelta']),
+      reason: serializer.fromJson<String?>(json['reason']),
+      createdBy: serializer.fromJson<String?>(json['createdBy']),
+      createdAt: serializer.fromJson<DateTime>(json['createdAt']),
+      syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+      deletedAt: serializer.fromJson<DateTime?>(json['deletedAt']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'batchId': serializer.toJson<String>(batchId),
+      'branchId': serializer.toJson<String>(branchId),
+      'productId': serializer.toJson<String>(productId),
+      'quantityDelta': serializer.toJson<Decimal>(quantityDelta),
+      'reason': serializer.toJson<String?>(reason),
+      'createdBy': serializer.toJson<String?>(createdBy),
+      'createdAt': serializer.toJson<DateTime>(createdAt),
+      'syncedAt': serializer.toJson<DateTime>(syncedAt),
+      'deletedAt': serializer.toJson<DateTime?>(deletedAt),
+      'isSynced': serializer.toJson<bool>(isSynced),
+    };
+  }
+
+  BatchAdjustmentRow copyWith({
+    String? id,
+    String? batchId,
+    String? branchId,
+    String? productId,
+    Decimal? quantityDelta,
+    Value<String?> reason = const Value.absent(),
+    Value<String?> createdBy = const Value.absent(),
+    DateTime? createdAt,
+    DateTime? syncedAt,
+    Value<DateTime?> deletedAt = const Value.absent(),
+    bool? isSynced,
+  }) => BatchAdjustmentRow(
+    id: id ?? this.id,
+    batchId: batchId ?? this.batchId,
+    branchId: branchId ?? this.branchId,
+    productId: productId ?? this.productId,
+    quantityDelta: quantityDelta ?? this.quantityDelta,
+    reason: reason.present ? reason.value : this.reason,
+    createdBy: createdBy.present ? createdBy.value : this.createdBy,
+    createdAt: createdAt ?? this.createdAt,
+    syncedAt: syncedAt ?? this.syncedAt,
+    deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
+    isSynced: isSynced ?? this.isSynced,
+  );
+  BatchAdjustmentRow copyWithCompanion(LocalBatchAdjustmentsCompanion data) {
+    return BatchAdjustmentRow(
+      id: data.id.present ? data.id.value : this.id,
+      batchId: data.batchId.present ? data.batchId.value : this.batchId,
+      branchId: data.branchId.present ? data.branchId.value : this.branchId,
+      productId: data.productId.present ? data.productId.value : this.productId,
+      quantityDelta: data.quantityDelta.present
+          ? data.quantityDelta.value
+          : this.quantityDelta,
+      reason: data.reason.present ? data.reason.value : this.reason,
+      createdBy: data.createdBy.present ? data.createdBy.value : this.createdBy,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+      deletedAt: data.deletedAt.present ? data.deletedAt.value : this.deletedAt,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('BatchAdjustmentRow(')
+          ..write('id: $id, ')
+          ..write('batchId: $batchId, ')
+          ..write('branchId: $branchId, ')
+          ..write('productId: $productId, ')
+          ..write('quantityDelta: $quantityDelta, ')
+          ..write('reason: $reason, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('isSynced: $isSynced')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    batchId,
+    branchId,
+    productId,
+    quantityDelta,
+    reason,
+    createdBy,
+    createdAt,
+    syncedAt,
+    deletedAt,
+    isSynced,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is BatchAdjustmentRow &&
+          other.id == this.id &&
+          other.batchId == this.batchId &&
+          other.branchId == this.branchId &&
+          other.productId == this.productId &&
+          other.quantityDelta == this.quantityDelta &&
+          other.reason == this.reason &&
+          other.createdBy == this.createdBy &&
+          other.createdAt == this.createdAt &&
+          other.syncedAt == this.syncedAt &&
+          other.deletedAt == this.deletedAt &&
+          other.isSynced == this.isSynced);
+}
+
+class LocalBatchAdjustmentsCompanion
+    extends UpdateCompanion<BatchAdjustmentRow> {
+  final Value<String> id;
+  final Value<String> batchId;
+  final Value<String> branchId;
+  final Value<String> productId;
+  final Value<Decimal> quantityDelta;
+  final Value<String?> reason;
+  final Value<String?> createdBy;
+  final Value<DateTime> createdAt;
+  final Value<DateTime> syncedAt;
+  final Value<DateTime?> deletedAt;
+  final Value<bool> isSynced;
+  final Value<int> rowid;
+  const LocalBatchAdjustmentsCompanion({
+    this.id = const Value.absent(),
+    this.batchId = const Value.absent(),
+    this.branchId = const Value.absent(),
+    this.productId = const Value.absent(),
+    this.quantityDelta = const Value.absent(),
+    this.reason = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+    this.deletedAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LocalBatchAdjustmentsCompanion.insert({
+    required String id,
+    required String batchId,
+    required String branchId,
+    required String productId,
+    required Decimal quantityDelta,
+    this.reason = const Value.absent(),
+    this.createdBy = const Value.absent(),
+    required DateTime createdAt,
+    required DateTime syncedAt,
+    this.deletedAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : id = Value(id),
+       batchId = Value(batchId),
+       branchId = Value(branchId),
+       productId = Value(productId),
+       quantityDelta = Value(quantityDelta),
+       createdAt = Value(createdAt),
+       syncedAt = Value(syncedAt);
+  static Insertable<BatchAdjustmentRow> custom({
+    Expression<String>? id,
+    Expression<String>? batchId,
+    Expression<String>? branchId,
+    Expression<String>? productId,
+    Expression<String>? quantityDelta,
+    Expression<String>? reason,
+    Expression<String>? createdBy,
+    Expression<DateTime>? createdAt,
+    Expression<DateTime>? syncedAt,
+    Expression<DateTime>? deletedAt,
+    Expression<bool>? isSynced,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (batchId != null) 'batch_id': batchId,
+      if (branchId != null) 'branch_id': branchId,
+      if (productId != null) 'product_id': productId,
+      if (quantityDelta != null) 'quantity_delta': quantityDelta,
+      if (reason != null) 'reason': reason,
+      if (createdBy != null) 'created_by': createdBy,
+      if (createdAt != null) 'created_at': createdAt,
+      if (syncedAt != null) 'synced_at': syncedAt,
+      if (deletedAt != null) 'deleted_at': deletedAt,
+      if (isSynced != null) 'is_synced': isSynced,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LocalBatchAdjustmentsCompanion copyWith({
+    Value<String>? id,
+    Value<String>? batchId,
+    Value<String>? branchId,
+    Value<String>? productId,
+    Value<Decimal>? quantityDelta,
+    Value<String?>? reason,
+    Value<String?>? createdBy,
+    Value<DateTime>? createdAt,
+    Value<DateTime>? syncedAt,
+    Value<DateTime?>? deletedAt,
+    Value<bool>? isSynced,
+    Value<int>? rowid,
+  }) {
+    return LocalBatchAdjustmentsCompanion(
+      id: id ?? this.id,
+      batchId: batchId ?? this.batchId,
+      branchId: branchId ?? this.branchId,
+      productId: productId ?? this.productId,
+      quantityDelta: quantityDelta ?? this.quantityDelta,
+      reason: reason ?? this.reason,
+      createdBy: createdBy ?? this.createdBy,
+      createdAt: createdAt ?? this.createdAt,
+      syncedAt: syncedAt ?? this.syncedAt,
+      deletedAt: deletedAt ?? this.deletedAt,
+      isSynced: isSynced ?? this.isSynced,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (batchId.present) {
+      map['batch_id'] = Variable<String>(batchId.value);
+    }
+    if (branchId.present) {
+      map['branch_id'] = Variable<String>(branchId.value);
+    }
+    if (productId.present) {
+      map['product_id'] = Variable<String>(productId.value);
+    }
+    if (quantityDelta.present) {
+      map['quantity_delta'] = Variable<String>(
+        $LocalBatchAdjustmentsTable.$converterquantityDelta.toSql(
+          quantityDelta.value,
+        ),
+      );
+    }
+    if (reason.present) {
+      map['reason'] = Variable<String>(reason.value);
+    }
+    if (createdBy.present) {
+      map['created_by'] = Variable<String>(createdBy.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<DateTime>(createdAt.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    if (deletedAt.present) {
+      map['deleted_at'] = Variable<DateTime>(deletedAt.value);
+    }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LocalBatchAdjustmentsCompanion(')
+          ..write('id: $id, ')
+          ..write('batchId: $batchId, ')
+          ..write('branchId: $branchId, ')
+          ..write('productId: $productId, ')
+          ..write('quantityDelta: $quantityDelta, ')
+          ..write('reason: $reason, ')
+          ..write('createdBy: $createdBy, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('syncedAt: $syncedAt, ')
+          ..write('deletedAt: $deletedAt, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $LocalSalesTable extends LocalSales
     with TableInfo<$LocalSalesTable, SaleRow> {
   @override
@@ -9501,6 +10170,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $LocalProductBatchesTable(this);
   late final $LocalSaleItemBatchesTable localSaleItemBatches =
       $LocalSaleItemBatchesTable(this);
+  late final $LocalBatchAdjustmentsTable localBatchAdjustments =
+      $LocalBatchAdjustmentsTable(this);
   late final $LocalSalesTable localSales = $LocalSalesTable(this);
   late final $LocalSaleItemsTable localSaleItems = $LocalSaleItemsTable(this);
   late final $LocalCustomersTable localCustomers = $LocalCustomersTable(this);
@@ -9532,6 +10203,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     localStock,
     localProductBatches,
     localSaleItemBatches,
+    localBatchAdjustments,
     localSales,
     localSaleItems,
     localCustomers,
@@ -10709,6 +11381,343 @@ typedef $$LocalSaleItemBatchesTableProcessedTableManager =
         >,
       ),
       SaleItemBatchRow,
+      PrefetchHooks Function()
+    >;
+typedef $$LocalBatchAdjustmentsTableCreateCompanionBuilder =
+    LocalBatchAdjustmentsCompanion Function({
+      required String id,
+      required String batchId,
+      required String branchId,
+      required String productId,
+      required Decimal quantityDelta,
+      Value<String?> reason,
+      Value<String?> createdBy,
+      required DateTime createdAt,
+      required DateTime syncedAt,
+      Value<DateTime?> deletedAt,
+      Value<bool> isSynced,
+      Value<int> rowid,
+    });
+typedef $$LocalBatchAdjustmentsTableUpdateCompanionBuilder =
+    LocalBatchAdjustmentsCompanion Function({
+      Value<String> id,
+      Value<String> batchId,
+      Value<String> branchId,
+      Value<String> productId,
+      Value<Decimal> quantityDelta,
+      Value<String?> reason,
+      Value<String?> createdBy,
+      Value<DateTime> createdAt,
+      Value<DateTime> syncedAt,
+      Value<DateTime?> deletedAt,
+      Value<bool> isSynced,
+      Value<int> rowid,
+    });
+
+class $$LocalBatchAdjustmentsTableFilterComposer
+    extends Composer<_$AppDatabase, $LocalBatchAdjustmentsTable> {
+  $$LocalBatchAdjustmentsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get batchId => $composableBuilder(
+    column: $table.batchId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get productId => $composableBuilder(
+    column: $table.productId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnWithTypeConverterFilters<Decimal, Decimal, String> get quantityDelta =>
+      $composableBuilder(
+        column: $table.quantityDelta,
+        builder: (column) => ColumnWithTypeConverterFilters(column),
+      );
+
+  ColumnFilters<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LocalBatchAdjustmentsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LocalBatchAdjustmentsTable> {
+  $$LocalBatchAdjustmentsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get batchId => $composableBuilder(
+    column: $table.batchId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get branchId => $composableBuilder(
+    column: $table.branchId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get productId => $composableBuilder(
+    column: $table.productId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get quantityDelta => $composableBuilder(
+    column: $table.quantityDelta,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get reason => $composableBuilder(
+    column: $table.reason,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get createdBy => $composableBuilder(
+    column: $table.createdBy,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+    column: $table.syncedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get deletedAt => $composableBuilder(
+    column: $table.deletedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LocalBatchAdjustmentsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LocalBatchAdjustmentsTable> {
+  $$LocalBatchAdjustmentsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get batchId =>
+      $composableBuilder(column: $table.batchId, builder: (column) => column);
+
+  GeneratedColumn<String> get branchId =>
+      $composableBuilder(column: $table.branchId, builder: (column) => column);
+
+  GeneratedColumn<String> get productId =>
+      $composableBuilder(column: $table.productId, builder: (column) => column);
+
+  GeneratedColumnWithTypeConverter<Decimal, String> get quantityDelta =>
+      $composableBuilder(
+        column: $table.quantityDelta,
+        builder: (column) => column,
+      );
+
+  GeneratedColumn<String> get reason =>
+      $composableBuilder(column: $table.reason, builder: (column) => column);
+
+  GeneratedColumn<String> get createdBy =>
+      $composableBuilder(column: $table.createdBy, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get deletedAt =>
+      $composableBuilder(column: $table.deletedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
+}
+
+class $$LocalBatchAdjustmentsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LocalBatchAdjustmentsTable,
+          BatchAdjustmentRow,
+          $$LocalBatchAdjustmentsTableFilterComposer,
+          $$LocalBatchAdjustmentsTableOrderingComposer,
+          $$LocalBatchAdjustmentsTableAnnotationComposer,
+          $$LocalBatchAdjustmentsTableCreateCompanionBuilder,
+          $$LocalBatchAdjustmentsTableUpdateCompanionBuilder,
+          (
+            BatchAdjustmentRow,
+            BaseReferences<
+              _$AppDatabase,
+              $LocalBatchAdjustmentsTable,
+              BatchAdjustmentRow
+            >,
+          ),
+          BatchAdjustmentRow,
+          PrefetchHooks Function()
+        > {
+  $$LocalBatchAdjustmentsTableTableManager(
+    _$AppDatabase db,
+    $LocalBatchAdjustmentsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LocalBatchAdjustmentsTableFilterComposer(
+                $db: db,
+                $table: table,
+              ),
+          createOrderingComposer: () =>
+              $$LocalBatchAdjustmentsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$LocalBatchAdjustmentsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> batchId = const Value.absent(),
+                Value<String> branchId = const Value.absent(),
+                Value<String> productId = const Value.absent(),
+                Value<Decimal> quantityDelta = const Value.absent(),
+                Value<String?> reason = const Value.absent(),
+                Value<String?> createdBy = const Value.absent(),
+                Value<DateTime> createdAt = const Value.absent(),
+                Value<DateTime> syncedAt = const Value.absent(),
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> isSynced = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalBatchAdjustmentsCompanion(
+                id: id,
+                batchId: batchId,
+                branchId: branchId,
+                productId: productId,
+                quantityDelta: quantityDelta,
+                reason: reason,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                syncedAt: syncedAt,
+                deletedAt: deletedAt,
+                isSynced: isSynced,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String batchId,
+                required String branchId,
+                required String productId,
+                required Decimal quantityDelta,
+                Value<String?> reason = const Value.absent(),
+                Value<String?> createdBy = const Value.absent(),
+                required DateTime createdAt,
+                required DateTime syncedAt,
+                Value<DateTime?> deletedAt = const Value.absent(),
+                Value<bool> isSynced = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LocalBatchAdjustmentsCompanion.insert(
+                id: id,
+                batchId: batchId,
+                branchId: branchId,
+                productId: productId,
+                quantityDelta: quantityDelta,
+                reason: reason,
+                createdBy: createdBy,
+                createdAt: createdAt,
+                syncedAt: syncedAt,
+                deletedAt: deletedAt,
+                isSynced: isSynced,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LocalBatchAdjustmentsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LocalBatchAdjustmentsTable,
+      BatchAdjustmentRow,
+      $$LocalBatchAdjustmentsTableFilterComposer,
+      $$LocalBatchAdjustmentsTableOrderingComposer,
+      $$LocalBatchAdjustmentsTableAnnotationComposer,
+      $$LocalBatchAdjustmentsTableCreateCompanionBuilder,
+      $$LocalBatchAdjustmentsTableUpdateCompanionBuilder,
+      (
+        BatchAdjustmentRow,
+        BaseReferences<
+          _$AppDatabase,
+          $LocalBatchAdjustmentsTable,
+          BatchAdjustmentRow
+        >,
+      ),
+      BatchAdjustmentRow,
       PrefetchHooks Function()
     >;
 typedef $$LocalSalesTableCreateCompanionBuilder =
@@ -14547,6 +15556,8 @@ class $AppDatabaseManager {
       $$LocalProductBatchesTableTableManager(_db, _db.localProductBatches);
   $$LocalSaleItemBatchesTableTableManager get localSaleItemBatches =>
       $$LocalSaleItemBatchesTableTableManager(_db, _db.localSaleItemBatches);
+  $$LocalBatchAdjustmentsTableTableManager get localBatchAdjustments =>
+      $$LocalBatchAdjustmentsTableTableManager(_db, _db.localBatchAdjustments);
   $$LocalSalesTableTableManager get localSales =>
       $$LocalSalesTableTableManager(_db, _db.localSales);
   $$LocalSaleItemsTableTableManager get localSaleItems =>

@@ -299,6 +299,36 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
     return !state.hasError;
   }
 
+  /// Correct one lot's remaining to a counted quantity (wholesale). Records the
+  /// difference as an adjustment with a reason.
+  Future<bool> correctBatch({
+    required String batchId,
+    required String productId,
+    required Decimal countedRemaining,
+    required String reason,
+  }) async {
+    final userId = ref.read(currentUserIdProvider);
+    final branches = await ref.read(currentShopBranchesProvider.future);
+    final branch = ref.read(activeBranchProvider) ??
+        (branches.isNotEmpty ? branches.first : null);
+    if (userId == null || branch == null) return false;
+
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(inventoryRepositoryProvider).correctBatch(
+            batchId: batchId,
+            branchId: branch.id,
+            productId: productId,
+            countedRemaining: countedRemaining,
+            reason: reason,
+            adjustedBy: userId,
+          );
+      ref.invalidate(stockLevelsProvider);
+      ref.invalidate(productBatchesProvider(productId));
+    });
+    return !state.hasError;
+  }
+
   Future<bool> correctStock({
     required String productId,
     required Decimal newQuantity,

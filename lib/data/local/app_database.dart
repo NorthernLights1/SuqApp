@@ -103,6 +103,28 @@ class LocalSaleItemBatches extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// Per-lot stock corrections (wholesale). Append-only: a miscount/damage on one
+/// lot records the quantity removed (positive delta) or added back (negative)
+/// with a reason. Mirrors `batch_adjustments`. remaining(batch) = received −
+/// Σ(depletions) − Σ(adjustments). Offline-created corrections set isSynced=false.
+@DataClassName('BatchAdjustmentRow')
+class LocalBatchAdjustments extends Table {
+  TextColumn get id => text()();
+  TextColumn get batchId => text()();
+  TextColumn get branchId => text()();
+  TextColumn get productId => text()();
+  TextColumn get quantityDelta => text().map(const _Dec())();
+  TextColumn get reason => text().nullable()();
+  TextColumn get createdBy => text().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get syncedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('SaleRow')
 class LocalSales extends Table {
   TextColumn get id => text()();
@@ -355,6 +377,7 @@ class LocalSyncState extends Table {
   LocalStock,
   LocalProductBatches,
   LocalSaleItemBatches,
+  LocalBatchAdjustments,
   LocalSales,
   LocalSaleItems,
   LocalCustomers,
@@ -375,7 +398,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 15;
+  int get schemaVersion => 16;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -464,6 +487,8 @@ class AppDatabase extends _$AppDatabase {
           if (from >= 12 && from < 15) {
             await m.addColumn(localProductBatches, localProductBatches.createdBy);
           }
+          // v15 -> v16: per-lot correction ledger.
+          if (from < 16) await m.createTable(localBatchAdjustments);
         },
       );
 
@@ -589,18 +614,50 @@ class AppDatabase extends _$AppDatabase {
         .write(LocalSaleItemBatchesCompanion(deletedAt: Value(when)));
   }
 
+  // ── Batch adjustments (per-lot corrections, wholesale) ───────────────────────
+
+  Future<void> upsertBatchAdjustments(
+          List<LocalBatchAdjustmentsCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localBatchAdjustments, rows));
+
+  /// Non-deleted correction delta summed per batch. Subtracted from remaining
+  /// alongside depletions: remaining = received − depleted − adjusted.
+  Future<Map<String, Decimal>> adjustmentByBatch(List<String> batchIds) async {
+    if (batchIds.isEmpty) return {};
+    final rows = await (select(localBatchAdjustments)
+          ..where((t) => t.batchId.isIn(batchIds) & t.deletedAt.isNull()))
+        .get();
+    final map = <String, Decimal>{};
+    for (final r in rows) {
+      map[r.batchId] = (map[r.batchId] ?? Decimal.zero) + r.quantityDelta;
+    }
+    return map;
+  }
+
+  Future<List<BatchAdjustmentRow>> getPendingBatchAdjustments() =>
+      (select(localBatchAdjustments)..where((t) => t.isSynced.equals(false)))
+          .get();
+
+  Future<void> markBatchAdjustmentSynced(String id) =>
+      (update(localBatchAdjustments)..where((t) => t.id.equals(id)))
+          .write(const LocalBatchAdjustmentsCompanion(isSynced: Value(true)));
+
   /// Recompute the local stock rollup for a wholesale product from its batches:
-  /// `LocalStock.quantity = Σ(received) − Σ(non-deleted depletions)` — the same
-  /// derivation as the server rollup trigger (029). The stock row's expiry = the
-  /// soonest expiry among lots that still have remaining stock.
+  /// `LocalStock.quantity = Σ(received) − Σ(depletions) − Σ(corrections)` — the
+  /// same derivation as the server rollup trigger (032). The stock row's expiry
+  /// = the soonest expiry among lots that still have remaining stock.
   Future<void> recomputeStockFromBatches(
       String branchId, String productId, DateTime now) async {
     final batches = await getBatchesForProduct(branchId, productId);
-    final depleted = await depletionByBatch(batches.map((b) => b.id).toList());
+    final ids = batches.map((b) => b.id).toList();
+    final depleted = await depletionByBatch(ids);
+    final adjusted = await adjustmentByBatch(ids);
     var total = Decimal.zero;
     DateTime? soonest;
     for (final b in batches) {
-      final remaining = b.quantity - (depleted[b.id] ?? Decimal.zero);
+      final remaining = b.quantity -
+          (depleted[b.id] ?? Decimal.zero) -
+          (adjusted[b.id] ?? Decimal.zero);
       total += remaining;
       if (remaining <= Decimal.zero) continue; // exhausted lot — ignore expiry
       final e = b.expiryDate;
@@ -1118,6 +1175,7 @@ class AppDatabase extends _$AppDatabase {
       'EXISTS(SELECT 1 FROM local_product_categories WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_products WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_product_batches WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_batch_adjustments WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_sales WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_expenses WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_inventory_adjustments WHERE is_synced = 0) OR '
@@ -1128,6 +1186,7 @@ class AppDatabase extends _$AppDatabase {
         localProductCategories,
         localProducts,
         localProductBatches,
+        localBatchAdjustments,
         localSales,
         localExpenses,
         localInventoryAdjustments,
@@ -1152,6 +1211,7 @@ class AppDatabase extends _$AppDatabase {
     'local_products',
     'local_product_batches',
     'local_sale_item_batches',
+    'local_batch_adjustments',
     'local_customers',
     'local_expense_categories',
     'local_expenses',

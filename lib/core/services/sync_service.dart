@@ -51,6 +51,7 @@ class SyncService implements ISyncService {
         pushed += await _pushPendingCategories();
         pushed += await _pushPendingProducts();
         pushed += await _pushPendingProductBatches();
+        pushed += await _pushPendingBatchAdjustments();
         pushed += await _pushPendingCustomers();
         pushed += await _pushPendingInventoryWork();
         pushed += await _pushPendingCreditPayments();
@@ -150,6 +151,35 @@ class SyncService implements ISyncService {
         );
     for (final b in pending) {
       await db.markProductBatchSynced(b.id);
+    }
+    return pending.length;
+  }
+
+  /// Pushes pending per-lot corrections (idempotent by id). Pushed after batches
+  /// so the adjustment's batch FK exists. The server trigger recomputes the
+  /// rollup + re-checks the lot conflict.
+  Future<int> _pushPendingBatchAdjustments() async {
+    final db = _db!;
+    final pending = await db.getPendingBatchAdjustments();
+    if (pending.isEmpty) return 0;
+    await _supabase.from('batch_adjustments').upsert(
+          pending
+              .map((a) => {
+                    'id': a.id,
+                    'batch_id': a.batchId,
+                    'branch_id': a.branchId,
+                    'product_id': a.productId,
+                    'quantity_delta': a.quantityDelta.toString(),
+                    'reason': a.reason,
+                    'created_by': a.createdBy,
+                    'created_at': a.createdAt.toUtc().toIso8601String(),
+                    'deleted_at': a.deletedAt?.toUtc().toIso8601String(),
+                  })
+              .toList(),
+          onConflict: 'id',
+        );
+    for (final a in pending) {
+      await db.markBatchAdjustmentSynced(a.id);
     }
     return pending.length;
   }

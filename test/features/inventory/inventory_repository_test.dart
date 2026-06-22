@@ -283,4 +283,59 @@ void main() {
       expect(views.single.addedByName, 'Sara T.');
     });
   });
+
+  group('correctBatch (wholesale)', () {
+    test('down-correction lowers the lot remaining and the rollup', () async {
+      await repo.addStockBatch(
+        branchId: branchId,
+        productId: 'p-1',
+        quantity: Decimal.parse('10'),
+        adjustedBy: 'u-1',
+        batchNumber: 'L1',
+      );
+      final batch = (await repo.getProductBatches(branchId, 'p-1')).single;
+      expect(batch.remaining, Decimal.parse('10'));
+
+      // Physically counted only 7 in the lot.
+      await repo.correctBatch(
+        batchId: batch.id,
+        branchId: branchId,
+        productId: 'p-1',
+        countedRemaining: Decimal.parse('7'),
+        reason: 'miscount',
+        adjustedBy: 'u-1',
+      );
+
+      final after = (await repo.getProductBatches(branchId, 'p-1')).single;
+      expect(after.remaining, Decimal.parse('7'));
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('7'));
+    });
+
+    test('up-correction adds remaining back; correction is queued for push',
+        () async {
+      await repo.addStockBatch(
+        branchId: branchId,
+        productId: 'p-1',
+        quantity: Decimal.parse('5'),
+        adjustedBy: 'u-1',
+        batchNumber: 'L1',
+      );
+      final batch = (await repo.getProductBatches(branchId, 'p-1')).single;
+
+      await repo.correctBatch(
+        batchId: batch.id,
+        branchId: branchId,
+        productId: 'p-1',
+        countedRemaining: Decimal.parse('8'),
+        reason: 'found more',
+        adjustedBy: 'u-1',
+      );
+
+      expect((await repo.getProductBatches(branchId, 'p-1')).single.remaining,
+          Decimal.parse('8'));
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('8'));
+      // The adjustment is pending sync (offline-first).
+      expect(await db.getPendingBatchAdjustments(), isNotEmpty);
+    });
+  });
 }

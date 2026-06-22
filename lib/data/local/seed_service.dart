@@ -60,6 +60,7 @@ class SeedService {
       _guard(() => _seedExpenses(shopId)),
       _guard(_seedCreditPayments),
       _guard(_seedSaleItemBatches),
+      _guard(_seedBatchAdjustments),
     ]);
   }
 
@@ -341,6 +342,33 @@ class SeedService {
                   batchId: Value(s['batch_id'] as String),
                   quantity: Value(_dec(s['quantity'])),
                   syncedAt: Value(_now),
+                ))
+            .toList()),
+      );
+
+  Future<void> _seedBatchAdjustments() => _deltaPull(
+        tableKey: 'batch_adjustments',
+        deleteFromTable: 'local_batch_adjustments',
+        fetch: (cursorIso) async {
+          var q = _client.from('batch_adjustments').select(
+              'id, batch_id, branch_id, product_id, quantity_delta, reason, created_by, created_at, updated_at, deleted_at');
+          if (cursorIso != null) q = q.gte('updated_at', cursorIso);
+          return (await q as List).cast<Map<String, dynamic>>();
+        },
+        applyLive: (rows) => _db.upsertBatchAdjustments(rows
+            .map((a) => LocalBatchAdjustmentsCompanion(
+                  id: Value(a['id'] as String),
+                  batchId: Value(a['batch_id'] as String),
+                  branchId: Value(a['branch_id'] as String),
+                  productId: Value(a['product_id'] as String),
+                  quantityDelta: Value(_dec(a['quantity_delta'])),
+                  reason: Value(a['reason'] as String?),
+                  createdBy: Value(a['created_by'] as String?),
+                  createdAt: Value(
+                      DateTime.tryParse(a['created_at']?.toString() ?? '') ??
+                          _now),
+                  syncedAt: Value(_now),
+                  isSynced: const Value(true),
                 ))
             .toList()),
       );

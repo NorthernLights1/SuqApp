@@ -180,6 +180,19 @@ class InventoryRemote {
           (Decimal.tryParse(s['quantity'].toString()) ?? Decimal.zero);
     }
 
+    // Per-lot corrections (positive delta = removed, negative = added back).
+    final adjRows = (await _client
+        .from('batch_adjustments')
+        .select('batch_id, quantity_delta')
+        .inFilter('batch_id', ids)
+        .isFilter('deleted_at', null)) as List;
+    final adjusted = <String, Decimal>{};
+    for (final a in adjRows) {
+      final bid = a['batch_id'] as String;
+      adjusted[bid] = (adjusted[bid] ?? Decimal.zero) +
+          (Decimal.tryParse(a['quantity_delta'].toString()) ?? Decimal.zero);
+    }
+
     // Adder display names.
     final creatorIds = {
       for (final b in batchRows)
@@ -208,7 +221,9 @@ class InventoryRemote {
                 ? DateTime.tryParse(b['expiry_date'] as String)
                 : null,
             received: received,
-            remaining: received - (depleted[b['id']] ?? Decimal.zero),
+            remaining: received -
+                (depleted[b['id']] ?? Decimal.zero) -
+                (adjusted[b['id']] ?? Decimal.zero),
             receivedAt:
                 DateTime.tryParse(b['received_at']?.toString() ?? '') ??
                     DateTime.now(),
@@ -227,6 +242,27 @@ class InventoryRemote {
       return a.expiryDate!.compareTo(b.expiryDate!);
     });
     return views;
+  }
+
+  /// Web/remote per-lot correction insert; the server trigger recomputes.
+  Future<void> insertBatchAdjustment({
+    required String id,
+    required String batchId,
+    required String branchId,
+    required String productId,
+    required Decimal quantityDelta,
+    required String reason,
+    required String createdBy,
+  }) async {
+    await _client.from('batch_adjustments').insert({
+      'id': id,
+      'batch_id': batchId,
+      'branch_id': branchId,
+      'product_id': productId,
+      'quantity_delta': quantityDelta.toString(),
+      'reason': reason,
+      'created_by': createdBy,
+    });
   }
 
   // ─── Measurement units ─────────────────────────────────────────────────────

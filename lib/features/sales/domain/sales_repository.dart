@@ -249,12 +249,17 @@ class SalesRepository implements ISalesRepository {
           if (item.productId == null) continue;
           final batches =
               await _db.getBatchesForProduct(branchId, item.productId!);
-          final depleted =
-              await _db.depletionByBatch(batches.map((b) => b.id).toList());
+          final ids = batches.map((b) => b.id).toList();
+          final depleted = await _db.depletionByBatch(ids);
+          final adjusted = await _db.adjustmentByBatch(ids);
           final available = [
             for (final b in batches)
-              BatchAvailability(b.id,
-                  b.quantity - (depleted[b.id] ?? Decimal.zero), b.expiryDate),
+              BatchAvailability(
+                  b.id,
+                  b.quantity -
+                      (depleted[b.id] ?? Decimal.zero) -
+                      (adjusted[b.id] ?? Decimal.zero),
+                  b.expiryDate),
           ];
           final result = allocateFefo(available, item.quantity, now);
           // A tracked item with no lots can't be expressed as a batch depletion
@@ -323,12 +328,17 @@ class SalesRepository implements ISalesRepository {
     }
     for (final entry in needed.entries) {
       final batches = await _db.getBatchesForProduct(branchId, entry.key);
-      final depleted =
-          await _db.depletionByBatch(batches.map((b) => b.id).toList());
+      final ids = batches.map((b) => b.id).toList();
+      final depleted = await _db.depletionByBatch(ids);
+      final adjusted = await _db.adjustmentByBatch(ids);
       final available = [
         for (final b in batches)
           BatchAvailability(
-              b.id, b.quantity - (depleted[b.id] ?? Decimal.zero), b.expiryDate),
+              b.id,
+              b.quantity -
+                  (depleted[b.id] ?? Decimal.zero) -
+                  (adjusted[b.id] ?? Decimal.zero),
+              b.expiryDate),
       ];
       if (allocateFefo(available, entry.value, now).usedExpired) return true;
     }

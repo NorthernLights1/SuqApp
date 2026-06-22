@@ -75,8 +75,9 @@ class InventoryRepository {
     // Web (no local DB): read the lots straight from Supabase.
     if (_db == null) return _remote.getProductBatches(branchId, productId);
     final batches = await _db.getBatchesForProduct(branchId, productId);
-    final depleted =
-        await _db.depletionByBatch(batches.map((b) => b.id).toList());
+    final ids = batches.map((b) => b.id).toList();
+    final depleted = await _db.depletionByBatch(ids);
+    final adjusted = await _db.adjustmentByBatch(ids);
     // Resolve "added by" ids to display names from the profiles mirror.
     final names = {
       for (final p in await _db.getProfiles()) p.id: p.fullName,
@@ -87,7 +88,9 @@ class InventoryRepository {
           id: b.id,
           batchNumber: b.batchNumber,
           expiryDate: b.expiryDate,
-          remaining: b.quantity - (depleted[b.id] ?? Decimal.zero),
+          remaining: b.quantity -
+              (depleted[b.id] ?? Decimal.zero) -
+              (adjusted[b.id] ?? Decimal.zero),
           received: b.quantity,
           receivedAt: b.receivedAt,
           addedByName: b.createdBy == null ? null : names[b.createdBy],
@@ -458,6 +461,72 @@ class InventoryRepository {
     if (batch == null) return;
     await _db.discardBatch(batchId, DateTime.now());
     await _recomputeLocalRollup(batch.branchId, batch.productId);
+  }
+
+  /// Correct ONE lot's remaining to a counted quantity. Records the difference
+  /// as an append-only adjustment (positive delta = removed, negative = added
+  /// back) with a reason, then recomputes the rollup. Offline-first; the server
+  /// trigger restates inventory.quantity on push.
+  Future<void> correctBatch({
+    required String batchId,
+    required String branchId,
+    required String productId,
+    required Decimal countedRemaining,
+    required String reason,
+    required String adjustedBy,
+  }) async {
+    final id = const Uuid().v4();
+    final now = DateTime.now();
+
+    if (_db == null) {
+      // Web: derive the current remaining from the server, then post the delta.
+      final views = await _remote.getProductBatches(branchId, productId);
+      Decimal? current;
+      for (final v in views) {
+        if (v.id == batchId) {
+          current = v.remaining;
+          break;
+        }
+      }
+      if (current == null) return;
+      final delta = current - countedRemaining;
+      if (delta == Decimal.zero) return;
+      await _remote.insertBatchAdjustment(
+        id: id,
+        batchId: batchId,
+        branchId: branchId,
+        productId: productId,
+        quantityDelta: delta,
+        reason: reason,
+        createdBy: adjustedBy,
+      );
+      return;
+    }
+
+    final batch = await _db.getBatch(batchId);
+    if (batch == null) return;
+    final depleted =
+        (await _db.depletionByBatch([batchId]))[batchId] ?? Decimal.zero;
+    final adjusted =
+        (await _db.adjustmentByBatch([batchId]))[batchId] ?? Decimal.zero;
+    final current = batch.quantity - depleted - adjusted;
+    final delta = current - countedRemaining;
+    if (delta == Decimal.zero) return;
+    await _db.upsertBatchAdjustments([
+      LocalBatchAdjustmentsCompanion(
+        id: Value(id),
+        batchId: Value(batchId),
+        branchId: Value(branchId),
+        productId: Value(productId),
+        quantityDelta: Value(delta),
+        reason: Value(reason),
+        createdBy: Value(adjustedBy),
+        createdAt: Value(now),
+        syncedAt: Value(now),
+        isSynced: const Value(false),
+      ),
+    ]);
+    await _recomputeLocalRollup(branchId, productId);
   }
 
   Future<void> manualAdjustment({
