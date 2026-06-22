@@ -791,5 +791,53 @@ void main() {
         isFalse,
       );
     });
+
+    test('rejects (and rolls back) a wholesale sale with no stock lots',
+        () async {
+      await _seedProduct(db);
+      // A stock row exists (qty > 0) but there are NO batches to draw from —
+      // selling it would persist a wholesale sale with no ledger that syncs as a
+      // retail decrement. The guard must reject, and the transaction roll back.
+      await db.setStockLevel(branchId, 'p-1', Decimal.parse('10'));
+
+      await expectLater(
+        repo.createSale(
+          branchId: branchId,
+          shopId: shopId,
+          cashierId: cashierId,
+          paymentMethodId: pmId,
+          items: [_item(quantity: Decimal.parse('5'))],
+          useBatches: true,
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      // Whole write rolled back: no sale, no ledger rows.
+      expect(await db.getPendingSales(), isEmpty);
+    });
+
+    test('rollup clears a stale stock expiry when the expiring lot sells out',
+        () async {
+      await _seedProduct(db);
+      await seedBatch('exp', Decimal.parse('2'), DateTime(2026, 9, 1));
+      await seedBatch('noexp', Decimal.parse('10'), null);
+      await db.recomputeStockFromBatches(branchId, 'p-1', DateTime.now());
+      var stock = await db.getStockByBranch(branchId);
+      expect(stock.first.expiryDate, DateTime(2026, 9, 1));
+
+      // FEFO sells out the only expiring lot (2 units).
+      await repo.createSale(
+        branchId: branchId,
+        shopId: shopId,
+        cashierId: cashierId,
+        paymentMethodId: pmId,
+        items: [_item(quantity: Decimal.parse('2'))],
+        useBatches: true,
+      );
+
+      // Only the no-expiry lot remains — the stale expiry must be cleared.
+      stock = await db.getStockByBranch(branchId);
+      expect(stock.first.expiryDate, null);
+    });
   });
 }

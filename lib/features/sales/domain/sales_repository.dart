@@ -213,65 +213,87 @@ class SalesRepository implements ISalesRepository {
         ),
     ];
 
-    final saleRow = await _db.insertSaleWithItems(
-      LocalSalesCompanion(
-        id: Value(saleId),
-        branchId: Value(branchId),
-        customerId: Value(customerId),
-        cashierId: Value(cashierId),
-        paymentMethodId: Value(paymentMethodId),
-        subtotal: Value(subtotal),
-        discountAmount: Value(totalDiscount),
-        total: Value(total),
-        status: const Value('completed'),
-        isCredit: Value(isCredit),
-        notes: Value(notes),
-        createdAt: Value(now),
-        isSynced: const Value(false),
-      ),
-      itemCompanions,
-    );
+    // One local transaction for the whole sale write. For wholesale this is
+    // essential: if any batch allocation or rollup fails AFTER the sale insert,
+    // the sale would otherwise persist (isSynced=false) with no batch ledger —
+    // and SyncService would then push it with p_item_batches=null, which the
+    // server treats as a RETAIL stock decrement, corrupting the rollup. On any
+    // failure the entire sale rolls back instead.
+    final saleRow = await _db.transaction(() async {
+      final row = await _db.insertSaleWithItems(
+        LocalSalesCompanion(
+          id: Value(saleId),
+          branchId: Value(branchId),
+          customerId: Value(customerId),
+          cashierId: Value(cashierId),
+          paymentMethodId: Value(paymentMethodId),
+          subtotal: Value(subtotal),
+          discountAmount: Value(totalDiscount),
+          total: Value(total),
+          status: const Value('completed'),
+          isCredit: Value(isCredit),
+          notes: Value(notes),
+          createdAt: Value(now),
+          isSynced: const Value(false),
+        ),
+        itemCompanions,
+      );
 
-    if (useBatches) {
-      // Wholesale: FEFO-deplete batches and record the depletion ledger. The
-      // local rollup becomes Σ(received) − Σ(depletions). Items are processed in
-      // order so two lines of the same product see each other's draws (each
-      // recompute reflects the prior line's ledger rows).
-      for (var i = 0; i < items.length; i++) {
-        final item = items[i];
-        if (item.productId == null) continue;
-        final batches = await _db.getBatchesForProduct(branchId, item.productId!);
-        final depleted =
-            await _db.depletionByBatch(batches.map((b) => b.id).toList());
-        final available = [
-          for (final b in batches)
-            BatchAvailability(
-                b.id, b.quantity - (depleted[b.id] ?? Decimal.zero), b.expiryDate),
-        ];
-        final result = allocateFefo(available, item.quantity, now);
-        await _db.upsertSaleItemBatches([
-          for (final a in result.allocations)
-            LocalSaleItemBatchesCompanion(
-              id: Value(const Uuid().v4()),
-              saleItemId: Value(saleItemIds[i]),
-              batchId: Value(a.batchId),
-              quantity: Value(a.quantity),
-              syncedAt: Value(now),
-            ),
-        ]);
-        await _db.recomputeStockFromBatches(branchId, item.productId!, now);
-      }
-    } else {
-      // Retail: decrement the single stock quantity.
-      for (final item in items) {
-        if (item.productId == null) continue;
-        final stock = await _db.getStockLevel(branchId, item.productId!);
-        if (stock != null) {
-          await _db.adjustStock(
-              branchId, item.productId!, stock - item.quantity);
+      if (useBatches) {
+        // Wholesale: FEFO-deplete batches and record the depletion ledger. The
+        // local rollup becomes Σ(received) − Σ(depletions). Items are processed
+        // in order so two lines of the same product see each other's draws (each
+        // recompute reflects the prior line's ledger rows).
+        for (var i = 0; i < items.length; i++) {
+          final item = items[i];
+          if (item.productId == null) continue;
+          final batches =
+              await _db.getBatchesForProduct(branchId, item.productId!);
+          final depleted =
+              await _db.depletionByBatch(batches.map((b) => b.id).toList());
+          final available = [
+            for (final b in batches)
+              BatchAvailability(b.id,
+                  b.quantity - (depleted[b.id] ?? Decimal.zero), b.expiryDate),
+          ];
+          final result = allocateFefo(available, item.quantity, now);
+          // A tracked item with no lots can't be expressed as a batch depletion
+          // (oversell piles the shortfall onto a drawn lot; with zero lots there
+          // is nothing to pile onto, so the allocation is empty). Persisting it
+          // would sync as a retail decrement — reject the sale instead.
+          final allocated = result.allocations
+              .fold(Decimal.zero, (sum, a) => sum + a.quantity);
+          if (allocated < item.quantity) {
+            throw StateError(
+              'No stock lots available for ${item.productName}. '
+              'Add stock before selling.',
+            );
+          }
+          await _db.upsertSaleItemBatches([
+            for (final a in result.allocations)
+              LocalSaleItemBatchesCompanion(
+                id: Value(const Uuid().v4()),
+                saleItemId: Value(saleItemIds[i]),
+                batchId: Value(a.batchId),
+                quantity: Value(a.quantity),
+                syncedAt: Value(now),
+              ),
+          ]);
+          await _db.recomputeStockFromBatches(branchId, item.productId!, now);
+        }
+      } else {
+        // Retail: decrement the single stock quantity.
+        for (final item in items) {
+          if (item.productId == null) continue;
+          final stock = await _db.getStockLevel(branchId, item.productId!);
+          if (stock != null) {
+            await _db.adjustStock(
+                branchId, item.productId!, stock - item.quantity);
+          }
         }
       }
-    }
+      return row;
+    });
 
     // No inline push (offline-first v2 absolute boundary): the sale stays
     // isSynced=false and SyncService is the sole pusher. The caller nudges a

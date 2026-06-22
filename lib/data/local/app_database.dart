@@ -447,7 +447,12 @@ class AppDatabase extends _$AppDatabase {
           // v12 -> v13: wholesale depletion ledger (sale_item_batches mirror).
           if (from < 13) await m.createTable(localSaleItemBatches);
           // v13 -> v14: lot discard (soft-delete) on the batch mirror.
-          if (from < 14) {
+          // localProductBatches is created (createTable) in the v12 step, which
+          // always builds the *current* schema — so a DB at from < 12 already
+          // gets deletedAt there and must NOT addColumn it again (duplicate-
+          // column error). Only DBs that were already at v12/v13 (table created
+          // before deletedAt existed) need the retrofit.
+          if (from >= 12 && from < 14) {
             await m.addColumn(localProductBatches, localProductBatches.deletedAt);
           }
         },
@@ -592,7 +597,8 @@ class AppDatabase extends _$AppDatabase {
       final e = b.expiryDate;
       if (e != null && (soonest == null || e.isBefore(soonest))) soonest = e;
     }
-    await setStockLevel(branchId, productId, total, expiryDate: soonest);
+    await setStockLevel(branchId, productId, total,
+        expiryDate: soonest, overwriteExpiry: true);
   }
 
   Future<List<StockRow>> getStockByBranch(String branchId) =>
@@ -616,15 +622,21 @@ class AppDatabase extends _$AppDatabase {
 
   /// Upsert a single stock level (used by stock ops, which may target a
   /// product that has no local row yet — e.g. opening stock).
+  /// Upsert a single stock level. By default a null [expiryDate] leaves any
+  /// existing expiry untouched (callers that only set quantity). The batch
+  /// rollup is the authoritative projection of expiry, so it passes
+  /// [overwriteExpiry] to push null through and CLEAR a stale date once the
+  /// expiring lot is sold out or discarded.
   Future<void> setStockLevel(
           String branchId, String productId, Decimal newQty,
-          {DateTime? expiryDate}) =>
+          {DateTime? expiryDate, bool overwriteExpiry = false}) =>
       into(localStock).insertOnConflictUpdate(LocalStockCompanion(
         productId: Value(productId),
         branchId: Value(branchId),
         quantity: Value(newQty),
-        expiryDate:
-            expiryDate == null ? const Value.absent() : Value(expiryDate),
+        expiryDate: overwriteExpiry || expiryDate != null
+            ? Value(expiryDate)
+            : const Value.absent(),
         syncedAt: Value(DateTime.now()),
       ));
 
