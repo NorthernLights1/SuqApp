@@ -204,6 +204,7 @@ declare
   v_needed numeric(15,4);
   v_already_applied numeric(15,4);
   v_to_apply numeric(15,4);
+  v_is_wholesale boolean := false;
 begin
   if auth.uid() is null then
     raise exception 'Authentication required' using errcode = '42501';
@@ -337,6 +338,60 @@ begin
       );
     end if;
   end loop;
+
+  select exists (
+    select 1
+    from public.shop_settings ss
+    where ss.shop_id = v_shop_id
+      and ss.key = 'shop_type'
+      and ss.value = '"wholesale"'::jsonb
+  ) into v_is_wholesale;
+
+  if not v_is_wholesale then
+    select exists (
+      select 1
+      from public.sale_items si
+      join public.product_batches pb
+        on pb.branch_id = v_branch_id
+       and pb.product_id = si.product_id
+       and pb.deleted_at is null
+      where si.sale_id = v_sale_id
+        and si.product_id is not null
+        and si.inventory_status <> 'untracked'
+    ) into v_is_wholesale;
+  end if;
+
+  if v_is_wholesale and exists (
+    select 1
+    from public.sale_items si
+    where si.sale_id = v_sale_id
+      and si.product_id is not null
+      and si.inventory_status <> 'untracked'
+  ) then
+    if p_item_batches is null
+       or jsonb_typeof(p_item_batches) <> 'array'
+       or jsonb_array_length(p_item_batches) = 0 then
+      raise exception 'Wholesale tracked sale items require batch allocations';
+    end if;
+
+    if exists (
+      select 1
+      from public.sale_items si
+      left join (
+        select
+          (alloc.value->>'sale_item_id')::uuid as sale_item_id,
+          sum((alloc.value->>'quantity')::numeric) as allocated_quantity
+        from jsonb_array_elements(p_item_batches) alloc(value)
+        group by (alloc.value->>'sale_item_id')::uuid
+      ) allocs on allocs.sale_item_id = si.id
+      where si.sale_id = v_sale_id
+        and si.product_id is not null
+        and si.inventory_status <> 'untracked'
+        and coalesce(allocs.allocated_quantity, 0) <> si.quantity
+    ) then
+      raise exception 'Batch allocation quantity must equal sale item quantity';
+    end if;
+  end if;
 
   -- ── Stock depletion ─────────────────────────────────────────────────────────
   if p_item_batches is not null and jsonb_typeof(p_item_batches) = 'array'

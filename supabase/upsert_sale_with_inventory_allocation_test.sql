@@ -135,6 +135,56 @@ declare
 begin
   begin
     perform public.upsert_sale_with_inventory(
+      v_sale || jsonb_build_object('id', 'aaaaaaaa-0000-0000-0000-000000000105'),
+      v_items,
+      false,
+      null,
+      null
+    );
+    raise exception 'FAIL: wholesale sale without allocations was accepted';
+  exception when others then
+    if sqlerrm not like 'Wholesale tracked sale items require batch allocations%' then
+      raise;
+    end if;
+  end;
+
+  begin
+    perform public.upsert_sale_with_inventory(
+      v_sale || jsonb_build_object('id', 'aaaaaaaa-0000-0000-0000-000000000106'),
+      v_items,
+      false,
+      null,
+      '[]'::jsonb
+    );
+    raise exception 'FAIL: wholesale sale with empty allocations was accepted';
+  exception when others then
+    if sqlerrm not like 'Wholesale tracked sale items require batch allocations%' then
+      raise;
+    end if;
+  end;
+
+  begin
+    perform public.upsert_sale_with_inventory(
+      v_sale || jsonb_build_object('id', 'aaaaaaaa-0000-0000-0000-000000000107'),
+      v_items,
+      false,
+      null,
+      jsonb_build_array(jsonb_build_object(
+        'id', 'aaaaaaaa-0000-0000-0000-000000000127',
+        'sale_item_id', 'aaaaaaaa-0000-0000-0000-000000000110',
+        'batch_id', 'aaaaaaaa-0000-0000-0000-000000000040',
+        'quantity', '1'
+      ))
+    );
+    raise exception 'FAIL: partial wholesale allocation was accepted';
+  exception when others then
+    if sqlerrm not like 'Batch allocation quantity must equal sale item quantity%' then
+      raise;
+    end if;
+  end;
+
+  begin
+    perform public.upsert_sale_with_inventory(
       v_sale,
       v_items,
       false,
@@ -144,6 +194,11 @@ begin
         'sale_item_id', 'aaaaaaaa-0000-0000-0000-000000000110',
         'batch_id', 'aaaaaaaa-0000-0000-0000-000000000040',
         'quantity', '-1'
+      ), jsonb_build_object(
+        'id', 'aaaaaaaa-0000-0000-0000-000000000128',
+        'sale_item_id', 'aaaaaaaa-0000-0000-0000-000000000110',
+        'batch_id', 'aaaaaaaa-0000-0000-0000-000000000040',
+        'quantity', '3'
       ))
     );
     raise exception 'FAIL: negative allocation quantity was accepted';
@@ -163,7 +218,7 @@ begin
         'id', 'aaaaaaaa-0000-0000-0000-000000000121',
         'sale_item_id', 'aaaaaaaa-0000-0000-0000-000000000110',
         'batch_id', 'aaaaaaaa-0000-0000-0000-000000000041',
-        'quantity', '1'
+        'quantity', '2'
       ))
     );
     raise exception 'FAIL: allocation from another branch was accepted';
@@ -183,7 +238,7 @@ begin
         'id', 'aaaaaaaa-0000-0000-0000-000000000122',
         'sale_item_id', 'aaaaaaaa-0000-0000-0000-000000000110',
         'batch_id', 'aaaaaaaa-0000-0000-0000-000000000042',
-        'quantity', '1'
+        'quantity', '2'
       ))
     );
     raise exception 'FAIL: allocation from another product was accepted';
@@ -200,6 +255,11 @@ begin
       false,
       null,
       jsonb_build_array(jsonb_build_object(
+        'id', 'aaaaaaaa-0000-0000-0000-000000000129',
+        'sale_item_id', 'aaaaaaaa-0000-0000-0000-000000000110',
+        'batch_id', 'aaaaaaaa-0000-0000-0000-000000000040',
+        'quantity', '2'
+      ), jsonb_build_object(
         'id', 'aaaaaaaa-0000-0000-0000-000000000123',
         'sale_item_id', 'aaaaaaaa-0000-0000-0000-000000000060',
         'batch_id', 'aaaaaaaa-0000-0000-0000-000000000040',
