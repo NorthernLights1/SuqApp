@@ -1047,6 +1047,21 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       }
     }
 
+    // Wholesale: the opening quantity becomes the first lot, so it must carry a
+    // batch/lot number for traceability (matches the Add Stock flow).
+    if (!_isEdit &&
+        initialQty != null &&
+        ref.read(shopTypeProvider).isWholesale &&
+        _batchNumberCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a batch / lot number for this stock'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     final ok = await ref.read(productFormProvider.notifier).save(
           productId: widget.product?.id,
           name: _nameCtrl.text,
@@ -1472,7 +1487,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                     const SizedBox(height: 16),
                     AppTextField(
                       controller: _batchNumberCtrl,
-                      label: 'Batch / Lot Number (optional)',
+                      label: 'Batch / Lot Number',
                       textInputAction: TextInputAction.next,
                       prefixIcon: const Icon(Icons.qr_code_2_outlined),
                     ),
