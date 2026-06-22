@@ -164,6 +164,16 @@ begin
       raise exception 'Wholesale refund requires batch_adjustments';
     end if;
 
+    -- Each original row must add stock back. Aggregates can hide a bad row
+    -- such as +5 and -3, so reject non-positive quantities before summing.
+    if exists (
+      select 1
+      from jsonb_array_elements(p_batch_adjustments) adj
+      where (adj->>'quantity')::numeric <= 0
+    ) then
+      raise exception 'Invalid restock quantity';
+    end if;
+
     -- B2 (this migration): assert restock qty by product equals refunded qty by
     -- product. Guards against a caller refunding N units while restocking M>N by
     -- targeting a batch with a large drawn qty.
