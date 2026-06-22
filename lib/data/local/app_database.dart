@@ -1548,6 +1548,8 @@ class AppDatabase extends _$AppDatabase {
     'local_expense_categories',
     'local_expenses',
     'local_credit_payments',
+    'local_refunds',
+    'local_refund_items',
   };
 
   /// Hard-remove rows by `id` from an id-keyed replica table — used by the delta

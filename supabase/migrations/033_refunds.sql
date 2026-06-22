@@ -58,3 +58,7 @@ begin
   end loop;
 end;
 $$;
+
+-- Authenticated clients read refund history directly for refund caps and
+-- offline delta pulls; RLS still scopes which rows are visible.
+grant select on public.refunds, public.refund_items to authenticated;
