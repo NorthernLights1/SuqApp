@@ -57,8 +57,16 @@ class PermissionService implements IPermissionService {
         if (code != null) codes.add(code);
       }
 
-      _cache[cacheKey] = codes;
-      await _persist(cacheKey, codes);
+      // Only cache a NON-empty result. Every active member holds >=1 permission,
+      // so an empty set never means "this user legitimately has no access" — it
+      // means the role embed hadn't resolved yet (race right after onboarding) or
+      // the read half-failed. Caching/persisting that empty set with no TTL would
+      // make it stick forever (an owner stuck at cashier-level access). Leaving it
+      // uncached lets the very next call retry and self-heal.
+      if (codes.isNotEmpty) {
+        _cache[cacheKey] = codes;
+        await _persist(cacheKey, codes);
+      }
       return codes;
     } catch (_) {
       // Offline / timeout: fall back to the permissions saved on the last

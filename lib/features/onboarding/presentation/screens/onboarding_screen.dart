@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/setting_keys.dart';
+import '../../../../features/auth/presentation/providers/permissions_provider.dart';
+import '../../../../features/auth/presentation/providers/shop_provider.dart';
 import '../../../../shared/router/app_routes.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -378,6 +380,17 @@ class _InviteStaffStep extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Onboarding created the shop + the owner membership AFTER these providers
+    // first resolved "no shop -> no permissions". Refresh them on the way out so
+    // the new owner lands on the dashboard with full access instead of being
+    // stuck at the empty/cashier-level set until an app restart.
+    void finish() {
+      ref.read(permissionServiceProvider).clearCache();
+      ref.invalidate(currentShopProvider);
+      ref.invalidate(permissionsProvider);
+      context.go(AppRoutes.dashboard);
+    }
+
     return _StepScaffold(
       stepNumber: 5,
       totalSteps: 5,
@@ -408,13 +421,13 @@ class _InviteStaffStep extends ConsumerWidget {
           AppButton(
             label: 'Invite Later',
             outlined: true,
-            onPressed: () => context.go(AppRoutes.dashboard),
+            onPressed: finish,
           ),
           const SizedBox(height: 12),
           AppButton(
             label: 'Get Started',
             icon: Icons.rocket_launch_outlined,
-            onPressed: () => context.go(AppRoutes.dashboard),
+            onPressed: finish,
           ),
         ],
       ),
