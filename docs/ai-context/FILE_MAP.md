@@ -184,11 +184,11 @@ Run `flutter gen-l10n` after editing `app_en.arb`.
 | `030_batch_discard_and_conflict_autoclose.sql` | Rollup ignores discarded lots' depletions; `detect_batch_conflict` auto-closes on recovery/discard |
 | `031_batch_created_by.sql` | `product_batches.created_by` (nullable uuid) — "added by" on the batch details page |
 | `032_batch_adjustments.sql` | Per-lot correction ledger; rollup + conflict gain the adjustment term (`remaining = received − depletions − corrections`), trigger recomputes; preserves 030 |
-| `033_refunds.sql` | Refunds offline-first: `refunds.branch_id` + `refunds.restock` + sync metadata (updated_at/deleted_at/trigger/index) on refunds + refund_items. **NOT yet applied live.** |
-| `034_harden_handle_new_user.sql` | Pin `search_path` on `handle_new_user()` (Phase D security audit). **NOT yet applied live.** |
+| `033_refunds.sql` | Refunds offline-first: `refunds.branch_id` + `refunds.restock` + sync metadata (updated_at/deleted_at/trigger/index) on refunds + refund_items. |
+| `034_harden_handle_new_user.sql` | Pin `search_path` on `handle_new_user()` (Phase D security audit). |
+| `035_lock_down_batch_trigger_functions.sql` | Revoke RPC EXECUTE on the batch trigger functions (`detect_batch_conflict`, `recompute_product_rollup`, `on_*_change`) — advisor 0028/0029, mirrors 027. |
 
-**Migrations `001`–`032` are applied to the live project** (batch chain via
-Supabase MCP). **`033` + `034` are written but NOT yet applied** (gated on go-ahead).
+**All migrations `001`–`035` are applied to the live project** (via Supabase MCP).
 
 ---
 

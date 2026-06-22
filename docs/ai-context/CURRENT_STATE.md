@@ -127,8 +127,8 @@ Suq now serves two business types, chosen at onboarding and **locked** afterward
 ## 2026-06-22 (later session) — Reports segregation + Refunds + Phase D
 
 All three committed locally on `feat/batch-tracking`, UNPUSHED. Migrations `033`
-+ `034` written but **NOT yet applied to the live DB** (gated on go-ahead).
-Schema **v18**. 161 tests.
++ `034` + `035` **applied live** 2026-06-22 (no prod users). Schema **v18**. 161 tests.
+(`035` = post-apply advisor follow-up revoking RPC EXECUTE on batch trigger fns.)
 
 - **Reports segregation (#4) — DONE** `c17c0d1`. Reports is now a **card hub**
   (period selector + 4 tappable cards) opening dedicated **Sales / Inventory /

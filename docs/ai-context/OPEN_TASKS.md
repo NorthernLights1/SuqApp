@@ -25,8 +25,13 @@ Branch `feat/batch-tracking`. Migrations `031`/`032` applied live via MCP. 154 t
 - [x] **Offline v2 Phase D — partial** 2026-06-22 `98a5279`: Drift indexes,
   sync-health view, post-reconnect JWT refresh, SECURITY DEFINER audit (mig
   `034`). See the Phase D section for what's still deferred.
-- [ ] **Apply migrations `033` + `034` to the live project** (gated — MCP/SQL
-  editor). Then **verify on device/web + CodeRabbit pass** before pushing.
+- [x] **Migrations `033` + `034` + `035` applied live** 2026-06-22 (via MCP; no
+  prod users yet). `035` = post-apply advisor follow-up: revoked RPC EXECUTE on
+  the batch trigger functions (0028/0029). Advisor confirms handle_new_user +
+  batch-trigger findings cleared. Remaining advisor items are legit RPCs +
+  pre-existing (license_keys RLS, pg_net, leaked-password toggle).
+- [ ] **Verify refunds on device/web (retail + wholesale restock) + CodeRabbit
+  pass** before pushing.
 - ECC agent harness installed globally (passive: 67 agents / 198 skills / 92
   commands; hooks NOT wired). WASM-SQLite-on-web considered, **deferred** (web
   stays online-only; phone is the offline-first target).
