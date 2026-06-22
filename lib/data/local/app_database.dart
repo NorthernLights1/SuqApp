@@ -441,11 +441,47 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 17;
+  int get schemaVersion => 18;
+
+  /// Hot-path indexes on the local replica: pending-scan (`is_synced`), FK joins
+  /// used by the per-sale/-batch lookups, and shop/branch filters. Idempotent
+  /// (IF NOT EXISTS) so it's safe to run on both fresh-create and upgrade.
+  Future<void> _createPerformanceIndexes() async {
+    const statements = [
+      'CREATE INDEX IF NOT EXISTS idx_local_sales_synced ON local_sales (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_sales_branch_created ON local_sales (branch_id, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_local_sale_items_sale ON local_sale_items (sale_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_inv_adj_synced ON local_inventory_adjustments (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_product_batches_branch_product ON local_product_batches (branch_id, product_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_product_batches_synced ON local_product_batches (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_sib_sale_item ON local_sale_item_batches (sale_item_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_sib_batch ON local_sale_item_batches (batch_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_batch_adj_batch ON local_batch_adjustments (batch_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_batch_adj_synced ON local_batch_adjustments (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_refunds_sale ON local_refunds (original_sale_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_refunds_synced ON local_refunds (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_refund_items_refund ON local_refund_items (refund_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_products_shop ON local_products (shop_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_products_synced ON local_products (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_customers_shop ON local_customers (shop_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_customers_synced ON local_customers (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_expenses_branch ON local_expenses (branch_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_expenses_synced ON local_expenses (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_credit_payments_sale ON local_credit_payments (sale_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_credit_payments_synced ON local_credit_payments (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_product_categories_synced ON local_product_categories (is_synced)',
+    ];
+    for (final s in statements) {
+      await customStatement(s);
+    }
+  }
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
+        onCreate: (m) async {
+          await m.createAll();
+          await _createPerformanceIndexes();
+        },
         onUpgrade: (m, from, to) async {
           // v1 -> v2: offline-first expenses queue.
           if (from < 2) await m.createTable(localExpenses);
@@ -538,6 +574,8 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(localRefunds);
             await m.createTable(localRefundItems);
           }
+          // v17 -> v18: hot-path indexes on the local replica.
+          if (from < 18) await _createPerformanceIndexes();
         },
       );
 
@@ -1296,7 +1334,8 @@ class AppDatabase extends _$AppDatabase {
       'EXISTS(SELECT 1 FROM local_expenses WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_inventory_adjustments WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_customers WHERE is_synced = 0) OR '
-      'EXISTS(SELECT 1 FROM local_credit_payments WHERE is_synced = 0)'
+      'EXISTS(SELECT 1 FROM local_credit_payments WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_refunds WHERE is_synced = 0)'
       ') AS has_pending',
       readsFrom: {
         localProductCategories,
@@ -1308,8 +1347,28 @@ class AppDatabase extends _$AppDatabase {
         localInventoryAdjustments,
         localCustomers,
         localCreditPayments,
+        localRefunds,
       },
     ).watch().map((rows) => rows.first.read<int>('has_pending') == 1);
+  }
+
+  /// Total unsynced rows across every push queue — for the sync-health view.
+  Future<int> pendingPushCount() async {
+    final row = await customSelect(
+      'SELECT ('
+      '(SELECT COUNT(*) FROM local_product_categories WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_products WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_product_batches WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_batch_adjustments WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_sales WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_expenses WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_inventory_adjustments WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_customers WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_credit_payments WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_refunds WHERE is_synced = 0)'
+      ') AS pending',
+    ).getSingle();
+    return row.read<int>('pending');
   }
 
   /// Tables the delta pull may hard-remove rows from by `id` (server

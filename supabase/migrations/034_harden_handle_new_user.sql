@@ -1,0 +1,15 @@
+-- ============================================================
+-- 034 — Harden handle_new_user() search_path
+-- ============================================================
+-- Phase D security audit (2026-06-22): handle_new_user() is the SECURITY DEFINER
+-- trigger that creates a profile row on signup. It was the only definer function
+-- left without a pinned search_path (Supabase advisor 0011 "Function Search Path
+-- Mutable") — a privilege-escalation hardening gap, since a definer function
+-- with a mutable search_path can be tricked into resolving `profiles` (or any
+-- unqualified object) to an attacker-controlled schema.
+--
+-- Non-destructive: pin the search_path on the existing function. The body
+-- already references `profiles` in the public schema, which `public, pg_temp`
+-- resolves correctly. (is_shop_member / shop_id_from_branch were already
+-- hardened by moving them to the private schema in migration 010.)
+alter function public.handle_new_user() set search_path = public, pg_temp;

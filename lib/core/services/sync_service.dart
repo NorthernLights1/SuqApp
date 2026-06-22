@@ -45,6 +45,22 @@ class SyncService implements ISyncService {
         return;
       }
 
+      // Offline → reconnect: the access token may have expired while the device
+      // was offline and the background auto-refresh couldn't run. Refresh it
+      // before pushing so the first post-reconnect sync doesn't 401 and get
+      // swallowed as a generic failure. If the refresh itself fails (still no
+      // real connectivity, or the refresh token is gone), skip this run rather
+      // than push with a dead token — a later trigger retries.
+      final session = _supabase.auth.currentSession;
+      if (session != null && session.isExpired) {
+        try {
+          await _supabase.auth.refreshSession();
+        } on Exception {
+          _emit(SyncStatus.failed);
+          return;
+        }
+      }
+
       var pushed = 0;
       if (_db != null) {
         // FK order: categories → products → batches → customers → sales/adjustments → payments → expenses.
