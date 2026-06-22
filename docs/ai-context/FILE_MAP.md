@@ -42,7 +42,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 
 | Path | Purpose | Edit when |
 |---|---|---|
-| `data/local/app_database.dart` | Drift DB schema (v12) — tables, type converters, all queries. `LocalProductBatches` (wholesale batch/expiry mirror) added v12 | Adding tables or queries |
+| `data/local/app_database.dart` | Drift DB schema (**v18**) — tables, type converters, all queries. Refund tables (v17) + `_createPerformanceIndexes` (v18) + `pendingPushCount`/`refundedQtyBySaleItem`/`getRefundTotalByBranchRange` | Adding tables or queries |
 | `data/local/database_provider.dart` | `appDatabaseProvider` — returns `AppDatabase?` (null on web) | Changing DB provider behavior |
 | `data/local/open_database.dart` | Web stub — throws UnsupportedError | Rarely |
 | `data/local/open_database_native.dart` | Native DB opener — `LazyDatabase` pointing to `suq.db` in documents dir | Rarely |
@@ -132,7 +132,8 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 | Path | Purpose |
 |---|---|
 | `features/expenses/` | Record expense, categories, date filter |
-| `features/reports/` | Sales summary, gross profit, expense breakdown, low-stock |
+| `features/reports/` | **Card hub** (`reports_screen.dart`) → dedicated `report_sales_screen` / `report_inventory_screen` / `report_expenses_screen` / `report_revenue_screen`; shared `widgets/report_filters.dart` (period/category/stat). `reports_provider.dart` `ReportSummary` now carries `refundTotal` (nets revenue) |
+| `features/refunds/` | Offline-first refunds. `domain/refund_restock.dart` (pure `allocateRestock` FEFO-reverse + `proportionalRefund`), `domain/refunds_repository.dart` (local-first create + restock via existing ledgers), `data/refunds_remote.dart` (web path), `presentation/providers/refunds_provider.dart` (`createRefundProvider`, `refundedQtyProvider`), `presentation/screens/refund_screen.dart` (partial picker). Entry: Refund action on SaleDetailScreen |
 | `features/staff/` | Staff list, invite via Edge Function (OTP code flow), suspend/restore |
 | `features/dashboard/` | Bottom nav shell, home tab, summary cards |
 | `features/licensing/presentation/providers/license_provider.dart` | `licenseStatusProvider` (trial/expired/blocked), `ActivateLicenseNotifier` |
@@ -183,8 +184,11 @@ Run `flutter gen-l10n` after editing `app_en.arb`.
 | `030_batch_discard_and_conflict_autoclose.sql` | Rollup ignores discarded lots' depletions; `detect_batch_conflict` auto-closes on recovery/discard |
 | `031_batch_created_by.sql` | `product_batches.created_by` (nullable uuid) — "added by" on the batch details page |
 | `032_batch_adjustments.sql` | Per-lot correction ledger; rollup + conflict gain the adjustment term (`remaining = received − depletions − corrections`), trigger recomputes; preserves 030 |
+| `033_refunds.sql` | Refunds offline-first: `refunds.branch_id` + `refunds.restock` + sync metadata (updated_at/deleted_at/trigger/index) on refunds + refund_items. **NOT yet applied live.** |
+| `034_harden_handle_new_user.sql` | Pin `search_path` on `handle_new_user()` (Phase D security audit). **NOT yet applied live.** |
 
-**All migrations `001`–`032` are applied to the live project** (batch chain via Supabase MCP).
+**Migrations `001`–`032` are applied to the live project** (batch chain via
+Supabase MCP). **`033` + `034` are written but NOT yet applied** (gated on go-ahead).
 
 ---
 

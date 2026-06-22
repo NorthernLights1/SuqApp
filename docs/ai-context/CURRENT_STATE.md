@@ -59,7 +59,7 @@ Push: `git push origin <branch>` — NOT pushed yet (awaiting CodeRabbit pass).
 ## What Works Right Now
 
 - `flutter analyze` — 0 issues ✅ (last run 2026-06-22)
-- `flutter test` — 154 tests passing ✅ (last run 2026-06-22)
+- `flutter test` — 161 tests passing ✅ (last run 2026-06-22)
 - Auth (signup/login/logout) ✅
 - Onboarding: shop + branch creation + default settings ✅
 - Dashboard: home summary, sales tab (color-coded), inventory tab, **credits tab**, more tab ✅
@@ -121,6 +121,43 @@ Suq now serves two business types, chosen at onboarding and **locked** afterward
   `sale_item_batches`; tracked, will live on the **Reports** screen).
 - **Next:** #4 reports segregation (Sales / Inventory / Expenses / Revenue — no
   schema). Then refunds (couples to batches), extra customer fields.
+
+---
+
+## 2026-06-22 (later session) — Reports segregation + Refunds + Phase D
+
+All three committed locally on `feat/batch-tracking`, UNPUSHED. Migrations `033`
++ `034` written but **NOT yet applied to the live DB** (gated on go-ahead).
+Schema **v18**. 161 tests.
+
+- **Reports segregation (#4) — DONE** `c17c0d1`. Reports is now a **card hub**
+  (period selector + 4 tappable cards) opening dedicated **Sales / Inventory /
+  Expenses / Revenue** screens. Shared period/category/stat widgets extracted to
+  `reports/.../widgets/report_filters.dart`. Reuses `reportSummaryProvider` /
+  `stockLevelsProvider` — no schema/provider change, still offline-first.
+- **Refunds — DONE (offline-first, partial, optional restock)** `b8dc821`.
+  Migration `033` wires the dormant `refunds`/`refund_items` tables into the
+  replica model (+`branch_id`, +`restock`, +sync metadata). Partial (per
+  item/qty), local-first (`isSynced=false`, SyncService sole pusher), delta-pull
+  back, over-refund capped app-side (`refundedQtyBySaleItem`). **Restock rides
+  existing idempotent ledgers — no new RPC:** retail → additive `'restock'`
+  inventory_adjustment; wholesale → negative `batch_adjustments` on the lots the
+  line drew from (pure FEFO-reverse allocator `allocateRestock`). Refunds net out
+  of reported revenue (local + web). Drift v17 (+LocalRefunds/LocalRefundItems).
+  Entry: **Refund** action on SaleDetailScreen (gated `refund_own`/`refund_any`).
+  `lib/features/refunds/`. 6 tests. ponytail: no refund payment-method picker
+  (only the deferred cash-reconciliation needs it).
+- **Offline v2 Phase D — partial** `98a5279`. DONE: (a) hot-path Drift **indexes**
+  (is_synced/FK/shop-branch) on fresh-create + v17→v18 upgrade; (b) **sync-health**
+  in Settings sync card (pending-to-upload count + last sync outcome;
+  `pendingPushCountProvider`; `local_refunds` added to the pending-work watcher);
+  (c) **JWT refresh** before the first post-reconnect push (don't 401-and-swallow);
+  (d) **SECURITY DEFINER audit** → migration `034` pins `search_path` on
+  `handle_new_user()` (last mutable-path definer fn; no dynamic-SQL surface
+  found). DEFERRED with reasons: first-pull pagination/retention
+  (data-loss-adjacent — own session); SQLCipher (already past-pilot).
+- **Pending live steps:** apply migrations `033` + `034` to the live project;
+  CodeRabbit pass; device verification of refunds (retail + wholesale restock).
 
 ---
 
@@ -272,9 +309,10 @@ Auth methods live in `AuthNotifier`: `sendInviteCode()`, `claimInvite()`.
 
 **Local DB**: `lib/data/local/app_database.dart` — tables incl. LocalProducts,
 LocalStock, LocalProductBatches, LocalSaleItemBatches, **LocalBatchAdjustments**,
-LocalSales, LocalSaleItems, LocalCustomers. Schema **v16** (v12 batches, v13
-sale-item-batches ledger, v14 batch `deletedAt`, v15 batch `createdBy`, v16
-`local_batch_adjustments`). **Migration-guard caveat:** batch-table `addColumn`
+LocalSales, LocalSaleItems, **LocalRefunds, LocalRefundItems**, LocalCustomers.
+Schema **v18** (v12 batches, v13 sale-item-batches ledger, v14 batch `deletedAt`,
+v15 batch `createdBy`, v16 `local_batch_adjustments`, **v17 refunds/refund_items,
+v18 hot-path performance indexes**). **Migration-guard caveat:** batch-table `addColumn`
 steps are guarded `from >= 12` because the v12 `createTable` already builds the
 current schema (a <12 upgrade must not re-add the column — see the v14/v15 steps).
 

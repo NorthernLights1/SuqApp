@@ -16,9 +16,17 @@ Branch `feat/batch-tracking`. Migrations `031`/`032` applied live via MCP. 154 t
   createSale; reject no-lot wholesale sale; rollup clears stale expiry).
 - [x] Web batch-details fallback (`8ff3b48`) — Chrome has no Drift; batch reads now
   fall back to Supabase like every other read.
-- [ ] **#4 Reports segregation** (Sales / Inventory / Expenses / Revenue) — NOT
-  STARTED. Independent, no schema. **Recommended fresh-chat starting point.**
-- [ ] **Verify on device/web + CodeRabbit pass** before pushing.
+- [x] **#4 Reports segregation** (Sales / Inventory / Expenses / Revenue) —
+  DONE 2026-06-22 `c17c0d1`. Card hub → 4 dedicated screens; shared filter/stat
+  widgets extracted. No schema. Refunds now net into reported revenue.
+- [x] **Refunds / returns** — DONE 2026-06-22 `b8dc821` (offline-first, partial,
+  optional restock). Migration `033` (NOT yet applied live). See the Refunds
+  block below — restock rides existing ledgers, no new RPC. 6 tests.
+- [x] **Offline v2 Phase D — partial** 2026-06-22 `98a5279`: Drift indexes,
+  sync-health view, post-reconnect JWT refresh, SECURITY DEFINER audit (mig
+  `034`). See the Phase D section for what's still deferred.
+- [ ] **Apply migrations `033` + `034` to the live project** (gated — MCP/SQL
+  editor). Then **verify on device/web + CodeRabbit pass** before pushing.
 - ECC agent harness installed globally (passive: 67 agents / 198 skills / 92
   commands; hooks NOT wired). WASM-SQLite-on-web considered, **deferred** (web
   stays online-only; phone is the offline-first target).
@@ -81,9 +89,16 @@ shop_type chosen at onboarding, locked. `shopTypeProvider.isWholesale` is the ga
     screen — current path is add-stock/correct-to-recover + auto-close. (b) Recall
     report ("which customers got lot X") — server query over `sale_item_batches`;
     will live on the **Reports** screen. Rare for single-device pilot shops.
-- [ ] **Refunds / returns** — schema (`refunds`/`refund_items`) already exists,
-  unused. Must be offline-first. Restock-to-batch couples to batch tracking — do
-  after it. (See "Blocked / Deferred" for the original deferral decision.)
+- [x] **Refunds / returns — DONE 2026-06-22** `b8dc821`. Offline-first, partial
+  (per item/qty), optional restock per refund. Migration `033` adds branch_id +
+  restock + sync metadata to `refunds`/`refund_items` and wires them into the
+  replica model. Restock reuses existing idempotent ledgers (retail: additive
+  `'restock'` inventory_adjustment; wholesale: negative `batch_adjustments` on
+  the original lots via the pure `allocateRestock` FEFO-reverse). Over-refund
+  capped app-side. Refunds net out of reported revenue. Drift v17. Entry point:
+  Refund action on SaleDetailScreen (`refund_own`/`refund_any` gated).
+  **`033` NOT yet applied live; unverified on device.** Deferred: refund
+  payment-method (only the cash-reconciliation feature needs it).
 - [ ] Extra customer fields (business_name / TIN / address) — deferred to ride
   with an invoice/printout feature (no display surface yet).
 - A4 invoice / detailed printout — **dropped by Temesgen (2026-06-21)**.
@@ -100,13 +115,19 @@ testing still worth doing before wide rollout but is not blocking the pilot.
 
 ## Offline-first v2 — Phase D hardening (not blocking pilot)
 
-Phases A–C complete. Remaining hardening items:
-- [ ] Indexes on local Drift: `is_synced`, `updated_at`, `shop_id`, FKs.
-- [ ] First-pull pagination + on-device retention policy (don't keep all history).
-- [ ] Offline JWT refresh on reconnect (don't let an expired token silently fail sync).
-- [ ] Operator sync-health debug view: last sync time, pending-push count, last error.
-- [ ] SQLCipher for the local cache (now holds full shop PII) — still deferred past pilot.
-- [ ] Audit SECURITY DEFINER functions for dynamic SQL / search_path (injection + priv-esc).
+Phases A–C complete. 2026-06-22 `98a5279` did 4 of 6:
+- [x] Indexes on local Drift (`is_synced`, FKs, shop/branch) — `_createPerformanceIndexes`,
+  fresh-create + v17→v18 upgrade. (Local mirror has no `updated_at`; that's server-side.)
+- [x] Offline JWT refresh on reconnect — `SyncService.sync()` refreshes an expired
+  access token before the first push so it doesn't 401 and get swallowed.
+- [x] Operator sync-health view — Settings sync card shows pending-push count
+  (`pendingPushCountProvider`) + last sync outcome. (`local_refunds` added to the
+  pending-work watcher.)
+- [x] Audit SECURITY DEFINER functions — done; only finding was `handle_new_user()`
+  with a mutable `search_path` → migration `034` pins it. No dynamic-SQL surface.
+- [ ] **First-pull pagination + on-device retention policy** — DEFERRED. Data-loss-
+  adjacent (dropping local history); deserves its own focused session + device test.
+- [ ] SQLCipher for the local cache — still deferred past pilot (see Security below).
 
 ---
 
