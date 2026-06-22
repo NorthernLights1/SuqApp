@@ -1,0 +1,11 @@
+-- 038 — drop the 4-arg upsert_sale_with_inventory overload (migration 024).
+--
+-- Migration 029 added a 5-arg overload (p_item_batches defaulting to null).
+-- PostgreSQL treats functions with different parameter lists as distinct
+-- overloads, so both 4-arg and 5-arg coexisted. PostgREST cannot resolve
+-- overloaded RPCs, raising PGRST203 on every sale call.
+--
+-- The 5-arg version (029) subsumes the 4-arg version — callers that never
+-- passed p_item_batches keep working with the default null. Dropping the
+-- 4-arg overload leaves exactly one candidate.
+drop function if exists public.upsert_sale_with_inventory(jsonb, jsonb, boolean, text);

@@ -171,6 +171,7 @@ class SalesRemote {
       'p_items': items,
       'p_allow_oversell': allowOversell,
       'p_discount_reason': discountReason,
+      'p_item_batches': null,
     });
   }
 
