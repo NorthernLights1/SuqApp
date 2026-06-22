@@ -376,6 +376,18 @@ begin
 
     if exists (
       select 1
+      from (
+        select (alloc.value->>'id')::uuid as allocation_id
+        from jsonb_array_elements(p_item_batches) alloc(value)
+        group by (alloc.value->>'id')::uuid
+        having count(*) > 1
+      ) duplicate_allocs
+    ) then
+      raise exception 'Duplicate batch allocation id';
+    end if;
+
+    if exists (
+      select 1
       from public.sale_items si
       left join (
         select

@@ -185,6 +185,31 @@ begin
 
   begin
     perform public.upsert_sale_with_inventory(
+      v_sale || jsonb_build_object('id', 'aaaaaaaa-0000-0000-0000-000000000108'),
+      v_items,
+      false,
+      null,
+      jsonb_build_array(jsonb_build_object(
+        'id', 'aaaaaaaa-0000-0000-0000-000000000130',
+        'sale_item_id', 'aaaaaaaa-0000-0000-0000-000000000110',
+        'batch_id', 'aaaaaaaa-0000-0000-0000-000000000040',
+        'quantity', '1'
+      ), jsonb_build_object(
+        'id', 'aaaaaaaa-0000-0000-0000-000000000130',
+        'sale_item_id', 'aaaaaaaa-0000-0000-0000-000000000110',
+        'batch_id', 'aaaaaaaa-0000-0000-0000-000000000040',
+        'quantity', '1'
+      ))
+    );
+    raise exception 'FAIL: duplicate allocation id was accepted';
+  exception when others then
+    if sqlerrm not like 'Duplicate batch allocation id%' then
+      raise;
+    end if;
+  end;
+
+  begin
+    perform public.upsert_sale_with_inventory(
       v_sale,
       v_items,
       false,
