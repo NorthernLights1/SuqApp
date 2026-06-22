@@ -274,7 +274,7 @@ void main() {
     );
 
     // Asking for 2 more (3 + 2 > 4) must be rejected.
-    expect(
+    await expectLater(
       () => repo.createRefund(
         originalSaleId: 's-1',
         branchId: branchId,
@@ -314,7 +314,7 @@ void main() {
     ]);
     await _seedSale(db, saleId: 's-1', itemId: 'si-1', qty: d('4'), total: d('20'));
 
-    expect(
+    await expectLater(
       () => repo.createRefund(
         originalSaleId: 's-1',
         branchId: branchId,
