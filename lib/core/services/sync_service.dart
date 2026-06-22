@@ -354,8 +354,8 @@ class SyncService implements ISyncService {
                 'amount': i.amount.toString(),
               }
           ],
-          // Wholesale only; empty/absent ⇒ the RPC derives retail restock from
-          // the lines. quantity is the positive returned amount (RPC negates).
+          // retail: null (RPC derives restock from lines); wholesale: non-empty required.
+          // quantity is the positive returned amount (RPC negates it on insert).
           'p_batch_adjustments': restockAdj.isEmpty
               ? null
               : [
