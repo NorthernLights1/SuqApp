@@ -338,6 +338,115 @@ void main() {
     expect(await db.getPendingRefunds(), isEmpty);
   });
 
+  test(
+      'two refund lines from the same lot produce two distinct batch_adjustment ids',
+      () async {
+    // Regression for CodeRabbit B1: if the RPC aggregates p_batch_adjustments
+    // by batch_id before inserting, only one of the two client UUIDs survives
+    // and the other local row dangles (double-counting the negative adjustment).
+    await db.upsertProductBatches([
+      LocalProductBatchesCompanion(
+        id: const Value('lot-1'),
+        branchId: const Value(branchId),
+        productId: const Value('p-1'),
+        quantity: Value(d('20')),
+        receivedAt: Value(DateTime.now()),
+        syncedAt: Value(DateTime.now()),
+        isSynced: const Value(true),
+      )
+    ]);
+    // Sale with two lines, both drawing from lot-1.
+    await db.insertSaleWithItems(
+      LocalSalesCompanion(
+        id: const Value('s-1'),
+        branchId: const Value(branchId),
+        cashierId: const Value(userId),
+        paymentMethodId: const Value('pm-1'),
+        subtotal: Value(d('35')),
+        discountAmount: Value(Decimal.zero),
+        total: Value(d('35')),
+        status: const Value('completed'),
+        isCredit: const Value(false),
+        createdAt: Value(DateTime.now()),
+        isSynced: const Value(true),
+      ),
+      [
+        LocalSaleItemsCompanion(
+          id: const Value('si-1'),
+          saleId: const Value('s-1'),
+          productId: const Value('p-1'),
+          productNameSnapshot: const Value('Widget'),
+          quantity: Value(d('3')),
+          unitPrice: Value(Decimal.zero),
+          discountAmount: Value(Decimal.zero),
+          total: Value(d('15')),
+          inventoryStatus: const Value('tracked'),
+        ),
+        LocalSaleItemsCompanion(
+          id: const Value('si-2'),
+          saleId: const Value('s-1'),
+          productId: const Value('p-1'),
+          productNameSnapshot: const Value('Widget'),
+          quantity: Value(d('4')),
+          unitPrice: Value(Decimal.zero),
+          discountAmount: Value(Decimal.zero),
+          total: Value(d('20')),
+          inventoryStatus: const Value('tracked'),
+        ),
+      ],
+    );
+    await db.upsertSaleItemBatches([
+      LocalSaleItemBatchesCompanion(
+        id: const Value('sib-1'),
+        saleItemId: const Value('si-1'),
+        batchId: const Value('lot-1'),
+        quantity: Value(d('3')),
+        syncedAt: Value(DateTime.now()),
+      ),
+      LocalSaleItemBatchesCompanion(
+        id: const Value('sib-2'),
+        saleItemId: const Value('si-2'),
+        batchId: const Value('lot-1'),
+        quantity: Value(d('4')),
+        syncedAt: Value(DateTime.now()),
+      ),
+    ]);
+
+    await repo.createRefund(
+      originalSaleId: 's-1',
+      branchId: branchId,
+      refundedBy: userId,
+      reason: 'returned',
+      restock: true,
+      lines: [
+        (
+          saleItemId: 'si-1',
+          productId: 'p-1',
+          quantity: d('3'),
+          amount: d('15'),
+          soldQuantity: d('3')
+        ),
+        (
+          saleItemId: 'si-2',
+          productId: 'p-1',
+          quantity: d('4'),
+          amount: d('20'),
+          soldQuantity: d('4')
+        ),
+      ],
+      useBatches: true,
+    );
+
+    final refunds = await db.getPendingRefunds();
+    final linked = await db.getRefundRestockAdjustments(refunds.first.id);
+
+    // Both lines produce their own restock row — same batch_id, distinct ids.
+    expect(linked.length, 2);
+    expect(linked.every((r) => r.batchId == 'lot-1'), isTrue);
+    final ids = linked.map((r) => r.id).toSet();
+    expect(ids.length, 2, reason: 'each restock row must have a unique client id');
+  });
+
   test('getRefundTotalByBranchRange sums non-deleted refunds in range', () async {
     await _seedSale(db, saleId: 's-1', itemId: 'si-1', qty: d('4'), total: d('20'));
     await repo.createRefund(
