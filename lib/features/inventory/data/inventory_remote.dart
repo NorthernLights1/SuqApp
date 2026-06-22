@@ -151,6 +151,84 @@ class InventoryRemote {
     });
   }
 
+  /// Web/remote read of a product's live lots (no local DB). Computes
+  /// remaining = received − Σ(non-deleted depletions) per lot, resolves the
+  /// adder's name, and FEFO-orders (soonest expiry first, nulls last).
+  Future<List<ProductBatchView>> getProductBatches(
+      String branchId, String productId) async {
+    final batchRows = (await _client
+        .from('product_batches')
+        .select(
+            'id, batch_number, expiry_date, quantity, received_at, created_by')
+        .eq('branch_id', branchId)
+        .eq('product_id', productId)
+        .isFilter('deleted_at', null)) as List;
+    if (batchRows.isEmpty) return [];
+
+    final ids = [for (final b in batchRows) b['id'] as String];
+
+    // Depletion per lot from the ledger.
+    final sibRows = (await _client
+        .from('sale_item_batches')
+        .select('batch_id, quantity')
+        .inFilter('batch_id', ids)
+        .isFilter('deleted_at', null)) as List;
+    final depleted = <String, Decimal>{};
+    for (final s in sibRows) {
+      final bid = s['batch_id'] as String;
+      depleted[bid] = (depleted[bid] ?? Decimal.zero) +
+          (Decimal.tryParse(s['quantity'].toString()) ?? Decimal.zero);
+    }
+
+    // Adder display names.
+    final creatorIds = {
+      for (final b in batchRows)
+        if (b['created_by'] != null) b['created_by'] as String
+    }.toList();
+    final names = <String, String?>{};
+    if (creatorIds.isNotEmpty) {
+      final profRows = (await _client
+          .from('profiles')
+          .select('id, full_name')
+          .inFilter('id', creatorIds)) as List;
+      for (final p in profRows) {
+        names[p['id'] as String] = p['full_name'] as String?;
+      }
+    }
+
+    final views = [
+      for (final b in batchRows)
+        () {
+          final received =
+              Decimal.tryParse(b['quantity'].toString()) ?? Decimal.zero;
+          return ProductBatchView(
+            id: b['id'] as String,
+            batchNumber: b['batch_number'] as String?,
+            expiryDate: b['expiry_date'] != null
+                ? DateTime.tryParse(b['expiry_date'] as String)
+                : null,
+            received: received,
+            remaining: received - (depleted[b['id']] ?? Decimal.zero),
+            receivedAt:
+                DateTime.tryParse(b['received_at']?.toString() ?? '') ??
+                    DateTime.now(),
+            addedByName: b['created_by'] == null
+                ? null
+                : names[b['created_by'] as String],
+          );
+        }()
+    ].where((v) => v.remaining > Decimal.zero).toList();
+
+    // FEFO: soonest expiry first, nulls last.
+    views.sort((a, b) {
+      if (a.expiryDate == null && b.expiryDate == null) return 0;
+      if (a.expiryDate == null) return 1;
+      if (b.expiryDate == null) return -1;
+      return a.expiryDate!.compareTo(b.expiryDate!);
+    });
+    return views;
+  }
+
   // ─── Measurement units ─────────────────────────────────────────────────────
 
   Future<List<MeasurementUnit>> getMeasurementUnits(String shopId) async {

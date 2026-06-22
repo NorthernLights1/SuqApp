@@ -72,7 +72,8 @@ class InventoryRepository {
   /// DB (web) or no batches.
   Future<List<ProductBatchView>> getProductBatches(
       String branchId, String productId) async {
-    if (_db == null) return [];
+    // Web (no local DB): read the lots straight from Supabase.
+    if (_db == null) return _remote.getProductBatches(branchId, productId);
     final batches = await _db.getBatchesForProduct(branchId, productId);
     final depleted =
         await _db.depletionByBatch(batches.map((b) => b.id).toList());
