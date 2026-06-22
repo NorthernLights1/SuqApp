@@ -494,6 +494,9 @@ class _SaleFooter extends ConsumerWidget {
     final paymentMethods = ref.watch(paymentMethodsProvider);
     final selectedMethod = ref.watch(selectedPaymentMethodProvider);
     final isCredit = selectedMethod?.code == 'credit';
+    // Wholesale sells to registered businesses — a customer is mandatory on
+    // EVERY sale (cash/bank included), so the picker can't be credit-only.
+    final isWholesale = ref.watch(shopTypeProvider).isWholesale;
 
     return Container(
       constraints: BoxConstraints(
@@ -542,8 +545,8 @@ class _SaleFooter extends ConsumerWidget {
                     error: (e, _) =>
                         const Text('Could not load payment methods'),
                   ),
-                  // Customer picker (credit only)
-                  if (isCredit) ...[
+                  // Customer picker (credit always; wholesale on any method)
+                  if (isCredit || isWholesale) ...[
                     const SizedBox(height: 12),
                     const Divider(height: 1),
                     const SizedBox(height: 8),

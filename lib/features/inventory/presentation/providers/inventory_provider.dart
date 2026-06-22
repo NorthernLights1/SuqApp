@@ -92,6 +92,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
     String? description,
     Decimal? initialQuantity,
     DateTime? expiryDate,
+    String? batchNumber,
   }) async {
     final shop = await ref.read(currentShopProvider.future);
     if (shop == null) return false;
@@ -128,6 +129,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
                 quantity: initialQuantity,
                 adjustedBy: userId,
                 expiryDate: expiryDate,
+                batchNumber: batchNumber,
               );
             } else {
               await repo.setOpeningStock(

@@ -959,6 +959,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   late final _thresholdCtrl = TextEditingController(
       text: widget.product?.lowStockThreshold.toString() ?? '0');
   late final _openingQtyCtrl = TextEditingController();
+  late final _batchNumberCtrl = TextEditingController();
   MeasurementUnit? _selectedUnit;
   String? _selectedCategoryId;
   DateTime? _expiryDate;
@@ -989,6 +990,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _costPriceCtrl.dispose();
     _thresholdCtrl.dispose();
     _openingQtyCtrl.dispose();
+    _batchNumberCtrl.dispose();
     super.dispose();
   }
 
@@ -1048,6 +1050,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               : _descriptionCtrl.text.trim(),
           initialQuantity: initialQty,
           expiryDate: !_isEdit ? _expiryDate : null,
+          batchNumber: !_isEdit && _batchNumberCtrl.text.trim().isNotEmpty
+              ? _batchNumberCtrl.text.trim()
+              : null,
         );
 
     if (!mounted) return;
@@ -1446,6 +1451,17 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   prefixIcon: const Icon(Icons.inventory_outlined),
                 ),
                 if (_hasOpeningQty) ...[
+                  // Wholesale: the opening quantity becomes the first lot, so let
+                  // the owner label it here (retail keeps a single stock figure).
+                  if (ref.watch(shopTypeProvider).isWholesale) ...[
+                    const SizedBox(height: 16),
+                    AppTextField(
+                      controller: _batchNumberCtrl,
+                      label: 'Batch / Lot Number (optional)',
+                      textInputAction: TextInputAction.next,
+                      prefixIcon: const Icon(Icons.qr_code_2_outlined),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   GestureDetector(
                     onTap: () async {
