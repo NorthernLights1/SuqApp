@@ -283,12 +283,20 @@ class ProductBatchView {
     this.batchNumber,
     this.expiryDate,
     required this.remaining,
+    required this.received,
+    required this.receivedAt,
   });
 
   final String id;
   final String? batchNumber;
   final DateTime? expiryDate;
   final Decimal remaining;
+
+  /// Quantity originally received in this lot (immutable; remaining ≤ received).
+  final Decimal received;
+
+  /// When the lot was added (stock-in / opening stock).
+  final DateTime receivedAt;
 
   static DateTime get _today {
     final n = DateTime.now();

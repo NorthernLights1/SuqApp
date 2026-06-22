@@ -466,11 +466,26 @@ class _BatchRow extends StatelessWidget {
                     ],
                   ],
                 ),
+                // Received quantity + when the lot was added.
+                Text(
+                  'In ${batch.received.toStringAsFixed(2)} $unitAbbr'
+                  ' • ${formatDate(batch.receivedAt)}',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textSecondary),
+                ),
               ],
             ),
           ),
-          Text('${batch.remaining.toStringAsFixed(2)} $unitAbbr',
-              style: AppTextStyles.body),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('${batch.remaining.toStringAsFixed(2)} $unitAbbr',
+                  style: AppTextStyles.body),
+              Text('left',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textSecondary)),
+            ],
+          ),
           if (onDiscard != null)
             IconButton(
               icon: const Icon(Icons.delete_outline, size: 18),

@@ -83,6 +83,8 @@ class InventoryRepository {
           batchNumber: b.batchNumber,
           expiryDate: b.expiryDate,
           remaining: b.quantity - (depleted[b.id] ?? Decimal.zero),
+          received: b.quantity,
+          receivedAt: b.receivedAt,
         ),
     ].where((v) => v.remaining > Decimal.zero).toList();
   }
