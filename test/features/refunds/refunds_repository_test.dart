@@ -155,6 +155,49 @@ void main() {
   );
 
   test(
+    'rejects duplicate lines whose aggregate exceeds the sold quantity',
+    () async {
+      await _seedSale(
+        db,
+        saleId: 's-1',
+        itemId: 'si-1',
+        qty: d('5'),
+        total: d('25'),
+      );
+
+      await expectLater(
+        () => repo.createRefund(
+          originalSaleId: 's-1',
+          branchId: branchId,
+          refundedBy: userId,
+          reason: 'duplicate lines',
+          restock: false,
+          lines: [
+            (
+              saleItemId: 'si-1',
+              productId: 'p-1',
+              quantity: d('3'),
+              amount: d('15'),
+              soldQuantity: d('5'),
+            ),
+            (
+              saleItemId: 'si-1',
+              productId: 'p-1',
+              quantity: d('3'),
+              amount: d('15'),
+              soldQuantity: d('5'),
+            ),
+          ],
+          useBatches: false,
+        ),
+        throwsStateError,
+      );
+
+      expect(await db.getPendingRefunds(), isEmpty);
+    },
+  );
+
+  test(
     'retail restock bumps stock optimistically (RPC applies on push)',
     () async {
       await db.setStockLevel(branchId, 'p-1', d('10'));

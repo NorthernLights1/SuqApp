@@ -17,6 +17,7 @@ import 'package:suq/features/inventory/domain/inventory_repository.dart';
 
 class _StubInventoryRemote implements InventoryRemote {
   bool stockThrows = false;
+  List<StockEntry> stockEntries = [];
 
   @override
   Future<void> applyAdjustment({
@@ -36,7 +37,7 @@ class _StubInventoryRemote implements InventoryRemote {
   @override
   Future<List<StockEntry>> getStockLevels(String branchId) async {
     if (stockThrows) throw Exception('offline');
-    return [];
+    return stockEntries;
   }
 
   @override
@@ -74,6 +75,53 @@ Future<void> _seedStock(AppDatabase db, Decimal qty,
         syncedAt: Value(DateTime.now()),
       )
     ]);
+
+StockEntry _stockEntry({String productId = 'p-1', required Decimal quantity}) =>
+    StockEntry(
+      productId: productId,
+      productName: 'Product $productId',
+      measurementUnitId: 'mu-1',
+      quantity: quantity,
+      lowStockThreshold: Decimal.parse('5'),
+      unitAbbr: 'pc',
+      updatedAt: DateTime.now(),
+    );
+
+Future<void> _seedSale(
+  AppDatabase db, {
+  String saleId = 's-1',
+  String saleItemId = 'si-1',
+  String productId = 'p-1',
+}) async {
+  await db.insertSaleWithItems(
+    LocalSalesCompanion(
+      id: Value(saleId),
+      branchId: const Value('b-1'),
+      cashierId: const Value('u-1'),
+      paymentMethodId: const Value('pm-1'),
+      subtotal: Value(Decimal.parse('10')),
+      discountAmount: Value(Decimal.zero),
+      total: Value(Decimal.parse('10')),
+      status: const Value('completed'),
+      isCredit: const Value(false),
+      createdAt: Value(DateTime.now()),
+      isSynced: const Value(true),
+    ),
+    [
+      LocalSaleItemsCompanion(
+        id: Value(saleItemId),
+        saleId: Value(saleId),
+        productId: Value(productId),
+        productNameSnapshot: Value('Product $productId'),
+        quantity: Value(Decimal.one),
+        unitPrice: Value(Decimal.parse('10')),
+        discountAmount: Value(Decimal.zero),
+        total: Value(Decimal.parse('10')),
+        inventoryStatus: const Value('tracked'),
+      ),
+    ],
+  );
+}
 
 void main() {
   const branchId = 'b-1';
@@ -170,6 +218,100 @@ void main() {
       expect(entries.first.quantity, Decimal.parse('22'));
       expect(entries.first.unitAbbr, 'pc');
     });
+  });
+
+  group('refreshStock pending refund restocks', () {
+    test(
+      'keeps a pending retail refund restock over a stale remote snapshot',
+      () async {
+        await _seedProduct(db);
+        await _seedSale(db);
+        await _seedStock(db, Decimal.parse('12'));
+        await db.insertRefundWithItems(
+          LocalRefundsCompanion(
+            id: const Value('r-1'),
+            originalSaleId: const Value('s-1'),
+            branchId: const Value(branchId),
+            refundedBy: const Value('u-1'),
+            reason: const Value('return'),
+            totalAmount: Value(Decimal.parse('10')),
+            restock: const Value(true),
+            createdAt: Value(DateTime.now()),
+            syncedAt: Value(DateTime.now()),
+            isSynced: const Value(false),
+          ),
+          [
+            LocalRefundItemsCompanion(
+              id: const Value('ri-1'),
+              refundId: const Value('r-1'),
+              saleItemId: const Value('si-1'),
+              quantity: Value(Decimal.one),
+              amount: Value(Decimal.parse('10')),
+              syncedAt: Value(DateTime.now()),
+            ),
+          ],
+        );
+        remote.stockEntries = [_stockEntry(quantity: Decimal.parse('10'))];
+
+        await repo.refreshStock(branchId);
+
+        expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('12'));
+      },
+    );
+
+    test(
+      'keeps a pending wholesale refund restock with synced batch adjustment',
+      () async {
+        await _seedProduct(db);
+        await _seedSale(db);
+        await _seedStock(db, Decimal.parse('12'));
+        await db.insertRefundWithItems(
+          LocalRefundsCompanion(
+            id: const Value('r-1'),
+            originalSaleId: const Value('s-1'),
+            branchId: const Value(branchId),
+            refundedBy: const Value('u-1'),
+            reason: const Value('return'),
+            totalAmount: Value(Decimal.parse('10')),
+            restock: const Value(true),
+            createdAt: Value(DateTime.now()),
+            syncedAt: Value(DateTime.now()),
+            isSynced: const Value(false),
+          ),
+          [
+            LocalRefundItemsCompanion(
+              id: const Value('ri-1'),
+              refundId: const Value('r-1'),
+              saleItemId: const Value('si-1'),
+              quantity: Value(Decimal.one),
+              amount: Value(Decimal.parse('10')),
+              syncedAt: Value(DateTime.now()),
+            ),
+          ],
+        );
+        await db.upsertBatchAdjustments([
+          LocalBatchAdjustmentsCompanion(
+            id: const Value('ba-1'),
+            batchId: const Value('batch-1'),
+            branchId: const Value(branchId),
+            productId: const Value('p-1'),
+            quantityDelta: Value(-Decimal.one),
+            reason: const Value('Refund restock'),
+            createdBy: const Value('u-1'),
+            createdAt: Value(DateTime.now()),
+            syncedAt: Value(DateTime.now()),
+            isSynced: const Value(true),
+            refundId: const Value('r-1'),
+            saleItemId: const Value('si-1'),
+          ),
+        ]);
+        remote.stockEntries = [_stockEntry(quantity: Decimal.parse('10'))];
+
+        await repo.refreshStock(branchId);
+
+        expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('12'));
+      },
+    );
   });
 
   group('adjustment queue DB methods', () {

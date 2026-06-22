@@ -55,12 +55,20 @@ class RefundsRepository implements IRefundsRepository {
     // was sold. Catches stale UI, double-submit, and direct calls. (Offline this
     // is the only gate; on push the server is the final authority.)
     final alreadyRefunded = await refundedQtyBySaleItem(originalSaleId);
+    final requestedBySaleItem = <String, Decimal>{};
+    final soldQuantityBySaleItem = <String, Decimal>{};
     for (final l in lines) {
-      final prior = alreadyRefunded[l.saleItemId] ?? Decimal.zero;
-      if (prior + l.quantity > l.soldQuantity) {
+      requestedBySaleItem[l.saleItemId] =
+          (requestedBySaleItem[l.saleItemId] ?? Decimal.zero) + l.quantity;
+      soldQuantityBySaleItem[l.saleItemId] = l.soldQuantity;
+    }
+    for (final entry in requestedBySaleItem.entries) {
+      final prior = alreadyRefunded[entry.key] ?? Decimal.zero;
+      final soldQuantity = soldQuantityBySaleItem[entry.key] ?? Decimal.zero;
+      if (prior + entry.value > soldQuantity) {
         throw StateError(
           'Cannot refund more than was sold for this item '
-          '(sold ${l.soldQuantity}, already refunded $prior).',
+          '(sold $soldQuantity, already refunded $prior).',
         );
       }
     }

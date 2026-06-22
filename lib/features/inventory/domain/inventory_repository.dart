@@ -302,14 +302,16 @@ class InventoryRepository {
       final remote = await _remote
           .getStockLevels(branchId)
           .timeout(AppConstants.remoteReadTimeout);
-      final pendingIds = (await _db!.getPendingInventoryAdjustments())
-          .where((a) => a.branchId == branchId)
-          .map((a) => a.productId)
-          .toSet()
-        // Also protect products whose only in-flight change is an unpushed
-        // batch (wholesale) — otherwise the refresh clobbers the optimistic
-        // rollup before the batch syncs.
-        ..addAll(await _db.getPendingBatchProductIds(branchId));
+      final pendingIds =
+          (await _db!.getPendingInventoryAdjustments())
+              .where((a) => a.branchId == branchId)
+              .map((a) => a.productId)
+              .toSet()
+            // Also protect products whose only in-flight change is an unpushed
+            // batch (wholesale) — otherwise the refresh clobbers the optimistic
+            // rollup before the batch syncs.
+            ..addAll(await _db.getPendingBatchProductIds(branchId))
+            ..addAll(await _db.getPendingRefundRestockProductIds(branchId));
       final toCache = remote.where((s) => !pendingIds.contains(s.productId));
       await _db.upsertStock([
         for (final s in toCache)

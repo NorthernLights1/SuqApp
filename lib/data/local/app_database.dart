@@ -699,6 +699,46 @@ class AppDatabase extends _$AppDatabase {
     return rows.map((r) => r.productId).toSet();
   }
 
+  /// Product ids at [branchId] with pending refund restocks, including
+  /// refund-linked batch adjustments that are deliberately marked synced.
+  Future<Set<String>> getPendingRefundRestockProductIds(String branchId) async {
+    final pendingRefundRows = await customSelect(
+      '''
+      SELECT DISTINCT si.product_id AS product_id
+      FROM local_refunds r
+      INNER JOIN local_refund_items ri ON ri.refund_id = r.id
+      INNER JOIN local_sale_items si ON si.id = ri.sale_item_id
+      WHERE r.branch_id = ?
+        AND r.restock = 1
+        AND r.is_synced = 0
+        AND r.deleted_at IS NULL
+        AND ri.deleted_at IS NULL
+        AND si.product_id IS NOT NULL
+      ''',
+      variables: [Variable.withString(branchId)],
+      readsFrom: {localRefunds, localRefundItems, localSaleItems},
+    ).get();
+    final refundBatchRows = await customSelect(
+      '''
+      SELECT DISTINCT ba.product_id AS product_id
+      FROM local_batch_adjustments ba
+      INNER JOIN local_refunds r ON r.id = ba.refund_id
+      WHERE ba.branch_id = ?
+        AND ba.refund_id IS NOT NULL
+        AND ba.deleted_at IS NULL
+        AND r.restock = 1
+        AND r.is_synced = 0
+        AND r.deleted_at IS NULL
+      ''',
+      variables: [Variable.withString(branchId)],
+      readsFrom: {localBatchAdjustments, localRefunds},
+    ).get();
+    return {
+      for (final row in pendingRefundRows) row.read<String>('product_id'),
+      for (final row in refundBatchRows) row.read<String>('product_id'),
+    };
+  }
+
   // ── Sale-item batches (depletion ledger, wholesale) ──────────────────────────
 
   Future<void> upsertSaleItemBatches(
