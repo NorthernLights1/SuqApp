@@ -5,7 +5,8 @@
 --   client-provided id in p_batch_adjustments. Offline refunds create local rows
 --   with known IDs that SyncService sends; if the server mints new IDs the pull
 --   inserts duplicate rows and double-counts the negative adjustment (stock bloat).
---   Fix: carry min(client id) per aggregated batch_id; coalesce with gen_random_uuid().
+--   Fix: insert each original p_batch_adjustments row with its own client-provided
+--   id. Aggregation is used only for validation, not for insertion.
 --
 -- B2: Per-batch validation checked restock qty ≤ drawn qty per batch but did not
 --   verify that total batch restock equals total refunded qty. A caller could refund
@@ -39,7 +40,6 @@ declare
   v_before        numeric(15,4);
   v_total_amount  numeric(15,4);
   v_batch_id      uuid;
-  v_adj_id        uuid;   -- B1: client-provided batch_adjustment id (may be null)
   v_adj_product   uuid;
   v_drawn         numeric(15,4);
   v_is_wholesale  boolean;
@@ -189,12 +189,10 @@ begin
       raise exception 'Batch restock quantity must equal refunded quantity per product';
     end if;
 
-    -- B3 (from 039): aggregate p_batch_adjustments by batch_id before validating.
-    -- B1 (this migration): also carry the client-provided id (min per group) so
-    -- offline rows reconcile on the next pull instead of duplicating.
-    for v_batch_id, v_adj_id, v_qty in
+    -- Validation pass: aggregate by batch_id to check drawn-qty cap.
+    -- Aggregation is for validation only — insertion uses original rows below.
+    for v_batch_id, v_qty in
       select (adj->>'batch_id')::uuid,
-             min(nullif(adj->>'id', ''))::uuid,
              sum((adj->>'quantity')::numeric)
       from jsonb_array_elements(p_batch_adjustments) adj
       group by (adj->>'batch_id')::uuid
@@ -203,7 +201,6 @@ begin
         raise exception 'Invalid restock quantity';
       end if;
 
-      -- Look up the authoritative product_id from product_batches.
       select pb.product_id into v_adj_product
       from public.product_batches pb
       where pb.id = v_batch_id;
@@ -212,7 +209,7 @@ begin
         raise exception 'Batch % not found', v_batch_id;
       end if;
 
-      -- B3b (from 037): batch must have been drawn for a refunded sale item.
+      -- Batch must have been drawn for a refunded sale item.
       select coalesce(sum(sib.quantity), 0) into v_drawn
       from public.sale_item_batches sib
       where sib.batch_id = v_batch_id
@@ -225,17 +222,29 @@ begin
         raise exception 'Batch % was not drawn for any refunded sale item', v_batch_id;
       end if;
 
-      -- B3c (from 037): combined restock qty may not exceed drawn qty.
+      -- Combined restock qty may not exceed drawn qty.
       if v_qty > v_drawn then
         raise exception 'Restock qty exceeds drawn qty % for batch %', v_drawn, v_batch_id;
       end if;
+    end loop;
+
+    -- B1 (this migration): insert each original row with its own client-provided id.
+    -- Two client rows for the same batch_id each get their own server row so both
+    -- local UUIDs reconcile on the next pull instead of one dangling.
+    for v_item in select value from jsonb_array_elements(p_batch_adjustments)
+    loop
+      v_batch_id := (v_item->>'batch_id')::uuid;
+
+      select pb.product_id into v_adj_product
+      from public.product_batches pb
+      where pb.id = v_batch_id;
 
       insert into public.batch_adjustments (
         id, batch_id, branch_id, product_id, quantity_delta, reason, created_by
       ) values (
-        coalesce(v_adj_id, gen_random_uuid()),  -- B1: preserve client id
+        coalesce(nullif(v_item->>'id', '')::uuid, gen_random_uuid()),
         v_batch_id, v_branch_id, v_adj_product,
-        -v_qty, 'Refund restock', auth.uid()
+        -(v_item->>'quantity')::numeric, 'Refund restock', auth.uid()
       );
     end loop;
   else
