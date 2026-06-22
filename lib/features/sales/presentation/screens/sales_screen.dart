@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../domain/models/sale.dart';
+import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
+import '../../../../features/refunds/presentation/screens/refund_screen.dart';
 import '../../../../features/customers/presentation/widgets/payment_history.dart';
 import '../../../../shared/router/app_routes.dart';
 import '../../../../shared/theme/app_colors.dart';
@@ -293,6 +295,16 @@ class SaleDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('Sale Details'),
         actions: [
+          if (!isVoided && _canRefund(ref))
+            TextButton.icon(
+              icon: const Icon(Icons.assignment_return_outlined,
+                  color: AppColors.warning),
+              label: const Text('Refund',
+                  style: TextStyle(color: AppColors.warning)),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => RefundScreen(sale: sale)),
+              ),
+            ),
           if (!isVoided && hasPermissionSync(ref, 'sales.void'))
             TextButton.icon(
               icon: const Icon(Icons.cancel_outlined, color: AppColors.error),
@@ -468,6 +480,16 @@ class SaleDetailScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  /// Owners/managers can refund any sale; a cashier with refund_own can refund
+  /// only the sales they rang up.
+  bool _canRefund(WidgetRef ref) {
+    if (hasPermissionSync(ref, 'sales.refund_any')) return true;
+    final userId = ref.read(currentUserIdProvider);
+    return hasPermissionSync(ref, 'sales.refund_own') &&
+        userId != null &&
+        sale.cashierId == userId;
   }
 
   void _confirmVoid(BuildContext context, WidgetRef ref) {

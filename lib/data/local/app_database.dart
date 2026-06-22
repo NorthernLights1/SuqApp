@@ -125,6 +125,47 @@ class LocalBatchAdjustments extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+/// A refund against a completed sale (offline-first). Partial by design: the
+/// returned lines live in [LocalRefundItems]. `restock` records whether the
+/// goods went back to stock — the stock effect itself rides the existing
+/// ledgers (inventory_adjustments type 'refund' for retail; negative
+/// batch_adjustments for wholesale), not this table. Offline-created refunds set
+/// isSynced=false so the push queue picks them up.
+@DataClassName('RefundRow')
+class LocalRefunds extends Table {
+  TextColumn get id => text()();
+  TextColumn get originalSaleId => text()();
+  TextColumn get branchId => text()();
+  TextColumn get refundedBy => text()();
+  TextColumn get reason => text()();
+  TextColumn get totalAmount => text().map(const _Dec())();
+  BoolColumn get restock => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get syncedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// The returned lines of a refund. quantity = units returned from that
+/// sale_item; amount = money refunded for them. No isSynced: these ride the
+/// parent refund's push (and are pulled back for the remaining-refundable cap).
+@DataClassName('RefundItemRow')
+class LocalRefundItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get refundId => text()();
+  TextColumn get saleItemId => text()();
+  TextColumn get quantity => text().map(const _Dec())();
+  TextColumn get amount => text().map(const _Dec())();
+  DateTimeColumn get syncedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('SaleRow')
 class LocalSales extends Table {
   TextColumn get id => text()();
@@ -380,6 +421,8 @@ class LocalSyncState extends Table {
   LocalBatchAdjustments,
   LocalSales,
   LocalSaleItems,
+  LocalRefunds,
+  LocalRefundItems,
   LocalCustomers,
   LocalExpenses,
   LocalInventoryAdjustments,
@@ -398,7 +441,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 16;
+  int get schemaVersion => 17;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -489,6 +532,12 @@ class AppDatabase extends _$AppDatabase {
           }
           // v15 -> v16: per-lot correction ledger.
           if (from < 16) await m.createTable(localBatchAdjustments);
+          // v16 -> v17: offline-first refunds (record side; restock rides the
+          // existing inventory_adjustments / batch_adjustments ledgers).
+          if (from < 17) {
+            await m.createTable(localRefunds);
+            await m.createTable(localRefundItems);
+          }
         },
       );
 
@@ -641,6 +690,73 @@ class AppDatabase extends _$AppDatabase {
   Future<void> markBatchAdjustmentSynced(String id) =>
       (update(localBatchAdjustments)..where((t) => t.id.equals(id)))
           .write(const LocalBatchAdjustmentsCompanion(isSynced: Value(true)));
+
+  // ── Refunds ──────────────────────────────────────────────────────────────────
+
+  /// Local-first refund write: the refund row + its returned lines in one
+  /// transaction. Stock restoration is handled by the caller via the existing
+  /// adjustment ledgers (so it stays idempotent and offline-safe).
+  Future<void> insertRefundWithItems(
+    LocalRefundsCompanion refund,
+    List<LocalRefundItemsCompanion> items,
+  ) =>
+      transaction(() async {
+        await into(localRefunds).insert(refund);
+        await batch((b) => b.insertAll(localRefundItems, items));
+      });
+
+  Future<void> upsertRefunds(List<LocalRefundsCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localRefunds, rows));
+
+  Future<void> upsertRefundItems(List<LocalRefundItemsCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localRefundItems, rows));
+
+  Future<List<RefundRow>> getPendingRefunds() =>
+      (select(localRefunds)..where((t) => t.isSynced.equals(false))).get();
+
+  Future<List<RefundItemRow>> getRefundItems(String refundId) =>
+      (select(localRefundItems)
+            ..where((t) => t.refundId.equals(refundId) & t.deletedAt.isNull()))
+          .get();
+
+  Future<void> markRefundSynced(String id) =>
+      (update(localRefunds)..where((t) => t.id.equals(id)))
+          .write(const LocalRefundsCompanion(isSynced: Value(true)));
+
+  /// Units already refunded per sale_item for a given sale — drives the
+  /// remaining-refundable cap (original qty − this) so a line can't be
+  /// over-refunded. Excludes soft-deleted refunds/items.
+  Future<Map<String, Decimal>> refundedQtyBySaleItem(String saleId) async {
+    final refunds = await (select(localRefunds)
+          ..where(
+              (t) => t.originalSaleId.equals(saleId) & t.deletedAt.isNull()))
+        .get();
+    final refundIds = refunds.map((r) => r.id).toList();
+    if (refundIds.isEmpty) return {};
+    final items = await (select(localRefundItems)
+          ..where(
+              (t) => t.refundId.isIn(refundIds) & t.deletedAt.isNull()))
+        .get();
+    final map = <String, Decimal>{};
+    for (final i in items) {
+      map[i.saleItemId] = (map[i.saleItemId] ?? Decimal.zero) + i.quantity;
+    }
+    return map;
+  }
+
+  /// Total refunded amount for a branch within [from, to) — nets refunds out of
+  /// reported revenue. Excludes soft-deleted refunds.
+  Future<Decimal> getRefundTotalByBranchRange(
+      String branchId, DateTime from, DateTime to) async {
+    final rows = await (select(localRefunds)
+          ..where((t) =>
+              t.branchId.equals(branchId) &
+              t.deletedAt.isNull() &
+              t.createdAt.isBiggerOrEqualValue(from) &
+              t.createdAt.isSmallerThanValue(to)))
+        .get();
+    return rows.fold<Decimal>(Decimal.zero, (sum, r) => sum + r.totalAmount);
+  }
 
   /// Recompute the local stock rollup for a wholesale product from its batches:
   /// `LocalStock.quantity = Σ(received) − Σ(depletions) − Σ(corrections)` — the

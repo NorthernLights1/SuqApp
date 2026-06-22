@@ -44,6 +44,15 @@ class ReportRevenueScreen extends ConsumerWidget {
                     icon: Icons.money_off_outlined,
                     color: AppColors.error,
                   ),
+                  if (s.refundTotal > Decimal.zero) ...[
+                    const SizedBox(height: 6),
+                    ReportStatRow(
+                      label: 'Refunds',
+                      value: formatCurrency(s.refundTotal),
+                      icon: Icons.assignment_return_outlined,
+                      color: AppColors.warning,
+                    ),
+                  ],
                   if (s.profitItemCount > 0) ...[
                     const SizedBox(height: 6),
                     ReportStatRow(
@@ -81,7 +90,10 @@ class ReportRevenueScreen extends ConsumerWidget {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: Text('Net (Sales − Expenses)',
+                          child: Text(
+                              s.refundTotal > Decimal.zero
+                                  ? 'Net (Sales − Expenses − Refunds)'
+                                  : 'Net (Sales − Expenses)',
                               style: AppTextStyles.bodySmall),
                         ),
                         Text(

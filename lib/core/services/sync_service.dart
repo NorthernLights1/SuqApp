@@ -54,6 +54,7 @@ class SyncService implements ISyncService {
         pushed += await _pushPendingBatchAdjustments();
         pushed += await _pushPendingCustomers();
         pushed += await _pushPendingInventoryWork();
+        pushed += await _pushPendingRefunds();
         pushed += await _pushPendingCreditPayments();
         pushed += await _pushPendingExpenses();
       }
@@ -299,6 +300,52 @@ class SyncService implements ISyncService {
     'inventory_status': item.inventoryStatus,
     'cost_price_snapshot': item.costPriceSnapshot?.toString(),
   };
+
+  /// Pushes pending refunds + their returned lines (idempotent by id). Pushed
+  /// after inventory work so the refund's original_sale_id / refund_items'
+  /// sale_item_id FKs exist on the server. The stock restoration (if any) rides
+  /// the inventory_adjustments / batch_adjustments push paths, not this one.
+  Future<int> _pushPendingRefunds() async {
+    final db = _db!;
+    final pending = await db.getPendingRefunds();
+    if (pending.isEmpty) return 0;
+    await _supabase.from('refunds').upsert(
+          pending
+              .map((r) => {
+                    'id': r.id,
+                    'original_sale_id': r.originalSaleId,
+                    'branch_id': r.branchId,
+                    'refunded_by': r.refundedBy,
+                    'reason': r.reason,
+                    'total_amount': r.totalAmount.toString(),
+                    'restock': r.restock,
+                    'created_at': r.createdAt.toUtc().toIso8601String(),
+                    'deleted_at': r.deletedAt?.toUtc().toIso8601String(),
+                  })
+              .toList(),
+          onConflict: 'id',
+        );
+    for (final r in pending) {
+      final items = await db.getRefundItems(r.id);
+      if (items.isNotEmpty) {
+        await _supabase.from('refund_items').upsert(
+              items
+                  .map((i) => {
+                        'id': i.id,
+                        'refund_id': i.refundId,
+                        'sale_item_id': i.saleItemId,
+                        'quantity': i.quantity.toString(),
+                        'amount': i.amount.toString(),
+                        'deleted_at': i.deletedAt?.toUtc().toIso8601String(),
+                      })
+                  .toList(),
+              onConflict: 'id',
+            );
+      }
+      await db.markRefundSynced(r.id);
+    }
+    return pending.length;
+  }
 
   /// Pushes all pending local expenses in one bulk upsert (idempotent by id).
   Future<int> _pushPendingExpenses() async {

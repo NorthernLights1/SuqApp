@@ -22,6 +22,7 @@ class ReportSummary extends Equatable {
     required this.expenseByCategory,
     required this.grossProfit,
     required this.profitItemCount,
+    required this.refundTotal,
   });
 
   final Decimal salesTotal;
@@ -34,8 +35,10 @@ class ReportSummary extends Equatable {
   final Decimal grossProfit;
   // How many line items had cost data (so we can warn if partial)
   final int profitItemCount;
+  // Money returned to customers via refunds in the period (not category-scoped).
+  final Decimal refundTotal;
 
-  Decimal get net => salesTotal - expenseTotal;
+  Decimal get net => salesTotal - expenseTotal - refundTotal;
 
   @override
   List<Object?> get props => [
@@ -47,6 +50,7 @@ class ReportSummary extends Equatable {
         expenseByCategory,
         grossProfit,
         profitItemCount,
+        refundTotal,
       ];
 }
 
@@ -256,6 +260,7 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
       expenseByCategory: const {},
       grossProfit: Decimal.zero,
       profitItemCount: 0,
+      refundTotal: Decimal.zero,
     );
   }
 
@@ -380,6 +385,20 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
     expByCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
   );
 
+  // Refunds in the period (money returned) — nets out of revenue.
+  final refundData = await client
+      .from('refunds')
+      .select('total_amount')
+      .eq('branch_id', branch.id)
+      .isFilter('deleted_at', null)
+      .gte('created_at', range.start.toUtc().toIso8601String())
+      .lt('created_at', range.end.toUtc().toIso8601String())
+      .timeout(AppConstants.remoteReadTimeout);
+  Decimal refundTotal = Decimal.zero;
+  for (final row in refundData as List) {
+    refundTotal += Decimal.parse(row['total_amount'].toString());
+  }
+
   return ReportSummary(
     salesTotal: salesTotal,
     salesCount: salesCount,
@@ -389,6 +408,7 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
     expenseByCategory: sortedCategories,
     grossProfit: grossProfit,
     profitItemCount: profitItemCount,
+    refundTotal: refundTotal,
   );
   } catch (e) {
     // Web-only path: no local DB to fall back to.
@@ -483,6 +503,9 @@ Future<ReportSummary> _localReportSummary(
     expByCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
   );
 
+  final refundTotal =
+      await db.getRefundTotalByBranchRange(branchId, range.start, range.end);
+
   return ReportSummary(
     salesTotal: salesTotal,
     salesCount: salesCount,
@@ -492,5 +515,6 @@ Future<ReportSummary> _localReportSummary(
     expenseByCategory: sortedCategories,
     grossProfit: grossProfit,
     profitItemCount: profitItemCount,
+    refundTotal: refundTotal,
   );
 }

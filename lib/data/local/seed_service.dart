@@ -61,6 +61,8 @@ class SeedService {
       _guard(_seedCreditPayments),
       _guard(_seedSaleItemBatches),
       _guard(_seedBatchAdjustments),
+      _guard(_seedRefunds),
+      _guard(_seedRefundItems),
     ]);
   }
 
@@ -369,6 +371,63 @@ class SeedService {
                           _now),
                   syncedAt: Value(_now),
                   isSynced: const Value(true),
+                ))
+            .toList()),
+      );
+
+  // ── Refunds (+ returned lines) ───────────────────────────────────────────────
+
+  Future<void> _seedRefunds() => _deltaPull(
+        tableKey: 'refunds',
+        deleteFromTable: 'local_refunds',
+        fetch: (cursorIso) async {
+          // No shop filter: RLS scopes refunds to the current shop (via the
+          // original sale's branch). Don't clobber locally-unsynced refunds.
+          var q = _client.from('refunds').select(
+              'id, original_sale_id, branch_id, refunded_by, reason, total_amount, restock, created_at, updated_at, deleted_at');
+          if (cursorIso != null) q = q.gte('updated_at', cursorIso);
+          return (await q as List).cast<Map<String, dynamic>>();
+        },
+        applyLive: (rows) async {
+          final pending =
+              (await _db.getPendingRefunds()).map((r) => r.id).toSet();
+          await _db.upsertRefunds(rows
+              .where((r) => !pending.contains(r['id'] as String))
+              .map((r) => LocalRefundsCompanion(
+                    id: Value(r['id'] as String),
+                    originalSaleId: Value(r['original_sale_id'] as String),
+                    branchId: Value(r['branch_id'] as String? ?? ''),
+                    refundedBy: Value(r['refunded_by'] as String),
+                    reason: Value(r['reason'] as String? ?? ''),
+                    totalAmount: Value(_dec(r['total_amount'])),
+                    restock: Value(r['restock'] as bool? ?? false),
+                    createdAt: Value(
+                        DateTime.tryParse(r['created_at']?.toString() ?? '') ??
+                            _now),
+                    syncedAt: Value(_now),
+                    isSynced: const Value(true),
+                  ))
+              .toList());
+        },
+      );
+
+  Future<void> _seedRefundItems() => _deltaPull(
+        tableKey: 'refund_items',
+        deleteFromTable: 'local_refund_items',
+        fetch: (cursorIso) async {
+          var q = _client.from('refund_items').select(
+              'id, refund_id, sale_item_id, quantity, amount, updated_at, deleted_at');
+          if (cursorIso != null) q = q.gte('updated_at', cursorIso);
+          return (await q as List).cast<Map<String, dynamic>>();
+        },
+        applyLive: (rows) => _db.upsertRefundItems(rows
+            .map((i) => LocalRefundItemsCompanion(
+                  id: Value(i['id'] as String),
+                  refundId: Value(i['refund_id'] as String),
+                  saleItemId: Value(i['sale_item_id'] as String),
+                  quantity: Value(_dec(i['quantity'])),
+                  amount: Value(_dec(i['amount'])),
+                  syncedAt: Value(_now),
                 ))
             .toList()),
       );
