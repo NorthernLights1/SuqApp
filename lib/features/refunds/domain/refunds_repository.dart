@@ -30,7 +30,9 @@ class RefundsRepository implements IRefundsRepository {
   @override
   Future<Map<String, Decimal>> refundedQtyBySaleItem(String saleId) async {
     final db = _db;
-    if (db == null) return {};
+    // Web (no local DB): aggregate from the server so the remaining-refundable
+    // cap is real, not an empty map (which would let web over-refund).
+    if (db == null) return _remote.refundedQtyBySaleItem(saleId);
     return db.refundedQtyBySaleItem(saleId);
   }
 
@@ -48,6 +50,21 @@ class RefundsRepository implements IRefundsRepository {
     final total =
         lines.fold(Decimal.zero, (sum, l) => sum + l.amount);
     final now = DateTime.now();
+
+    // Over-refund guard at the mutation boundary (not just the UI): re-read the
+    // already-refunded totals and reject if existing + requested exceeds what
+    // was sold. Catches stale UI, double-submit, and direct calls. (Offline this
+    // is the only gate; on push the server is the final authority.)
+    final alreadyRefunded = await refundedQtyBySaleItem(originalSaleId);
+    for (final l in lines) {
+      final prior = alreadyRefunded[l.saleItemId] ?? Decimal.zero;
+      if (prior + l.quantity > l.soldQuantity) {
+        throw StateError(
+          'Cannot refund more than was sold for this item '
+          '(sold ${l.soldQuantity}, already refunded $prior).',
+        );
+      }
+    }
 
     // Web (no local DB): write straight to Supabase.
     final db = _db;
@@ -155,7 +172,17 @@ class RefundsRepository implements IRefundsRepository {
       for (final s in sib) (batchId: s.batchId, depleted: s.quantity),
     ];
     final returns = allocateRestock(draws, line.quantity);
-    if (returns.isEmpty) return;
+    final allocated =
+        returns.fold(Decimal.zero, (sum, r) => sum + r.quantity);
+    if (allocated < line.quantity) {
+      // The lots this line drew from can't absorb the return (missing/short
+      // depletion ledger). Fail the whole refund transaction rather than record
+      // restock=true while leaving stock unrestored.
+      throw StateError(
+        'Cannot restock the returned units to their original lots. '
+        'Refund without restock, or correct the stock manually.',
+      );
+    }
     await db.upsertBatchAdjustments([
       for (final r in returns)
         LocalBatchAdjustmentsCompanion(

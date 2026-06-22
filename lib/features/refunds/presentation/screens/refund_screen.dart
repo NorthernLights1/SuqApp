@@ -169,6 +169,7 @@ class _RefundScreenState extends ConsumerState<RefundScreen> {
             productId: item.productId,
             quantity: e.value,
             amount: proportionalRefund(item.total, item.quantity, e.value),
+            soldQuantity: item.quantity,
           );
         }(),
     ];

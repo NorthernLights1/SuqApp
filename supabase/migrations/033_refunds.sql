@@ -13,11 +13,15 @@
 --   * Optional restock per refund (refunds.restock). When true, the goods go
 --     back to stock — but the stock effect does NOT live here: it rides the
 --     EXISTING idempotent ledgers, so no new restock RPC is needed:
---        - retail   → an inventory_adjustments row (type 'refund')
+--        - retail   → an additive inventory_adjustments row recorded as type
+--          'restock' (apply_inventory_adjustment only accepts opening_stock/
+--          manual/supply_received; 'restock' takes the additive supply_received
+--          path. The note "Refund restock" marks intent.)
 --        - wholesale → negative batch_adjustments against the original lots
 --     Both already push offline-first and recompute inventory.quantity.
---   * Any completed sale, anytime. Over-refund is prevented app-side by the
---     remaining-refundable cap (no server enforcement needed for the pilot).
+--   * Any completed sale, anytime. Over-refund is rejected at the repository
+--     mutation boundary (existing + requested > sold) on both the native and
+--     web paths, in addition to the UI cap.
 --
 -- The original sale's status is intentionally left 'completed' on a partial
 -- refund — "refunded" would misrepresent a sale that's only partly returned,

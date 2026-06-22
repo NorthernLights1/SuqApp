@@ -5,12 +5,15 @@ import '../../../core/constants/app_constants.dart';
 import '../../inventory/data/inventory_remote.dart';
 import '../domain/refund_restock.dart';
 
-/// A line being returned: which sale_item, how many units, and the money back.
+/// A line being returned: which sale_item, how many units, the money back, and
+/// the original sold quantity (used to enforce the remaining-refundable cap at
+/// the mutation boundary, not just in the UI).
 typedef RefundLineInput = ({
   String saleItemId,
   String? productId,
   Decimal quantity,
   Decimal amount,
+  Decimal soldQuantity,
 });
 
 /// Web / no-local-DB path for refunds. Writes the refund + items directly to
@@ -22,6 +25,33 @@ class RefundsRemote {
 
   final SupabaseClient _client;
   final InventoryRemote _inventory;
+
+  /// Units already refunded per sale_item for a sale (web/no-local-DB path), so
+  /// the screen + the repository can cap each line at its remaining-refundable.
+  /// Excludes soft-deleted refunds/items.
+  Future<Map<String, Decimal>> refundedQtyBySaleItem(String saleId) async {
+    final refundRows = (await _client
+        .from('refunds')
+        .select('id')
+        .eq('original_sale_id', saleId)
+        .isFilter('deleted_at', null)
+        .timeout(AppConstants.remoteReadTimeout)) as List;
+    final ids = [for (final r in refundRows) r['id'] as String];
+    if (ids.isEmpty) return {};
+    final itemRows = (await _client
+        .from('refund_items')
+        .select('sale_item_id, quantity')
+        .inFilter('refund_id', ids)
+        .isFilter('deleted_at', null)
+        .timeout(AppConstants.remoteReadTimeout)) as List;
+    final map = <String, Decimal>{};
+    for (final i in itemRows) {
+      final sid = i['sale_item_id'] as String;
+      map[sid] = (map[sid] ?? Decimal.zero) +
+          (Decimal.tryParse(i['quantity'].toString()) ?? Decimal.zero);
+    }
+    return map;
+  }
 
   Future<void> createRefund({
     required String id,
@@ -100,6 +130,16 @@ class RefundsRemote {
         )
     ];
     final returns = allocateRestock(draws, line.quantity);
+    final allocated =
+        returns.fold(Decimal.zero, (sum, r) => sum + r.quantity);
+    if (allocated < line.quantity) {
+      // The lots this line drew from can't absorb the return (missing/short
+      // depletion ledger). Don't record a restock that doesn't restore stock.
+      throw StateError(
+        'Cannot restock the returned units to their original lots. '
+        'Refund without restock, or correct the stock manually.',
+      );
+    }
     for (final r in returns) {
       await _inventory.insertBatchAdjustment(
         id: const Uuid().v4(),

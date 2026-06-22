@@ -10,6 +10,9 @@ import 'package:suq/features/refunds/domain/refunds_repository.dart';
 // enough. Implements the concrete RefundsRemote as an interface.
 class _StubRefundsRemote implements RefundsRemote {
   @override
+  Future<Map<String, Decimal>> refundedQtyBySaleItem(String saleId) async => {};
+
+  @override
   Future<void> createRefund({
     required String id,
     required String originalSaleId,
@@ -84,7 +87,13 @@ void main() {
       reason: 'damaged',
       restock: false,
       lines: [
-        (saleItemId: 'si-1', productId: 'p-1', quantity: d('2'), amount: d('10'))
+        (
+          saleItemId: 'si-1',
+          productId: 'p-1',
+          quantity: d('2'),
+          amount: d('10'),
+          soldQuantity: d('4')
+        )
       ],
       useBatches: false,
     );
@@ -110,7 +119,13 @@ void main() {
         reason: 'r',
         restock: false,
         lines: [
-          (saleItemId: 'si-1', productId: 'p-1', quantity: d(q), amount: d(q))
+          (
+            saleItemId: 'si-1',
+            productId: 'p-1',
+            quantity: d(q),
+            amount: d(q),
+            soldQuantity: d('5')
+          )
         ],
         useBatches: false,
       );
@@ -131,7 +146,13 @@ void main() {
       reason: 'returned',
       restock: true,
       lines: [
-        (saleItemId: 'si-1', productId: 'p-1', quantity: d('2'), amount: d('10'))
+        (
+          saleItemId: 'si-1',
+          productId: 'p-1',
+          quantity: d('2'),
+          amount: d('10'),
+          soldQuantity: d('4')
+        )
       ],
       useBatches: false,
     );
@@ -155,7 +176,13 @@ void main() {
       reason: 'damaged',
       restock: false,
       lines: [
-        (saleItemId: 'si-1', productId: 'p-1', quantity: d('2'), amount: d('10'))
+        (
+          saleItemId: 'si-1',
+          productId: 'p-1',
+          quantity: d('2'),
+          amount: d('10'),
+          soldQuantity: d('4')
+        )
       ],
       useBatches: false,
     );
@@ -198,7 +225,13 @@ void main() {
       reason: 'returned',
       restock: true,
       lines: [
-        (saleItemId: 'si-1', productId: 'p-1', quantity: d('2'), amount: d('10'))
+        (
+          saleItemId: 'si-1',
+          productId: 'p-1',
+          quantity: d('2'),
+          amount: d('10'),
+          soldQuantity: d('4')
+        )
       ],
       useBatches: true,
     );
@@ -207,6 +240,93 @@ void main() {
     expect(await db.getStockLevel(branchId, 'p-1'), d('8'));
     final adjusted = await db.adjustmentByBatch(['lot-1']);
     expect(adjusted['lot-1'], d('-2')); // negative delta = added back
+  });
+
+  test('rejects a refund that exceeds remaining-refundable (domain guard)',
+      () async {
+    await _seedSale(db, saleId: 's-1', itemId: 'si-1', qty: d('4'), total: d('20'));
+    // Already refunded 3 of 4.
+    await repo.createRefund(
+      originalSaleId: 's-1',
+      branchId: branchId,
+      refundedBy: userId,
+      reason: 'first',
+      restock: false,
+      lines: [
+        (
+          saleItemId: 'si-1',
+          productId: 'p-1',
+          quantity: d('3'),
+          amount: d('15'),
+          soldQuantity: d('4')
+        )
+      ],
+      useBatches: false,
+    );
+
+    // Asking for 2 more (3 + 2 > 4) must be rejected.
+    expect(
+      () => repo.createRefund(
+        originalSaleId: 's-1',
+        branchId: branchId,
+        refundedBy: userId,
+        reason: 'too much',
+        restock: false,
+        lines: [
+          (
+            saleItemId: 'si-1',
+            productId: 'p-1',
+            quantity: d('2'),
+            amount: d('10'),
+            soldQuantity: d('4')
+          )
+        ],
+        useBatches: false,
+      ),
+      throwsA(isA<StateError>()),
+    );
+    // The rejected refund left no trace beyond the first.
+    final refunded = await repo.refundedQtyBySaleItem('s-1');
+    expect(refunded['si-1'], d('3'));
+  });
+
+  test('wholesale restock fails when the depletion ledger is missing', () async {
+    // Lot + sale exist, but NO sale_item_batches depletion was recorded.
+    await db.upsertProductBatches([
+      LocalProductBatchesCompanion(
+        id: const Value('lot-1'),
+        branchId: const Value(branchId),
+        productId: const Value('p-1'),
+        quantity: Value(d('10')),
+        receivedAt: Value(DateTime.now()),
+        syncedAt: Value(DateTime.now()),
+        isSynced: const Value(true),
+      )
+    ]);
+    await _seedSale(db, saleId: 's-1', itemId: 'si-1', qty: d('4'), total: d('20'));
+
+    expect(
+      () => repo.createRefund(
+        originalSaleId: 's-1',
+        branchId: branchId,
+        refundedBy: userId,
+        reason: 'returned',
+        restock: true,
+        lines: [
+          (
+            saleItemId: 'si-1',
+            productId: 'p-1',
+            quantity: d('2'),
+            amount: d('10'),
+            soldQuantity: d('4')
+          )
+        ],
+        useBatches: true,
+      ),
+      throwsA(isA<StateError>()),
+    );
+    // Transaction rolled back: no refund recorded.
+    expect(await db.getPendingRefunds(), isEmpty);
   });
 
   test('getRefundTotalByBranchRange sums non-deleted refunds in range', () async {
@@ -218,7 +338,13 @@ void main() {
       reason: 'r',
       restock: false,
       lines: [
-        (saleItemId: 'si-1', productId: 'p-1', quantity: d('2'), amount: d('10'))
+        (
+          saleItemId: 'si-1',
+          productId: 'p-1',
+          quantity: d('2'),
+          amount: d('10'),
+          soldQuantity: d('4')
+        )
       ],
       useBatches: false,
     );
