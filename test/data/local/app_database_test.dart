@@ -515,6 +515,67 @@ void main() {
       await db.deleteByIds('local_products', []);
       expect((await db.getProductsByShop('s-1')).length, 1);
     });
+
+    test('accepts refund delta tables', () async {
+      final now = DateTime.now();
+      await db.upsertRefunds([
+        LocalRefundsCompanion(
+          id: const Value('refund-a'),
+          originalSaleId: const Value('sale-a'),
+          branchId: const Value('b-1'),
+          refundedBy: const Value('u-1'),
+          reason: const Value('Damaged'),
+          totalAmount: Value(Decimal.parse('10')),
+          createdAt: Value(now),
+          syncedAt: Value(now),
+          isSynced: const Value(true),
+        ),
+        LocalRefundsCompanion(
+          id: const Value('refund-b'),
+          originalSaleId: const Value('sale-b'),
+          branchId: const Value('b-1'),
+          refundedBy: const Value('u-1'),
+          reason: const Value('Returned'),
+          totalAmount: Value(Decimal.parse('5')),
+          createdAt: Value(now),
+          syncedAt: Value(now),
+          isSynced: const Value(true),
+        ),
+      ]);
+      await db.upsertRefundItems([
+        LocalRefundItemsCompanion(
+          id: const Value('refund-item-a'),
+          refundId: const Value('refund-a'),
+          saleItemId: const Value('sale-item-a'),
+          quantity: Value(Decimal.one),
+          amount: Value(Decimal.parse('10')),
+          syncedAt: Value(now),
+        ),
+        LocalRefundItemsCompanion(
+          id: const Value('refund-item-b'),
+          refundId: const Value('refund-b'),
+          saleItemId: const Value('sale-item-b'),
+          quantity: Value(Decimal.one),
+          amount: Value(Decimal.parse('5')),
+          syncedAt: Value(now),
+        ),
+      ]);
+
+      await db.deleteByIds('local_refunds', ['refund-a']);
+      await db.deleteByIds('local_refund_items', ['refund-item-b']);
+
+      final refundIds = await db
+          .customSelect('SELECT id FROM local_refunds ORDER BY id')
+          .get();
+      final refundItemIds = await db
+          .customSelect('SELECT id FROM local_refund_items ORDER BY id')
+          .get();
+
+      expect(refundIds.map((r) => r.read<String>('id')).toList(), ['refund-b']);
+      expect(refundItemIds.map((r) => r.read<String>('id')).toList(), [
+        'refund-item-a',
+      ]);
+    });
   });
 
   // ── Offline credit settlement ───────────────────────────────────────────────

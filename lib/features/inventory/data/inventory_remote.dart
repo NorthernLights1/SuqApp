@@ -124,6 +124,147 @@ class InventoryRemote {
     });
   }
 
+  // ─── Product batches (wholesale) ────────────────────────────────────────────
+
+  /// Insert a new batch. The server rollup trigger updates `inventory.quantity`.
+  /// Used by the web path (no local DB) and by SyncService is NOT — the push
+  /// there is a bulk upsert. [id] is client-generated (idempotent by UUID).
+  Future<void> insertBatch({
+    required String id,
+    required String branchId,
+    required String productId,
+    String? batchNumber,
+    DateTime? expiryDate,
+    required Decimal quantity,
+    Decimal? costPrice,
+    String? createdBy,
+  }) async {
+    await _client.from('product_batches').insert({
+      'id': id,
+      'branch_id': branchId,
+      'product_id': productId,
+      'batch_number': batchNumber,
+      'expiry_date': expiryDate?.toIso8601String().substring(0, 10),
+      'quantity': quantity.toString(),
+      'cost_price': costPrice?.toString(),
+      'created_by': createdBy,
+    });
+  }
+
+  /// Web/remote read of a product's live lots (no local DB). Computes
+  /// remaining = received − Σ(non-deleted depletions) per lot, resolves the
+  /// adder's name, and FEFO-orders (soonest expiry first, nulls last).
+  Future<List<ProductBatchView>> getProductBatches(
+      String branchId, String productId) async {
+    final batchRows = (await _client
+        .from('product_batches')
+        .select(
+            'id, batch_number, expiry_date, quantity, received_at, created_by')
+        .eq('branch_id', branchId)
+        .eq('product_id', productId)
+        .isFilter('deleted_at', null)) as List;
+    if (batchRows.isEmpty) return [];
+
+    final ids = [for (final b in batchRows) b['id'] as String];
+
+    // Depletion per lot from the ledger.
+    final sibRows = (await _client
+        .from('sale_item_batches')
+        .select('batch_id, quantity')
+        .inFilter('batch_id', ids)
+        .isFilter('deleted_at', null)) as List;
+    final depleted = <String, Decimal>{};
+    for (final s in sibRows) {
+      final bid = s['batch_id'] as String;
+      depleted[bid] = (depleted[bid] ?? Decimal.zero) +
+          (Decimal.tryParse(s['quantity'].toString()) ?? Decimal.zero);
+    }
+
+    // Per-lot corrections (positive delta = removed, negative = added back).
+    final adjRows = (await _client
+        .from('batch_adjustments')
+        .select('batch_id, quantity_delta')
+        .inFilter('batch_id', ids)
+        .isFilter('deleted_at', null)) as List;
+    final adjusted = <String, Decimal>{};
+    for (final a in adjRows) {
+      final bid = a['batch_id'] as String;
+      adjusted[bid] = (adjusted[bid] ?? Decimal.zero) +
+          (Decimal.tryParse(a['quantity_delta'].toString()) ?? Decimal.zero);
+    }
+
+    // Adder display names.
+    final creatorIds = {
+      for (final b in batchRows)
+        if (b['created_by'] != null) b['created_by'] as String
+    }.toList();
+    final names = <String, String?>{};
+    if (creatorIds.isNotEmpty) {
+      final profRows = (await _client
+          .from('profiles')
+          .select('id, full_name')
+          .inFilter('id', creatorIds)) as List;
+      for (final p in profRows) {
+        names[p['id'] as String] = p['full_name'] as String?;
+      }
+    }
+
+    final views = [
+      for (final b in batchRows)
+        () {
+          final received =
+              Decimal.tryParse(b['quantity'].toString()) ?? Decimal.zero;
+          return ProductBatchView(
+            id: b['id'] as String,
+            batchNumber: b['batch_number'] as String?,
+            expiryDate: b['expiry_date'] != null
+                ? DateTime.tryParse(b['expiry_date'] as String)
+                : null,
+            received: received,
+            remaining: received -
+                (depleted[b['id']] ?? Decimal.zero) -
+                (adjusted[b['id']] ?? Decimal.zero),
+            receivedAt:
+                DateTime.tryParse(b['received_at']?.toString() ?? '') ??
+                    DateTime.now(),
+            addedByName: b['created_by'] == null
+                ? null
+                : names[b['created_by'] as String],
+          );
+        }()
+    ].where((v) => v.remaining > Decimal.zero).toList();
+
+    // FEFO: soonest expiry first, nulls last.
+    views.sort((a, b) {
+      if (a.expiryDate == null && b.expiryDate == null) return 0;
+      if (a.expiryDate == null) return 1;
+      if (b.expiryDate == null) return -1;
+      return a.expiryDate!.compareTo(b.expiryDate!);
+    });
+    return views;
+  }
+
+  /// Web/remote per-lot correction insert; the server trigger recomputes.
+  Future<void> insertBatchAdjustment({
+    required String id,
+    required String batchId,
+    required String branchId,
+    required String productId,
+    required Decimal quantityDelta,
+    required String reason,
+    required String createdBy,
+  }) async {
+    await _client.from('batch_adjustments').insert({
+      'id': id,
+      'batch_id': batchId,
+      'branch_id': branchId,
+      'product_id': productId,
+      'quantity_delta': quantityDelta.toString(),
+      'reason': reason,
+      'created_by': createdBy,
+    });
+  }
+
   // ─── Measurement units ─────────────────────────────────────────────────────
 
   Future<List<MeasurementUnit>> getMeasurementUnits(String shopId) async {
@@ -133,6 +274,24 @@ class InventoryRemote {
         .or('shop_id.eq.$shopId,shop_id.is.null')
         .order('name');
     return (data as List).map((e) => MeasurementUnit.fromJson(e)).toList();
+  }
+
+  Future<MeasurementUnit> createMeasurementUnit({
+    required String shopId,
+    required String name,
+    required String abbreviation,
+  }) async {
+    final data = await _client
+        .from('measurement_units')
+        .insert({
+          'shop_id': shopId,
+          'name': name.trim(),
+          'abbreviation': abbreviation.trim(),
+          'is_system': false,
+        })
+        .select('id, name, abbreviation')
+        .single();
+    return MeasurementUnit.fromJson(data);
   }
 
   // ─── Product categories ────────────────────────────────────────────────────
@@ -232,6 +391,48 @@ class StockEntry {
   }
 }
 
+/// A single batch/lot for display: its remaining (received − depleted) quantity
+/// and expiry status. Built locally from the batch mirror + depletion ledger.
+class ProductBatchView {
+  const ProductBatchView({
+    required this.id,
+    this.batchNumber,
+    this.expiryDate,
+    required this.remaining,
+    required this.received,
+    required this.receivedAt,
+    this.addedByName,
+  });
+
+  final String id;
+  final String? batchNumber;
+  final DateTime? expiryDate;
+  final Decimal remaining;
+
+  /// Quantity originally received in this lot (immutable; remaining ≤ received).
+  final Decimal received;
+
+  /// When the lot was added (stock-in / opening stock).
+  final DateTime receivedAt;
+
+  /// Display name of who added the lot, resolved from the profiles mirror;
+  /// null for backfilled/server-origin rows or an unknown user.
+  final String? addedByName;
+
+  static DateTime get _today {
+    final n = DateTime.now();
+    return DateTime(n.year, n.month, n.day);
+  }
+
+  bool get isExpired => expiryDate != null && expiryDate!.isBefore(_today);
+
+  /// Within 30 days (wholesale plans ahead further than the retail 7-day window).
+  bool get isExpiringSoon =>
+      expiryDate != null &&
+      !isExpired &&
+      expiryDate!.isBefore(_today.add(const Duration(days: 30)));
+}
+
 class MeasurementUnit {
   const MeasurementUnit({
     required this.id,
@@ -249,6 +450,15 @@ class MeasurementUnit {
         name: json['name'] as String,
         abbreviation: json['abbreviation'] as String,
       );
+
+  // Value equality on id so a DropdownButton can match a freshly-created unit
+  // against the refetched list (different instance, same id).
+  @override
+  bool operator ==(Object other) =>
+      other is MeasurementUnit && other.id == id;
+
+  @override
+  int get hashCode => id.hashCode;
 
   @override
   String toString() => '$name ($abbreviation)';

@@ -1,8 +1,10 @@
 import 'package:decimal/decimal.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../core/constants/setting_keys.dart';
 import '../../../../data/local/database_provider.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
+import '../../../../features/settings/presentation/providers/shop_type_provider.dart';
 import '../../data/inventory_remote.dart';
 import '../../domain/inventory_repository.dart';
 
@@ -26,6 +28,19 @@ final measurementUnitsProvider =
   final shop = await ref.watch(currentShopProvider.future);
   if (shop == null) return [];
   return ref.read(inventoryRepositoryProvider).getMeasurementUnits(shop.id);
+});
+
+// ─── Product batches (wholesale: lots with expiry) ──────────────────────────
+
+final productBatchesProvider =
+    FutureProvider.family<List<ProductBatchView>, String>((ref, productId) async {
+  final branches = await ref.watch(currentShopBranchesProvider.future);
+  final branch = ref.watch(activeBranchProvider) ??
+      (branches.isNotEmpty ? branches.first : null);
+  if (branch == null) return [];
+  return ref
+      .read(inventoryRepositoryProvider)
+      .getProductBatches(branch.id, productId);
 });
 
 // ─── Product categories ────────────────────────────────────────────────────
@@ -77,6 +92,7 @@ class ProductFormNotifier extends AsyncNotifier<void> {
     String? description,
     Decimal? initialQuantity,
     DateTime? expiryDate,
+    String? batchNumber,
   }) async {
     final shop = await ref.read(currentShopProvider.future);
     if (shop == null) return false;
@@ -101,13 +117,34 @@ class ProductFormNotifier extends AsyncNotifier<void> {
           final branch = ref.read(activeBranchProvider) ??
               (branches.isNotEmpty ? branches.first : null);
           if (userId != null && branch != null) {
-            await repo.setOpeningStock(
-              branchId: branch.id,
-              productId: product.id,
-              quantity: initialQuantity,
-              adjustedBy: userId,
-              expiryDate: expiryDate,
-            );
+            // Wholesale opening stock must be a BATCH, not a direct inventory
+            // write, which the rollup trigger would overwrite on restock.
+            final isWholesale =
+                await ref.read(shopTypeProvider.future) == ShopType.wholesale;
+            if (isWholesale) {
+              final normalizedBatchNumber = batchNumber?.trim();
+              if (normalizedBatchNumber == null ||
+                  normalizedBatchNumber.isEmpty) {
+                throw StateError(
+                    'Batch / lot number is required for wholesale opening stock');
+              }
+              await repo.addStockBatch(
+                branchId: branch.id,
+                productId: product.id,
+                quantity: initialQuantity,
+                adjustedBy: userId,
+                expiryDate: expiryDate,
+                batchNumber: normalizedBatchNumber,
+              );
+            } else {
+              await repo.setOpeningStock(
+                branchId: branch.id,
+                productId: product.id,
+                quantity: initialQuantity,
+                adjustedBy: userId,
+                expiryDate: expiryDate,
+              );
+            }
           }
         }
       } else {
@@ -223,6 +260,76 @@ class StockAdjustmentNotifier extends AsyncNotifier<void> {
             expiryDate: expiryDate,
           );
       ref.invalidate(stockLevelsProvider);
+    });
+    return !state.hasError;
+  }
+
+  /// Wholesale restock — adds a new batch (qty + its own expiry/batch number).
+  Future<bool> addStockBatch({
+    required String productId,
+    required Decimal quantity,
+    String? batchNumber,
+    DateTime? expiryDate,
+  }) async {
+    final userId = ref.read(currentUserIdProvider);
+    final branches = await ref.read(currentShopBranchesProvider.future);
+    final branch = ref.read(activeBranchProvider) ??
+        (branches.isNotEmpty ? branches.first : null);
+    if (userId == null || branch == null) return false;
+
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(inventoryRepositoryProvider).addStockBatch(
+            branchId: branch.id,
+            productId: productId,
+            quantity: quantity,
+            adjustedBy: userId,
+            batchNumber: batchNumber,
+            expiryDate: expiryDate,
+          );
+      ref.invalidate(stockLevelsProvider);
+      ref.invalidate(productBatchesProvider(productId));
+    });
+    return !state.hasError;
+  }
+
+  /// Discard a lot (wholesale): expired/damaged stock written off.
+  Future<bool> discardBatch(String batchId, String productId) async {
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(inventoryRepositoryProvider).discardBatch(batchId);
+      ref.invalidate(stockLevelsProvider);
+      ref.invalidate(productBatchesProvider(productId));
+    });
+    return !state.hasError;
+  }
+
+  /// Correct one lot's remaining to a counted quantity (wholesale). Records the
+  /// difference as an adjustment with a reason.
+  Future<bool> correctBatch({
+    required String batchId,
+    required String productId,
+    required Decimal countedRemaining,
+    required String reason,
+  }) async {
+    final userId = ref.read(currentUserIdProvider);
+    final branches = await ref.read(currentShopBranchesProvider.future);
+    final branch = ref.read(activeBranchProvider) ??
+        (branches.isNotEmpty ? branches.first : null);
+    if (userId == null || branch == null) return false;
+
+    state = const AsyncLoading();
+    state = await AsyncValue.guard(() async {
+      await ref.read(inventoryRepositoryProvider).correctBatch(
+            batchId: batchId,
+            branchId: branch.id,
+            productId: productId,
+            countedRemaining: countedRemaining,
+            reason: reason,
+            adjustedBy: userId,
+          );
+      ref.invalidate(stockLevelsProvider);
+      ref.invalidate(productBatchesProvider(productId));
     });
     return !state.hasError;
   }

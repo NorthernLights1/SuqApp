@@ -2,6 +2,36 @@
 
 ---
 
+## 2026-06-22 — wholesale batch session (branch `feat/batch-tracking`)
+
+**New owner stuck at cashier-level access after onboarding.** `1` DB was correct
+(owner, all 22 perms); the client never loaded them. Two flaws: (a)
+`PermissionService.getPermissions` cached AND persisted an EMPTY result with no
+TTL — a transient empty read (role embed not resolved, or a timeout in the
+onboarding RPC burst) stuck, surviving restart via SharedPreferences; (b) nothing
+re-checked perms when onboarding finished (they resolved as "no shop → empty"
+before the shop existed). Fix `50e3722`: only cache a NON-empty result (empty
+always means "not loaded", self-heals next call); on onboarding finish clear the
+cache + invalidate `currentShopProvider`/`permissionsProvider`. Verified via live
+DB/RLS/grants query.
+
+**v14 Drift migration would crash on upgrade (BLOCK-MERGE review).** `addColumn`
+of `product_batches.deletedAt` ran for any upgrade, but the v12 `createTable`
+already builds the current schema (incl. deletedAt) — so a <12 upgrade
+duplicate-crashed. Fix `1365841`: guard `from >= 12 && from < 14` (same for v15).
+Same commit: createSale now ONE transaction (a wholesale sale could persist with
+no batch ledger then mis-sync as a retail decrement); reject a wholesale sale for
+a tracked item with no lots; `setStockLevel` can clear a stale stock expiry once
+the expiring lot sells out/discards (was `Value.absent()` = "leave unchanged").
+
+**Batch details empty on web.** Chrome has no local Drift; `getProductBatches`
+returned `[]` with no Supabase fallback (every other read has one), so the
+details page + inline lots showed "No active batches" despite stock. Fix
+`8ff3b48`: `InventoryRemote.getProductBatches` reads lots from Supabase, computes
+remaining from the depletion + adjustment ledgers, resolves "added by".
+
+---
+
 ## Session 20 (2026-06-19) — action feedback (branch `feat/action-feedback`)
 
 **Pre-existing bug — Credit settle sheet closed on failure.**

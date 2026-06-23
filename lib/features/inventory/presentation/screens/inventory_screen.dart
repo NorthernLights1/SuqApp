@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/app_constants.dart';
+import '../../../../core/constants/setting_keys.dart';
 import '../../../../domain/models/product.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
@@ -13,8 +14,10 @@ import '../../../../shared/widgets/app_text_field.dart';
 import '../../../../features/auth/presentation/providers/auth_provider.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
 import '../../../../features/auth/presentation/providers/shop_provider.dart';
+import '../../../../features/settings/presentation/providers/shop_type_provider.dart';
 import '../../data/inventory_remote.dart';
 import '../providers/inventory_provider.dart';
+import 'product_batch_detail_screen.dart';
 import '../../../../shared/widgets/decimal_input_formatter.dart';
 
 class InventoryScreen extends ConsumerWidget {
@@ -237,7 +240,12 @@ class _ProductStockTile extends ConsumerWidget {
       ),
       isThreeLine: true,
       trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-      onTap: () => _showStockSheet(context, ref, product, stockEntry),
+      onTap: () async {
+        final isWholesale =
+            await ref.read(shopTypeProvider.future) == ShopType.wholesale;
+        if (!context.mounted) return;
+        _showStockSheet(context, ref, product, stockEntry, isWholesale);
+      },
     );
   }
 }
@@ -245,10 +253,16 @@ class _ProductStockTile extends ConsumerWidget {
 // ─── Stock action sheet ───────────────────────────────────────────────────────
 
 void _showStockSheet(
-    BuildContext context, WidgetRef ref, Product product, StockEntry? entry) {
+    BuildContext context,
+    WidgetRef ref,
+    Product product,
+    StockEntry? entry,
+    bool isWholesale) {
   final canAdjust = hasPermissionSync(ref, 'inventory.adjust');
   final canCorrect = hasPermissionSync(ref, 'settings.manage');
   final canEdit = hasPermissionSync(ref, 'inventory.edit');
+  // Correct Stock writes inventory.quantity directly — for wholesale that fights
+  // the batch rollup, so it's hidden until batch-level correction lands (2.5).
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -272,6 +286,32 @@ void _showStockSheet(
                 color: entry == null ? AppColors.error : AppColors.textSecondary,
               ),
             ),
+            if (isWholesale && entry != null)
+              _ProductBatchesSection(
+                productId: product.id,
+                unitAbbr: entry.unitAbbr,
+                canDiscard: canCorrect,
+              ),
+            if (isWholesale && entry != null) ...[
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.receipt_long_outlined, size: 18),
+                  label: const Text('Batch details'),
+                  onPressed: () {
+                    Navigator.pop(sheetCtx);
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => ProductBatchDetailScreen(
+                        productId: product.id,
+                        productName: product.name,
+                        unitAbbr: entry.unitAbbr,
+                      ),
+                    ));
+                  },
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             if (canAdjust)
               SizedBox(
@@ -289,7 +329,7 @@ void _showStockSheet(
                   },
                 ),
               ),
-            if (entry != null && canCorrect) ...[
+            if (entry != null && canCorrect && !isWholesale) ...[
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
@@ -332,6 +372,163 @@ void _showStockSheet(
   );
 }
 
+// ─── Batches section (wholesale: lots with expiry) ────────────────────────────
+
+class _ProductBatchesSection extends ConsumerWidget {
+  const _ProductBatchesSection({
+    required this.productId,
+    required this.unitAbbr,
+    required this.canDiscard,
+  });
+  final String productId;
+  final String unitAbbr;
+  final bool canDiscard;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final batches = ref.watch(productBatchesProvider(productId));
+    return batches.maybeWhen(
+      data: (list) {
+        if (list.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            Text('BATCHES', style: AppTextStyles.label),
+            const SizedBox(height: 4),
+            ...list.map((b) => _BatchRow(
+                  batch: b,
+                  unitAbbr: unitAbbr,
+                  onDiscard: canDiscard
+                      ? () => _confirmDiscardBatch(context, ref, b, productId)
+                      : null,
+                )),
+          ],
+        );
+      },
+      orElse: () => const SizedBox.shrink(),
+    );
+  }
+}
+
+Future<void> _confirmDiscardBatch(
+  BuildContext context,
+  WidgetRef ref,
+  ProductBatchView b,
+  String productId,
+) async {
+  final label = b.batchNumber?.isNotEmpty == true ? ' (${b.batchNumber})' : '';
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('Discard lot?'),
+      content: Text(
+          'Write off the remaining ${b.remaining.toStringAsFixed(2)} from this lot$label? '
+          'Use this for expired or damaged stock — it lowers your stock count.'),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel')),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child:
+              const Text('Discard', style: TextStyle(color: AppColors.error)),
+        ),
+      ],
+    ),
+  );
+  if (ok != true || !context.mounted) return;
+  final success =
+      await ref.read(stockAdjustmentProvider.notifier).discardBatch(b.id, productId);
+  if (!context.mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+    content: Text(success ? 'Lot discarded' : 'Failed to discard lot'),
+    backgroundColor: success ? AppColors.success : AppColors.error,
+  ));
+}
+
+class _BatchRow extends StatelessWidget {
+  const _BatchRow({
+    required this.batch,
+    required this.unitAbbr,
+    this.onDiscard,
+  });
+  final ProductBatchView batch;
+  final String unitAbbr;
+  final VoidCallback? onDiscard;
+
+  @override
+  Widget build(BuildContext context) {
+    final (Color color, String? tag) = batch.isExpired
+        ? (AppColors.error, 'Expired')
+        : batch.isExpiringSoon
+            ? (Colors.orange.shade700, 'Expiring soon')
+            : (AppColors.textSecondary, null);
+
+    final expiryText = batch.expiryDate != null
+        ? formatDate(batch.expiryDate!)
+        : 'No expiry';
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(Icons.circle, size: 8, color: color),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  batch.batchNumber?.isNotEmpty == true
+                      ? batch.batchNumber!
+                      : 'No batch number',
+                  style: AppTextStyles.body,
+                ),
+                Row(
+                  children: [
+                    Text(expiryText, style: AppTextStyles.bodySmall),
+                    if (tag != null) ...[
+                      const SizedBox(width: 6),
+                      Text('• $tag',
+                          style: AppTextStyles.bodySmall.copyWith(color: color)),
+                    ],
+                  ],
+                ),
+                // Received quantity + when the lot was added.
+                Text(
+                  'In ${batch.received.toStringAsFixed(2)} $unitAbbr'
+                  ' • ${formatDate(batch.receivedAt)}',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text('${batch.remaining.toStringAsFixed(2)} $unitAbbr',
+                  style: AppTextStyles.body),
+              Text('left',
+                  style: AppTextStyles.bodySmall
+                      .copyWith(color: AppColors.textSecondary)),
+            ],
+          ),
+          if (onDiscard != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, size: 18),
+              color: AppColors.textSecondary,
+              visualDensity: VisualDensity.compact,
+              tooltip: 'Discard lot',
+              onPressed: onDiscard,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 // ─── Add Stock dialog (additive) ──────────────────────────────────────────────
 
 class _AddStockDialog extends ConsumerStatefulWidget {
@@ -348,6 +545,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
   final _sellPriceCtrl = TextEditingController();
   final _costPriceCtrl = TextEditingController();
   final _thresholdCtrl = TextEditingController();
+  final _batchCtrl = TextEditingController();
   DateTime? _expiryDate;
   bool _loading = false;
 
@@ -357,6 +555,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
     _sellPriceCtrl.dispose();
     _costPriceCtrl.dispose();
     _thresholdCtrl.dispose();
+    _batchCtrl.dispose();
     super.dispose();
   }
 
@@ -410,12 +609,34 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
       }
     }
 
-    // 2) Add the received quantity.
-    final ok = await ref.read(stockAdjustmentProvider.notifier).addStock(
-          productId: p.id,
-          quantityToAdd: qty,
-          expiryDate: _expiryDate,
-        );
+    // 2) Add the received quantity. Wholesale creates a BATCH (qty + expiry +
+    // optional batch number); retail bumps the single stock quantity. Read the
+    // authoritative shop_type (await the future) so a still-loading wholesale
+    // shop can't fall through to the direct-write retail path.
+    final isWholesale =
+        await ref.read(shopTypeProvider.future) == ShopType.wholesale;
+    if (!mounted) return;
+    final batchNumber = _batchCtrl.text.trim();
+    if (isWholesale && batchNumber.isEmpty) {
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a batch / lot number')),
+      );
+      return;
+    }
+    final notifier = ref.read(stockAdjustmentProvider.notifier);
+    final ok = isWholesale
+        ? await notifier.addStockBatch(
+            productId: p.id,
+            quantity: qty,
+            batchNumber: batchNumber,
+            expiryDate: _expiryDate,
+          )
+        : await notifier.addStock(
+            productId: p.id,
+            quantityToAdd: qty,
+            expiryDate: _expiryDate,
+          );
     if (!mounted) return;
     setState(() => _loading = false);
     if (ok) {
@@ -442,6 +663,7 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
   Widget build(BuildContext context) {
     final p = widget.product;
     final unitAbbr = widget.currentEntry?.unitAbbr ?? p.measurementUnitAbbr;
+    final isWholesale = ref.watch(shopTypeProvider).isWholesale;
     return AlertDialog(
       title: Text('Add Stock: ${p.name}'),
       content: SingleChildScrollView(
@@ -467,6 +689,18 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
               ),
             ),
             const SizedBox(height: 12),
+            // Wholesale: this received quantity becomes a batch with its own
+            // expiry (set below) and batch/lot number.
+            if (isWholesale) ...[
+              TextField(
+                controller: _batchCtrl,
+                decoration: const InputDecoration(
+                  labelText: 'Batch / lot number',
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
             // Optional: update sale price for this product (blank = keep current)
             TextField(
               controller: _sellPriceCtrl,
@@ -776,6 +1010,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
   late final _thresholdCtrl = TextEditingController(
       text: widget.product?.lowStockThreshold.toString() ?? '0');
   late final _openingQtyCtrl = TextEditingController();
+  late final _batchNumberCtrl = TextEditingController();
   MeasurementUnit? _selectedUnit;
   String? _selectedCategoryId;
   DateTime? _expiryDate;
@@ -806,6 +1041,7 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     _costPriceCtrl.dispose();
     _thresholdCtrl.dispose();
     _openingQtyCtrl.dispose();
+    _batchNumberCtrl.dispose();
     super.dispose();
   }
 
@@ -847,6 +1083,24 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
       }
     }
 
+    // Wholesale: the opening quantity becomes the first lot, so it must carry a
+    // batch/lot number for traceability (matches the Add Stock flow).
+    final isWholesale =
+        await ref.read(shopTypeProvider.future) == ShopType.wholesale;
+    if (!mounted) return;
+    if (!_isEdit &&
+        initialQty != null &&
+        isWholesale &&
+        _batchNumberCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a batch / lot number for this stock'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
     final ok = await ref.read(productFormProvider.notifier).save(
           productId: widget.product?.id,
           name: _nameCtrl.text,
@@ -865,6 +1119,9 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               : _descriptionCtrl.text.trim(),
           initialQuantity: initialQty,
           expiryDate: !_isEdit ? _expiryDate : null,
+          batchNumber: !_isEdit && _batchNumberCtrl.text.trim().isNotEmpty
+              ? _batchNumberCtrl.text.trim()
+              : null,
         );
 
     if (!mounted) return;
@@ -974,6 +1231,78 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
     }
   }
 
+  Future<void> _createUnit() async {
+    final shop = await ref.read(currentShopProvider.future);
+    if (shop == null || !mounted) return;
+
+    final nameCtrl = TextEditingController();
+    final abbrCtrl = TextEditingController();
+    final created = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('New Unit'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              autofocus: true,
+              textInputAction: TextInputAction.next,
+              decoration: const InputDecoration(
+                labelText: 'Name (e.g. Carton)',
+                isDense: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: abbrCtrl,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => Navigator.pop(ctx, true),
+              decoration: const InputDecoration(
+                labelText: 'Abbreviation (e.g. ctn)',
+                isDense: true,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+    final name = nameCtrl.text.trim();
+    final abbr = abbrCtrl.text.trim();
+    nameCtrl.dispose();
+    abbrCtrl.dispose();
+
+    if (created != true || name.isEmpty || abbr.isEmpty || !mounted) return;
+    try {
+      final unit = await ref.read(inventoryRepositoryProvider).createMeasurementUnit(
+            shopId: shop.id,
+            name: name,
+            abbreviation: abbr,
+          );
+      ref.invalidate(measurementUnitsProvider);
+      if (mounted) setState(() => _selectedUnit = unit);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to create unit — you may be offline'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final units = ref.watch(measurementUnitsProvider);
@@ -1029,28 +1358,46 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
               ),
               const SizedBox(height: 16),
               units.when(
-                data: (list) => InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'Unit of Measurement *',
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10)),
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 4),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<MeasurementUnit>(
-                      value: _selectedUnit,
-                      hint: const Text('Select unit'),
-                      isExpanded: true,
-                      items: list
-                          .map((u) => DropdownMenuItem(
-                                value: u,
-                                child: Text('${u.name} (${u.abbreviation})'),
-                              ))
-                          .toList(),
-                      onChanged: (u) => setState(() => _selectedUnit = u),
+                data: (list) => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    InputDecorator(
+                      decoration: InputDecoration(
+                        labelText: 'Unit of Measurement *',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(10)),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 4),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<MeasurementUnit>(
+                          value: _selectedUnit,
+                          hint: const Text('Select unit'),
+                          isExpanded: true,
+                          items: list
+                              .map((u) => DropdownMenuItem(
+                                    value: u,
+                                    child:
+                                        Text('${u.name} (${u.abbreviation})'),
+                                  ))
+                              .toList(),
+                          onChanged: (u) => setState(() => _selectedUnit = u),
+                        ),
+                      ),
                     ),
-                  ),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _createUnit,
+                        icon: const Icon(Icons.add, size: 16),
+                        label: const Text('New unit'),
+                        style: TextButton.styleFrom(
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 loading: () => const LinearProgressIndicator(),
                 error: (e, st) => Text(
@@ -1173,6 +1520,17 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
                   prefixIcon: const Icon(Icons.inventory_outlined),
                 ),
                 if (_hasOpeningQty) ...[
+                  // Wholesale: the opening quantity becomes the first lot, so let
+                  // the owner label it here (retail keeps a single stock figure).
+                  if (ref.watch(shopTypeProvider).isWholesale) ...[
+                    const SizedBox(height: 16),
+                    AppTextField(
+                      controller: _batchNumberCtrl,
+                      label: 'Batch / Lot Number',
+                      textInputAction: TextInputAction.next,
+                      prefixIcon: const Icon(Icons.qr_code_2_outlined),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   GestureDetector(
                     onTap: () async {

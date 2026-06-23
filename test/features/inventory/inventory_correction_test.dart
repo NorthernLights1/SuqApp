@@ -55,6 +55,7 @@ class _StubRemote implements SalesRemote {
     bool isCredit = false,
     String? notes,
     String? discountReason,
+    bool useBatches = false,
   }) async =>
       throw Exception('stub');
   @override

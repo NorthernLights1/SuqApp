@@ -4,8 +4,10 @@ import 'package:decimal/decimal.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/constants/setting_keys.dart';
 import '../../../../domain/models/sale.dart';
 import '../../../../features/auth/presentation/providers/permissions_provider.dart';
+import '../../../../features/settings/presentation/providers/shop_type_provider.dart';
 import '../../../../shared/theme/app_colors.dart';
 import '../../../../shared/theme/app_text_styles.dart';
 import '../../../../shared/utils/currency_formatter.dart';
@@ -107,6 +109,17 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
       _showSnack('Select or add a customer for credit sales');
       return;
     }
+    // Wholesale shops sell to registered businesses — a customer is mandatory
+    // on every sale, not just credit. (Gate is app-level; shop_type is locked
+    // at onboarding.)
+    if (customer == null) {
+      final shopType = await ref.read(shopTypeProvider.future);
+      if (!mounted) return;
+      if (shopType == ShopType.wholesale) {
+        _showSnack('Wholesale sales require a customer. Select or add one.');
+        return;
+      }
+    }
     for (final item in cart) {
       if (item.quantity <= Decimal.zero) {
         _showSnack('Quantity must be greater than zero for ${item.productName}');
@@ -121,6 +134,33 @@ class _NewSaleScreenState extends ConsumerState<NewSaleScreen> {
         _showSnack('Discount is invalid for ${item.productName}');
         return;
       }
+    }
+
+    // Wholesale warn-but-allow: if FEFO would draw from an expired lot, confirm
+    // before selling. (No-op for retail and for non-expired stock.)
+    if (await ref.read(createSaleProvider.notifier).wouldUseExpiredBatch(cart)) {
+      if (!mounted) return;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Expired stock'),
+          content: const Text(
+              'This sale includes stock past its expiry date. Sell it anyway?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Sell anyway',
+                  style: TextStyle(color: AppColors.error)),
+            ),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+      if (!mounted) return;
     }
 
     final sale = await ref.read(createSaleProvider.notifier).submit(
@@ -454,6 +494,9 @@ class _SaleFooter extends ConsumerWidget {
     final paymentMethods = ref.watch(paymentMethodsProvider);
     final selectedMethod = ref.watch(selectedPaymentMethodProvider);
     final isCredit = selectedMethod?.code == 'credit';
+    // Wholesale sells to registered businesses — a customer is mandatory on
+    // EVERY sale (cash/bank included), so the picker can't be credit-only.
+    final isWholesale = ref.watch(shopTypeProvider).isWholesale;
 
     return Container(
       constraints: BoxConstraints(
@@ -502,8 +545,8 @@ class _SaleFooter extends ConsumerWidget {
                     error: (e, _) =>
                         const Text('Could not load payment methods'),
                   ),
-                  // Customer picker (credit only)
-                  if (isCredit) ...[
+                  // Customer picker (credit always; wholesale on any method)
+                  if (isCredit || isWholesale) ...[
                     const SizedBox(height: 12),
                     const Divider(height: 1),
                     const SizedBox(height: 8),
@@ -577,6 +620,7 @@ class _CustomerPickerSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final customer = ref.watch(selectedCustomerProvider);
+    final isWholesale = ref.watch(shopTypeProvider).isWholesale;
 
     if (customer != null) {
       return Material(
@@ -607,7 +651,7 @@ class _CustomerPickerSection extends ConsumerWidget {
       width: double.infinity,
       child: OutlinedButton.icon(
         icon: const Icon(Icons.person_search_outlined, size: 18),
-        label: const Text('Select customer'),
+        label: Text(isWholesale ? 'Select customer (required)' : 'Select customer'),
         onPressed: () => showModalBottomSheet<void>(
           context: context,
           isScrollControlled: true,

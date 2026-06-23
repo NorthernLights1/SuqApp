@@ -45,13 +45,32 @@ class SyncService implements ISyncService {
         return;
       }
 
+      // Offline → reconnect: the access token may have expired while the device
+      // was offline and the background auto-refresh couldn't run. Refresh it
+      // before pushing so the first post-reconnect sync doesn't 401 and get
+      // swallowed as a generic failure. If the refresh itself fails (still no
+      // real connectivity, or the refresh token is gone), skip this run rather
+      // than push with a dead token — a later trigger retries.
+      final session = _supabase.auth.currentSession;
+      if (session != null && session.isExpired) {
+        try {
+          await _supabase.auth.refreshSession();
+        } on Exception {
+          _emit(SyncStatus.failed);
+          return;
+        }
+      }
+
       var pushed = 0;
       if (_db != null) {
-        // FK order: categories → products → customers → sales/adjustments → payments → expenses.
+        // FK order: categories → products → batches → customers → sales/adjustments → payments → expenses.
         pushed += await _pushPendingCategories();
         pushed += await _pushPendingProducts();
+        pushed += await _pushPendingProductBatches();
+        pushed += await _pushPendingBatchAdjustments();
         pushed += await _pushPendingCustomers();
         pushed += await _pushPendingInventoryWork();
+        pushed += await _pushPendingRefunds();
         pushed += await _pushPendingCreditPayments();
         pushed += await _pushPendingExpenses();
       }
@@ -77,13 +96,11 @@ class SyncService implements ISyncService {
     final db = _db!;
     final pending = await db.getPendingCategories();
     if (pending.isEmpty) return 0;
-    await _supabase.from('product_categories').upsert(
+    await _supabase
+        .from('product_categories')
+        .upsert(
           pending
-              .map((c) => {
-                    'id': c.id,
-                    'shop_id': c.shopId,
-                    'name': c.name,
-                  })
+              .map((c) => {'id': c.id, 'shop_id': c.shopId, 'name': c.name})
               .toList(),
           onConflict: 'id',
         );
@@ -97,25 +114,101 @@ class SyncService implements ISyncService {
     final db = _db!;
     final pending = await db.getPendingProducts();
     if (pending.isEmpty) return 0;
-    await _supabase.from('products').upsert(
+    await _supabase
+        .from('products')
+        .upsert(
           pending
-              .map((p) => {
-                    'id': p.id,
-                    'shop_id': p.shopId,
-                    'name': p.name,
-                    'description': p.description,
-                    'measurement_unit_id': p.measurementUnitId,
-                    'low_stock_threshold': p.lowStockThreshold.toString(),
-                    'selling_price': p.sellingPrice?.toString(),
-                    'cost_price': p.costPrice?.toString(),
-                    'category_id': p.categoryId,
-                    'is_active': p.isActive,
-                  })
+              .map(
+                (p) => {
+                  'id': p.id,
+                  'shop_id': p.shopId,
+                  'name': p.name,
+                  'description': p.description,
+                  'measurement_unit_id': p.measurementUnitId,
+                  'low_stock_threshold': p.lowStockThreshold.toString(),
+                  'selling_price': p.sellingPrice?.toString(),
+                  'cost_price': p.costPrice?.toString(),
+                  'category_id': p.categoryId,
+                  'is_active': p.isActive,
+                },
+              )
               .toList(),
           onConflict: 'id',
         );
     for (final p in pending) {
       await db.markProductSynced(p.id);
+    }
+    return pending.length;
+  }
+
+  /// Pushes pending wholesale batches in one bulk upsert (idempotent by id).
+  /// Pushed after products so the batch's product FK exists. The server rollup
+  /// trigger recomputes inventory.quantity from the batches; distinct UUIDs from
+  /// different devices simply sum, so no accumulator RPC is needed.
+  Future<int> _pushPendingProductBatches() async {
+    final db = _db!;
+    final pending = await db.getPendingProductBatches();
+    if (pending.isEmpty) return 0;
+    await _supabase
+        .from('product_batches')
+        .upsert(
+          pending
+              .map(
+                (b) => {
+                  'id': b.id,
+                  'branch_id': b.branchId,
+                  'product_id': b.productId,
+                  'batch_number': b.batchNumber,
+                  'expiry_date': b.expiryDate?.toIso8601String().substring(
+                    0,
+                    10,
+                  ),
+                  'quantity': b.quantity.toString(),
+                  'cost_price': b.costPrice?.toString(),
+                  'received_at': b.receivedAt.toUtc().toIso8601String(),
+                  'created_by': b.createdBy,
+                  // Carries a lot discard up; null for a normal received batch.
+                  'deleted_at': b.deletedAt?.toUtc().toIso8601String(),
+                },
+              )
+              .toList(),
+          onConflict: 'id',
+        );
+    for (final b in pending) {
+      await db.markProductBatchSynced(b.id);
+    }
+    return pending.length;
+  }
+
+  /// Pushes pending per-lot corrections (idempotent by id). Pushed after batches
+  /// so the adjustment's batch FK exists. The server trigger recomputes the
+  /// rollup + re-checks the lot conflict.
+  Future<int> _pushPendingBatchAdjustments() async {
+    final db = _db!;
+    final pending = await db.getPendingBatchAdjustments();
+    if (pending.isEmpty) return 0;
+    await _supabase
+        .from('batch_adjustments')
+        .upsert(
+          pending
+              .map(
+                (a) => {
+                  'id': a.id,
+                  'batch_id': a.batchId,
+                  'branch_id': a.branchId,
+                  'product_id': a.productId,
+                  'quantity_delta': a.quantityDelta.toString(),
+                  'reason': a.reason,
+                  'created_by': a.createdBy,
+                  'created_at': a.createdAt.toUtc().toIso8601String(),
+                  'deleted_at': a.deletedAt?.toUtc().toIso8601String(),
+                },
+              )
+              .toList(),
+          onConflict: 'id',
+        );
+    for (final a in pending) {
+      await db.markBatchAdjustmentSynced(a.id);
     }
     return pending.length;
   }
@@ -151,9 +244,24 @@ class SyncService implements ISyncService {
     for (final operation in operations) {
       final sale = operation.sale;
       if (sale != null) {
-        final items = (await db.getSaleItems(
-          sale.id,
-        )).map(_saleItemJson).toList();
+        final itemRows = await db.getSaleItems(sale.id);
+        final items = itemRows.map(_saleItemJson).toList();
+        // Wholesale: the FEFO depletion ledger. Null for retail → the RPC takes
+        // the inventory.quantity decrement path. Idempotent by allocation id.
+        final sib = await db.getSaleItemBatchesForItems(
+          itemRows.map((i) => i.id).toList(),
+        );
+        final itemBatches = sib.isEmpty
+            ? null
+            : [
+                for (final s in sib)
+                  {
+                    'id': s.id,
+                    'sale_item_id': s.saleItemId,
+                    'batch_id': s.batchId,
+                    'quantity': s.quantity.toString(),
+                  },
+              ];
         await _supabase.rpc(
           'upsert_sale_with_inventory',
           params: {
@@ -161,6 +269,7 @@ class SyncService implements ISyncService {
             'p_items': items,
             'p_allow_oversell': true,
             'p_discount_reason': null,
+            'p_item_batches': itemBatches,
           },
         );
         await db.markSaleSynced(sale.id);
@@ -220,6 +329,64 @@ class SyncService implements ISyncService {
     'inventory_status': item.inventoryStatus,
     'cost_price_snapshot': item.costPriceSnapshot?.toString(),
   };
+
+  /// Pushes pending refunds through one transactional, idempotent RPC per refund
+  /// (upsert_refund_with_inventory) so the financial record + items + restock
+  /// commit together server-side or not at all. Pushed after inventory work so
+  /// the original_sale_id / sale_item_id FKs exist. Wholesale restock rows are
+  /// gathered by refund id (their ids are reused server-side so the device's
+  /// optimistic rows reconcile on pull); retail restock is derived server-side
+  /// from the refunded lines.
+  Future<int> _pushPendingRefunds() async {
+    final db = _db!;
+    final pending = await db.getPendingRefunds();
+    if (pending.isEmpty) return 0;
+    for (final r in pending) {
+      final items = await db.getRefundItems(r.id);
+      final restockAdj = r.restock
+          ? await db.getRefundRestockAdjustments(r.id)
+          : const <BatchAdjustmentRow>[];
+      await _supabase.rpc(
+        'upsert_refund_with_inventory',
+        params: {
+          'p_refund': {
+            'id': r.id,
+            'original_sale_id': r.originalSaleId,
+            'branch_id': r.branchId,
+            'reason': r.reason,
+            'total_amount': r.totalAmount.toString(),
+            'restock': r.restock,
+            'created_at': r.createdAt.toUtc().toIso8601String(),
+          },
+          'p_items': [
+            for (final i in items)
+              {
+                'id': i.id,
+                'sale_item_id': i.saleItemId,
+                'quantity': i.quantity.toString(),
+                'amount': i.amount.toString(),
+              },
+          ],
+          // retail: null (RPC derives restock from lines); wholesale: non-empty required.
+          // quantity is the positive returned amount (RPC negates it on insert).
+          'p_batch_adjustments': restockAdj.isEmpty
+              ? null
+              : [
+                  for (final a in restockAdj)
+                    {
+                      'id': a.id,
+                      'batch_id': a.batchId,
+                      'product_id': a.productId,
+                      'sale_item_id': a.saleItemId,
+                      'quantity': (-a.quantityDelta).toString(),
+                    },
+                ],
+        },
+      );
+      await db.markRefundSynced(r.id);
+    }
+    return pending.length;
+  }
 
   /// Pushes all pending local expenses in one bulk upsert (idempotent by id).
   Future<int> _pushPendingExpenses() async {

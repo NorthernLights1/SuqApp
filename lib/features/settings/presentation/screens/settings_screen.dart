@@ -160,7 +160,9 @@ class _SyncCardState extends ConsumerState<_SyncCard> {
     final status =
         ref.watch(syncStatusProvider).asData?.value ?? SyncStatus.idle;
     final lastSynced = ref.watch(lastSyncedAtProvider);
+    final pending = ref.watch(pendingPushCountProvider).asData?.value;
     final syncing = status == SyncStatus.syncing;
+    final failed = status == SyncStatus.failed;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -183,6 +185,27 @@ class _SyncCardState extends ConsumerState<_SyncCard> {
               style: AppTextStyles.bodySmall,
             ),
           ),
+          // Sync-health: pending-to-upload count + last sync outcome.
+          _SyncHealthRow(
+            label: 'Waiting to upload',
+            value: pending == null ? '—' : '$pending',
+            valueColor:
+                (pending ?? 0) > 0 ? AppColors.warning : AppColors.success,
+          ),
+          _SyncHealthRow(
+            label: 'Last sync',
+            value: switch (status) {
+              SyncStatus.syncing => 'Syncing…',
+              SyncStatus.failed => 'Failed',
+              SyncStatus.success => 'OK',
+              SyncStatus.idle => 'Idle',
+            },
+            valueColor: failed
+                ? AppColors.error
+                : (status == SyncStatus.success
+                    ? AppColors.success
+                    : AppColors.textSecondary),
+          ),
           const SizedBox(height: 4),
           FilledButton.icon(
             onPressed: syncing ? null : _syncNow,
@@ -196,6 +219,33 @@ class _SyncCardState extends ConsumerState<_SyncCard> {
             label: Text(syncing ? 'Syncing…' : 'Sync now'),
           ),
           const SizedBox(height: 8),
+        ],
+      ),
+    );
+  }
+}
+
+class _SyncHealthRow extends StatelessWidget {
+  const _SyncHealthRow({
+    required this.label,
+    required this.value,
+    required this.valueColor,
+  });
+  final String label;
+  final String value;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: AppTextStyles.bodySmall),
+          Text(value,
+              style: AppTextStyles.bodySmall
+                  .copyWith(fontWeight: FontWeight.w600, color: valueColor)),
         ],
       ),
     );

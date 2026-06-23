@@ -42,7 +42,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 
 | Path | Purpose | Edit when |
 |---|---|---|
-| `data/local/app_database.dart` | Drift DB schema — tables, type converters, all queries | Adding tables or queries |
+| `data/local/app_database.dart` | Drift DB schema (**v19**) — tables, type converters, all queries. Refund tables (v17) + perf indexes (v18) + `batch_adjustments.refundId` link (v19) + `pendingPushCount`/`refundedQtyBySaleItem`/`getRefundTotalByBranchRange`/`getRefundRestockAdjustments` | Adding tables or queries |
 | `data/local/database_provider.dart` | `appDatabaseProvider` — returns `AppDatabase?` (null on web) | Changing DB provider behavior |
 | `data/local/open_database.dart` | Web stub — throws UnsupportedError | Rarely |
 | `data/local/open_database_native.dart` | Native DB opener — `LazyDatabase` pointing to `suq.db` in documents dir | Rarely |
@@ -88,9 +88,11 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 
 | Path | Purpose | Edit when |
 |---|---|---|
-| `inventory/data/inventory_remote.dart` | All Supabase inventory calls — products, stock levels, `addStock`, `correctStock`, `manualAdjustment`, categories, units | Adding inventory operations |
-| `inventory/presentation/providers/inventory_provider.dart` | `productsProvider`, `stockLevelsProvider`, `ProductFormNotifier`, `StockAdjustmentNotifier` (with `addStock`, `correctStock`) | Adding inventory providers |
-| `inventory/presentation/screens/inventory_screen.dart` | Unified product+stock list, bottom sheet actions, `_AddStockDialog`, `_CorrectStockDialog`, `ProductFormScreen` | Changing inventory UI |
+| `inventory/data/inventory_remote.dart` | Supabase inventory calls — products, stock, `addStock`, `correctStock`, `manualAdjustment`, categories, units, `insertBatch`, `insertBatchAdjustment`, web `getProductBatches` (remaining from depletion+adjustment ledgers); `ProductBatchView` (incl. `received`, `receivedAt`, `addedByName`) | Adding inventory operations |
+| `inventory/domain/batch_allocation.dart` | Pure FEFO allocator (`allocateFefo`, `BatchAvailability`, `FefoResult`) — soonest-expiry-first, nulls last, oversell-to-last-lot | Changing FEFO depletion logic |
+| `inventory/presentation/providers/inventory_provider.dart` | `productsProvider`, `stockLevelsProvider`, `productBatchesProvider` (family), `ProductFormNotifier`, `StockAdjustmentNotifier` (`addStock`, `correctStock`, `addStockBatch`, `discardBatch`, `correctBatch`) | Adding inventory providers |
+| `inventory/presentation/screens/inventory_screen.dart` | Unified product+stock list, bottom sheet actions (incl. wholesale BATCHES section + "Batch details"), `_AddStockDialog`, `_CorrectStockDialog`, `ProductFormScreen` (wholesale batch# field) | Changing inventory UI |
+| `inventory/presentation/screens/product_batch_detail_screen.dart` | Wholesale per-lot Details page: card per batch (number/expiry/remaining/received/added-on/added-by) + per-lot **Correct** dialog + **Add batch** dialog | Per-lot detail/correction UI |
 
 ---
 
@@ -120,6 +122,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 | Path | Purpose | Edit when |
 |---|---|---|
 | `settings/presentation/providers/settings_provider.dart` | `BranchNameNotifier` | Adding settings |
+| `settings/presentation/providers/shop_type_provider.dart` | `shopTypeProvider` (retail/wholesale, local-cache fallback) + `AsyncValue<String>.isWholesale` gate | Gating wholesale-only features |
 | `settings/presentation/screens/settings_screen.dart` | Settings UI — shop info, branch edit | Changing settings UI |
 
 ---
@@ -129,7 +132,8 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 | Path | Purpose |
 |---|---|
 | `features/expenses/` | Record expense, categories, date filter |
-| `features/reports/` | Sales summary, gross profit, expense breakdown, low-stock |
+| `features/reports/` | **Card hub** (`reports_screen.dart`) → dedicated `report_sales_screen` / `report_inventory_screen` / `report_expenses_screen` / `report_revenue_screen`; shared `widgets/report_filters.dart` (period/category/stat). `reports_provider.dart` `ReportSummary` now carries `refundTotal` (nets revenue) |
+| `features/refunds/` | Offline-first refunds. `domain/refund_restock.dart` (pure `allocateRestock` FEFO-reverse + `proportionalRefund`), `domain/refunds_repository.dart` (local-first create, optimistic stock, over-refund guard), `data/refunds_remote.dart` (web path). **Both web + native-sync push via the `upsert_refund_with_inventory` RPC (atomic refund+items+restock).** `presentation/providers/refunds_provider.dart` (`createRefundProvider`, `refundedQtyProvider`), `presentation/screens/refund_screen.dart` (partial picker). Entry: Refund action on SaleDetailScreen |
 | `features/staff/` | Staff list, invite via Edge Function (OTP code flow), suspend/restore |
 | `features/dashboard/` | Bottom nav shell, home tab, summary cards |
 | `features/licensing/presentation/providers/license_provider.dart` | `licenseStatusProvider` (trial/expired/blocked), `ActivateLicenseNotifier` |
@@ -175,6 +179,17 @@ Run `flutter gen-l10n` after editing `app_en.arb`.
 | `025_one_shop_one_branch.sql` | Schema constraint for single-shop/branch model |
 | `026_preserve_offline_timestamps.sql` | p_created_at param on record_credit_payment |
 | `027_lock_down_trigger_function.sql` | SECURITY DEFINER audit / trigger hardening |
+| `028_product_batches.sql` | Wholesale batches + sale_item_batches + rollup trigger + wholesale-only backfill |
+| `029_batch_depletion.sql` | Batch-aware rollup (received−depletions), batch-level conflict detection, sale RPC `p_item_batches`, wholesale void = soft-delete ledger |
+| `030_batch_discard_and_conflict_autoclose.sql` | Rollup ignores discarded lots' depletions; `detect_batch_conflict` auto-closes on recovery/discard |
+| `031_batch_created_by.sql` | `product_batches.created_by` (nullable uuid) — "added by" on the batch details page |
+| `032_batch_adjustments.sql` | Per-lot correction ledger; rollup + conflict gain the adjustment term (`remaining = received − depletions − corrections`), trigger recomputes; preserves 030 |
+| `033_refunds.sql` | Refunds offline-first: `refunds.branch_id` + `refunds.restock` + sync metadata (updated_at/deleted_at/trigger/index) on refunds + refund_items. |
+| `034_harden_handle_new_user.sql` | Pin `search_path` on `handle_new_user()` (Phase D security audit). |
+| `035_lock_down_batch_trigger_functions.sql` | Revoke RPC EXECUTE on the batch trigger functions (`detect_batch_conflict`, `recompute_product_rollup`, `on_*_change`) — advisor 0028/0029, mirrors 027. |
+| `036_upsert_refund_with_inventory.sql` | Atomic+idempotent refund RPC (refund+items+restock in one txn; server-side over-refund validation). Mirrors `upsert_sale_with_inventory`. Both web + native-sync push refunds through it. |
+
+**All migrations `001`–`036` are applied to the live project** (via Supabase MCP).
 
 ---
 

@@ -41,6 +41,21 @@ final lastSyncedAtProvider = FutureProvider<DateTime?>((ref) {
   return ref.read(syncServiceProvider).lastSyncedAt();
 });
 
+/// How many local rows are still waiting to upload — for the sync-health view.
+/// Recounts after each sync and whenever the pending-work flag flips. 0 on web.
+final pendingPushCountProvider = StreamProvider<int>((ref) async* {
+  ref.watch(syncStatusProvider); // re-evaluate after a sync run
+  final db = ref.watch(appDatabaseProvider);
+  if (db == null) {
+    yield 0;
+    return;
+  }
+  // Recount on every pending-work change (a write enqueues, a push clears).
+  await for (final _ in db.watchHasPendingWork()) {
+    yield await db.pendingPushCount();
+  }
+});
+
 /// Owns the trigger wiring (connectivity / backstop / cold start / login).
 /// Instantiate once from the app root so it stays alive for the session.
 final syncSchedulerProvider = Provider<SyncScheduler>((ref) {

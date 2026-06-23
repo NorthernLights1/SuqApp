@@ -1,6 +1,6 @@
 # Current State — Suq ERP
 
-Last updated: 2026-06-20
+Last updated: 2026-06-22
 
 ---
 
@@ -9,9 +9,10 @@ Last updated: 2026-06-20
 **Suq** — mobile ERP for small shop owners. Flutter + Supabase.
 Package: `com.temesgen.suq` | Repo: `NorthernLights1/SuqApp`
 Flutter app root: `c:/Projects/SuqApp/`
-Active branch: `feat/action-feedback` (in progress — action feedback / UX polish).
+Active branch: `feat/batch-tracking` (wholesale batch/expiry + per-lot details +
+correction). Cut from `feat/wholesale-support` ← `feat/action-feedback`.
 `security` merged to `main` (PR #1). `offline-first_v2` merged to `main` (PR #4).
-Push: `git push origin <branch>`
+Push: `git push origin <branch>` — NOT pushed yet (awaiting CodeRabbit pass).
 
 ## Build & Distribution
 - APK built on GitHub Actions (`.github/workflows/build-apk.yml`, manual
@@ -57,8 +58,8 @@ Push: `git push origin <branch>`
 
 ## What Works Right Now
 
-- `flutter analyze` — 0 issues ✅ (last run 2026-06-19, session 20)
-- `flutter test` — 134 tests passing ✅ (last run 2026-06-17, session 19)
+- `flutter analyze` — 0 issues ✅ (last run 2026-06-22)
+- `flutter test` — 161 tests passing ✅ (last run 2026-06-22)
 - Auth (signup/login/logout) ✅
 - Onboarding: shop + branch creation + default settings ✅
 - Dashboard: home summary, sales tab (color-coded), inventory tab, **credits tab**, more tab ✅
@@ -74,6 +75,99 @@ Push: `git push origin <branch>`
 - Reports: today/week/month, sales summary, gross profit, expense breakdown, low-stock ✅
 - Settings: branch name edit ✅; inventory mode toggle removed (enforcement is unconditional, no UI for it)
 - Staff: member list, suspend/restore, invite via email (Edge Function) ✅
+
+---
+
+## Retail vs Wholesale (shop_type) — NEW
+
+Suq now serves two business types, chosen at onboarding and **locked** afterward
+(pricing implications deferred).
+
+- **`shop_type` shop_setting** (`'retail'` | `'wholesale'`), written during shop
+  creation in `OnboardingNotifier.createShop`. Onboarding step 1 ("What kind of
+  business?") selects it before naming the shop; onboarding is now **5 steps**.
+- **`shopTypeProvider`** (`features/settings/.../shop_type_provider.dart`) —
+  FutureProvider reading the setting; local-cache fallback offline. Extension
+  `AsyncValue<String>.isWholesale` is the gate any feature uses:
+  `if (ref.watch(shopTypeProvider).isWholesale) ...`.
+- **Gated so far:** mandatory customer on every sale (wholesale) — the new-sale
+  `_submit` blocks a customer-less sale when wholesale; the customer picker shows
+  "(required)". Retail keeps customer optional (still required for credit).
+- **Custom units of measurement** (both types): "New unit" inline in the product
+  form unit picker → `InventoryRepository.createMeasurementUnit` (remote create +
+  optimistic local mirror; `measurement_units` already shop-scoped + in delta pull).
+  Online-only create (ponytail: reference data, added rarely while connected).
+- **Batch tracking FEATURE-COMPLETE (Phases 1–4 + the 2026-06-22 follow-ups),
+  unverified on a device.** Immutable batches + append-only ledgers;
+  `remaining = received − Σ(sale_item_batches) − Σ(batch_adjustments)`; the
+  rollup is the same minus the product total. Migrations `028`–`032` all applied
+  live via MCP. `029`: batch-aware rollup + **batch-level conflict detection** +
+  sale RPC `p_item_batches` + wholesale void = soft-delete ledger. `030`: lot
+  discard + conflict auto-close. `031`: `product_batches.created_by` ("added by").
+  `032`: `batch_adjustments` per-lot correction ledger (rollup/conflict gain the
+  adjustment term, preserving 030). Sale draws soonest-expiry-first; expired =
+  warn-but-allow. **Schema v16. 154 tests pass.**
+- **2026-06-22 wholesale follow-ups (this session, all committed, unpushed):**
+  - #1 batch/lot number REQUIRED at first stock-in (wholesale) `384c620`.
+  - #2 **Batch details page** (`product_batch_detail_screen.dart`): per-lot card —
+    batch #, expiry, remaining, received qty, added-on, **added-by** (`031`) `6d684ee`.
+  - #3 **per-lot correction** (counted qty + reason → `batch_adjustments`, audit
+    trail; lowers remaining + stock + sellable) + **add-batch** action `905ad18`.
+  - Plus the BLOCK-MERGE review fixes `1365841` (v14 migration crash guard,
+    atomic createSale, no-lot guard, rollup clears stale expiry) and a web
+    fallback for batch reads `8ff3b48` (Chrome has no local DB).
+- **Deferred (post-pilot, rare):** bespoke batch-conflict resolution screen,
+  recall report ("which customers got lot X" — server query over
+  `sale_item_batches`; tracked, will live on the **Reports** screen).
+- **Next:** #4 reports segregation (Sales / Inventory / Expenses / Revenue — no
+  schema). Then refunds (couples to batches), extra customer fields.
+
+---
+
+## 2026-06-22 (later session) — Reports segregation + Refunds + Phase D
+
+All committed locally on `feat/batch-tracking`, UNPUSHED. Migrations `033`–`036`
+**applied live** 2026-06-22 (no prod users). Schema **v19**. 163 tests.
+(`035` = advisor follow-up; `036` = atomic refund RPC from CodeRabbit review.)
+
+**CodeRabbit BLOCK addressed (2026-06-22):** over-refund now enforced at the
+repository boundary AND server-side in the RPC; web `refundedQtyBySaleItem`
+queries the server (no longer `{}`); wholesale restock FAILS if the lots can't
+absorb the return; refund push is now ONE transactional idempotent RPC
+(`upsert_refund_with_inventory`) for both web + native-sync — refund + items +
+restock commit together (was multi-call). Retail restock is server-derived from
+the lines (optimistic local stock bump); wholesale restock rows carry client ids
+the RPC reuses (`batch_adjustments.refundId` link, schema v19) so they reconcile
+on pull. Mirrors `upsert_sale_with_inventory`.
+
+- **Reports segregation (#4) — DONE** `c17c0d1`. Reports is now a **card hub**
+  (period selector + 4 tappable cards) opening dedicated **Sales / Inventory /
+  Expenses / Revenue** screens. Shared period/category/stat widgets extracted to
+  `reports/.../widgets/report_filters.dart`. Reuses `reportSummaryProvider` /
+  `stockLevelsProvider` — no schema/provider change, still offline-first.
+- **Refunds — DONE (offline-first, partial, optional restock)** `b8dc821`.
+  Migration `033` wires the dormant `refunds`/`refund_items` tables into the
+  replica model (+`branch_id`, +`restock`, +sync metadata). Partial (per
+  item/qty), local-first (`isSynced=false`, SyncService sole pusher), delta-pull
+  back, over-refund capped app-side (`refundedQtyBySaleItem`). **Restock rides
+  existing idempotent ledgers — no new RPC:** retail → additive `'restock'`
+  inventory_adjustment; wholesale → negative `batch_adjustments` on the lots the
+  line drew from (pure FEFO-reverse allocator `allocateRestock`). Refunds net out
+  of reported revenue (local + web). Drift v17 (+LocalRefunds/LocalRefundItems).
+  Entry: **Refund** action on SaleDetailScreen (gated `refund_own`/`refund_any`).
+  `lib/features/refunds/`. 6 tests. ponytail: no refund payment-method picker
+  (only the deferred cash-reconciliation needs it).
+- **Offline v2 Phase D — partial** `98a5279`. DONE: (a) hot-path Drift **indexes**
+  (is_synced/FK/shop-branch) on fresh-create + v17→v18 upgrade; (b) **sync-health**
+  in Settings sync card (pending-to-upload count + last sync outcome;
+  `pendingPushCountProvider`; `local_refunds` added to the pending-work watcher);
+  (c) **JWT refresh** before the first post-reconnect push (don't 401-and-swallow);
+  (d) **SECURITY DEFINER audit** → migration `034` pins `search_path` on
+  `handle_new_user()` (last mutable-path definer fn; no dynamic-SQL surface
+  found). DEFERRED with reasons: first-pull pagination/retention
+  (data-loss-adjacent — own session); SQLCipher (already past-pilot).
+- **Pending live steps:** apply migrations `033` + `034` to the live project;
+  CodeRabbit pass; device verification of refunds (retail + wholesale restock).
 
 ---
 
@@ -223,7 +317,20 @@ Auth methods live in `AuthNotifier`: `sendInviteCode()`, `claimInvite()`.
 
 ## Drift / Offline Architecture (Phase 5)
 
-**Local DB**: `lib/data/local/app_database.dart` — tables: LocalProducts, LocalStock, LocalSales, LocalSaleItems, LocalCustomers.
+**Local DB**: `lib/data/local/app_database.dart` — tables incl. LocalProducts,
+LocalStock, LocalProductBatches, LocalSaleItemBatches, **LocalBatchAdjustments**,
+LocalSales, LocalSaleItems, **LocalRefunds, LocalRefundItems**, LocalCustomers.
+Schema **v18** (v12 batches, v13 sale-item-batches ledger, v14 batch `deletedAt`,
+v15 batch `createdBy`, v16 `local_batch_adjustments`, **v17 refunds/refund_items,
+v18 hot-path performance indexes**). **Migration-guard caveat:** batch-table `addColumn`
+steps are guarded `from >= 12` because the v12 `createTable` already builds the
+current schema (a <12 upgrade must not re-add the column — see the v14/v15 steps).
+
+**Batch tracking (wholesale) — Phases 1–4 + per-lot correction DONE**:
+`product_batches` (server) holds qty/expiry/batch/created_by per lot;
+`sale_item_batches` = depletion ledger; `batch_adjustments` = correction ledger.
+Triggers keep `inventory.quantity = Σreceived − Σdepletions − Σcorrections`.
+Device mirrors all three via delta pulls. Retail untouched (no batches).
 
 **Write path (sales)**: `SalesRepository.createSale` → write to Drift
 (`isSynced=false`) + update local stock. No inline push (offline-first v2 single
@@ -270,7 +377,9 @@ adjustments remain per-row (server-side delta accumulator).
 - Product/category **edit** (updateProduct) still remote-only; create is now offline-first
 - Hardcoded strings throughout screens violate l10n rule (`app_en.arb` not used)
 - No error boundaries — raw Supabase exceptions reach snackbars
-- Permission cache TTL not implemented (role changes need app restart)
+- Permission cache TTL not implemented (mid-session role changes still need an
+  app restart). 2026-06-22: hardened so it never caches an EMPTY result and
+  refreshes on onboarding finish — fixed "new owner stuck at cashier-level".
 - `Decimal.parse()` without try-catch in models — can throw on malformed DB data
 - `FilteringTextInputFormatter` allows multiple decimal points (e.g. "1.2.3") — `Decimal.tryParse` returns null and validation catches it, but a smarter formatter could reject mid-input
 - Expenses & customers push as bulk upsert — a single invalid row blocks that batch (sales/adjustments/credit payments already per-row failure-isolated)

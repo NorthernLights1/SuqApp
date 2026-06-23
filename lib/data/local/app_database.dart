@@ -57,6 +57,123 @@ class LocalStock extends Table {
   Set<Column> get primaryKey => {productId, branchId};
 }
 
+/// One batch/lot of a product at a branch — its own qty, expiry, batch number.
+/// Wholesale-only (retail shops have no batches). The server keeps
+/// `inventory.quantity` as the rollup of these; the device mirrors them for FEFO
+/// depletion + expiry display. Offline-created batches (add-stock) set
+/// isSynced=false so the push queue picks them up.
+@DataClassName('ProductBatchRow')
+class LocalProductBatches extends Table {
+  TextColumn get id => text()();
+  TextColumn get branchId => text()();
+  TextColumn get productId => text()();
+  TextColumn get batchNumber => text().nullable()();
+  DateTimeColumn get expiryDate => dateTime().nullable()();
+  TextColumn get quantity => text().map(const _Dec())();
+  TextColumn get costPrice => text().nullable().map(const _NullDec())();
+  DateTimeColumn get receivedAt => dateTime()();
+  DateTimeColumn get syncedAt => dateTime()();
+  // Discard (expired/damaged lot): set locally, pushed up, then the pull
+  // hard-removes the row once the server soft-delete comes back.
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+  // User who added this lot (stock-in / opening stock); null for backfilled or
+  // server-origin rows. Resolved to a display name via the profiles mirror.
+  TextColumn get createdBy => text().nullable()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// The depletion ledger (wholesale): how much of each sale line was drawn from
+/// each batch. Append-only; a void soft-deletes (sets deletedAt). Mirrors
+/// `sale_item_batches`. No isSynced — these ride the sale's push (the sale RPC
+/// inserts them via p_item_batches), and are pulled back for cross-device
+/// per-batch remaining accuracy.
+@DataClassName('SaleItemBatchRow')
+class LocalSaleItemBatches extends Table {
+  TextColumn get id => text()();
+  TextColumn get saleItemId => text()();
+  TextColumn get batchId => text()();
+  TextColumn get quantity => text().map(const _Dec())();
+  DateTimeColumn get syncedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// Per-lot stock corrections (wholesale). Append-only: a miscount/damage on one
+/// lot records the quantity removed (positive delta) or added back (negative)
+/// with a reason. Mirrors `batch_adjustments`. remaining(batch) = received −
+/// Σ(depletions) − Σ(adjustments). Offline-created corrections set isSynced=false.
+@DataClassName('BatchAdjustmentRow')
+class LocalBatchAdjustments extends Table {
+  TextColumn get id => text()();
+  TextColumn get batchId => text()();
+  TextColumn get branchId => text()();
+  TextColumn get productId => text()();
+  TextColumn get quantityDelta => text().map(const _Dec())();
+  TextColumn get reason => text().nullable()();
+  TextColumn get createdBy => text().nullable()();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get syncedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(true))();
+  // Local-only link: when this correction is a refund restock, the originating
+  // refund id. Lets the refund push gather + send these lots' ids to the RPC
+  // (so server + device rows share ids and reconcile on pull). Never pushed as a
+  // column directly by generic adjustment sync; refund RPC sets it server-side.
+  TextColumn get refundId => text().nullable()();
+  // Local/server link for refund restocks: which sale line this lot was
+  // restored for, so repeated partial refunds cannot keep filling the first lot.
+  TextColumn get saleItemId => text().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// A refund against a completed sale (offline-first). Partial by design: the
+/// returned lines live in [LocalRefundItems]. `restock` records whether the
+/// goods went back to stock — the stock effect itself rides the existing
+/// ledgers (inventory_adjustments type 'refund' for retail; negative
+/// batch_adjustments for wholesale), not this table. Offline-created refunds set
+/// isSynced=false so the push queue picks them up.
+@DataClassName('RefundRow')
+class LocalRefunds extends Table {
+  TextColumn get id => text()();
+  TextColumn get originalSaleId => text()();
+  TextColumn get branchId => text()();
+  TextColumn get refundedBy => text()();
+  TextColumn get reason => text()();
+  TextColumn get totalAmount => text().map(const _Dec())();
+  BoolColumn get restock => boolean().withDefault(const Constant(false))();
+  DateTimeColumn get createdAt => dateTime()();
+  DateTimeColumn get syncedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+  BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// The returned lines of a refund. quantity = units returned from that
+/// sale_item; amount = money refunded for them. No isSynced: these ride the
+/// parent refund's push (and are pulled back for the remaining-refundable cap).
+@DataClassName('RefundItemRow')
+class LocalRefundItems extends Table {
+  TextColumn get id => text()();
+  TextColumn get refundId => text()();
+  TextColumn get saleItemId => text()();
+  TextColumn get quantity => text().map(const _Dec())();
+  TextColumn get amount => text().map(const _Dec())();
+  DateTimeColumn get syncedAt => dateTime()();
+  DateTimeColumn get deletedAt => dateTime().nullable()();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
 @DataClassName('SaleRow')
 class LocalSales extends Table {
   TextColumn get id => text()();
@@ -197,7 +314,8 @@ class LocalBranches extends Table {
 class LocalShopSettings extends Table {
   TextColumn get shopId => text()();
   TextColumn get key => text()();
-  TextColumn get value => text()(); // raw json-encoded value, as stored remotely
+  TextColumn get value =>
+      text()(); // raw json-encoded value, as stored remotely
   DateTimeColumn get syncedAt => dateTime()();
 
   @override
@@ -304,101 +422,189 @@ class LocalSyncState extends Table {
 
 // ─── Database ─────────────────────────────────────────────────────────────────
 
-@DriftDatabase(tables: [
-  LocalProducts,
-  LocalStock,
-  LocalSales,
-  LocalSaleItems,
-  LocalCustomers,
-  LocalExpenses,
-  LocalInventoryAdjustments,
-  LocalShops,
-  LocalBranches,
-  LocalShopSettings,
-  LocalPaymentMethods,
-  LocalProductCategories,
-  LocalMeasurementUnits,
-  LocalProfiles,
-  LocalExpenseCategories,
-  LocalCreditPayments,
-  LocalSyncState,
-])
+@DriftDatabase(
+  tables: [
+    LocalProducts,
+    LocalStock,
+    LocalProductBatches,
+    LocalSaleItemBatches,
+    LocalBatchAdjustments,
+    LocalSales,
+    LocalSaleItems,
+    LocalRefunds,
+    LocalRefundItems,
+    LocalCustomers,
+    LocalExpenses,
+    LocalInventoryAdjustments,
+    LocalShops,
+    LocalBranches,
+    LocalShopSettings,
+    LocalPaymentMethods,
+    LocalProductCategories,
+    LocalMeasurementUnits,
+    LocalProfiles,
+    LocalExpenseCategories,
+    LocalCreditPayments,
+    LocalSyncState,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase(super.e);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 20;
+
+  /// Hot-path indexes on the local replica: pending-scan (`is_synced`), FK joins
+  /// used by the per-sale/-batch lookups, and shop/branch filters. Idempotent
+  /// (IF NOT EXISTS) so it's safe to run on both fresh-create and upgrade.
+  Future<void> _createPerformanceIndexes() async {
+    const statements = [
+      'CREATE INDEX IF NOT EXISTS idx_local_sales_synced ON local_sales (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_sales_branch_created ON local_sales (branch_id, created_at)',
+      'CREATE INDEX IF NOT EXISTS idx_local_sale_items_sale ON local_sale_items (sale_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_inv_adj_synced ON local_inventory_adjustments (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_product_batches_branch_product ON local_product_batches (branch_id, product_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_product_batches_synced ON local_product_batches (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_sib_sale_item ON local_sale_item_batches (sale_item_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_sib_batch ON local_sale_item_batches (batch_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_batch_adj_batch ON local_batch_adjustments (batch_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_batch_adj_synced ON local_batch_adjustments (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_refunds_sale ON local_refunds (original_sale_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_refunds_synced ON local_refunds (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_refund_items_refund ON local_refund_items (refund_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_products_shop ON local_products (shop_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_products_synced ON local_products (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_customers_shop ON local_customers (shop_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_customers_synced ON local_customers (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_expenses_branch ON local_expenses (branch_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_expenses_synced ON local_expenses (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_credit_payments_sale ON local_credit_payments (sale_id)',
+      'CREATE INDEX IF NOT EXISTS idx_local_credit_payments_synced ON local_credit_payments (is_synced)',
+      'CREATE INDEX IF NOT EXISTS idx_local_product_categories_synced ON local_product_categories (is_synced)',
+    ];
+    for (final s in statements) {
+      await customStatement(s);
+    }
+  }
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
-        onUpgrade: (m, from, to) async {
-          // v1 -> v2: offline-first expenses queue.
-          if (from < 2) await m.createTable(localExpenses);
-          // v2 -> v3: offline-first inventory adjustments queue.
-          if (from < 3) await m.createTable(localInventoryAdjustments);
-          // v3 -> v4: credit settlement state on the local sales mirror.
-          if (from < 4) {
-            await m.addColumn(localSales, localSales.creditSettledAt);
-          }
-          // v4 -> v5: offline-first read caches (shop/branches/settings/payment
-          // methods/categories/units/profiles/credit payments).
-          if (from < 5) {
-            await m.createTable(localShops);
-            await m.createTable(localBranches);
-            await m.createTable(localShopSettings);
-            await m.createTable(localPaymentMethods);
-            await m.createTable(localProductCategories);
-            await m.createTable(localMeasurementUnits);
-            await m.createTable(localProfiles);
-            await m.createTable(localCreditPayments);
-          }
-          // v5 -> v6: expense categories read cache.
-          if (from < 6) await m.createTable(localExpenseCategories);
-          // v6 -> v7: offline-first v2 — per-table delta-pull cursors +
-          // denormalized customer/cashier/payment names on the local sales
-          // mirror (so offline detail screens render without a Supabase join).
-          if (from < 7) {
-            await m.createTable(localSyncState);
-            await m.addColumn(localSales, localSales.customerName);
-            await m.addColumn(localSales, localSales.cashierName);
-            await m.addColumn(localSales, localSales.paymentMethodName);
-          }
-          // v7 -> v8: offline credit settlement — credit payments can be
-          // recorded offline and queued for push.
-          // Lower bound matters: localCreditPayments is created (createTable) in
-          // the v5 step, which always builds the *current* schema — so a DB at
-          // from < 5 already gets isSynced from createTable and must NOT addColumn
-          // it again (that would be a duplicate-column error). Only DBs created at
-          // v5–v7 (before isSynced was added) need the retrofit.
-          if (from >= 5 && from < 8) {
-            await m.addColumn(localCreditPayments, localCreditPayments.isSynced);
-          }
-          // v8 -> v9: store the sale-level settlement method locally so an
-          // offline settlement matches the online path.
-          if (from < 9) {
-            await m.addColumn(
-                localSales, localSales.creditSettlementMethod);
-          }
-          // v9 -> v10: retain stock expiry dates in the offline mirror.
-          if (from < 10) {
-            await m.addColumn(localStock, localStock.expiryDate);
-          }
-          // v10 -> v11: offline-first product and category creation.
-          // localProducts exists since v1 — all existing DBs need addColumn.
-          // localProductCategories was created in the v5 step via createTable,
-          // which picks up the current schema at compile time. DBs that upgraded
-          // through v5 already have isSynced from that createTable call; only
-          // DBs that were already at v5+ before this change need addColumn.
-          if (from < 11) {
-            await m.addColumn(localProducts, localProducts.isSynced);
-            if (from >= 5) {
-              await m.addColumn(
-                  localProductCategories, localProductCategories.isSynced);
-            }
-          }
-        },
-      );
+    onCreate: (m) async {
+      await m.createAll();
+      await _createPerformanceIndexes();
+    },
+    onUpgrade: (m, from, to) async {
+      // v1 -> v2: offline-first expenses queue.
+      if (from < 2) await m.createTable(localExpenses);
+      // v2 -> v3: offline-first inventory adjustments queue.
+      if (from < 3) await m.createTable(localInventoryAdjustments);
+      // v3 -> v4: credit settlement state on the local sales mirror.
+      if (from < 4) {
+        await m.addColumn(localSales, localSales.creditSettledAt);
+      }
+      // v4 -> v5: offline-first read caches (shop/branches/settings/payment
+      // methods/categories/units/profiles/credit payments).
+      if (from < 5) {
+        await m.createTable(localShops);
+        await m.createTable(localBranches);
+        await m.createTable(localShopSettings);
+        await m.createTable(localPaymentMethods);
+        await m.createTable(localProductCategories);
+        await m.createTable(localMeasurementUnits);
+        await m.createTable(localProfiles);
+        await m.createTable(localCreditPayments);
+      }
+      // v5 -> v6: expense categories read cache.
+      if (from < 6) await m.createTable(localExpenseCategories);
+      // v6 -> v7: offline-first v2 — per-table delta-pull cursors +
+      // denormalized customer/cashier/payment names on the local sales
+      // mirror (so offline detail screens render without a Supabase join).
+      if (from < 7) {
+        await m.createTable(localSyncState);
+        await m.addColumn(localSales, localSales.customerName);
+        await m.addColumn(localSales, localSales.cashierName);
+        await m.addColumn(localSales, localSales.paymentMethodName);
+      }
+      // v7 -> v8: offline credit settlement — credit payments can be
+      // recorded offline and queued for push.
+      // Lower bound matters: localCreditPayments is created (createTable) in
+      // the v5 step, which always builds the *current* schema — so a DB at
+      // from < 5 already gets isSynced from createTable and must NOT addColumn
+      // it again (that would be a duplicate-column error). Only DBs created at
+      // v5–v7 (before isSynced was added) need the retrofit.
+      if (from >= 5 && from < 8) {
+        await m.addColumn(localCreditPayments, localCreditPayments.isSynced);
+      }
+      // v8 -> v9: store the sale-level settlement method locally so an
+      // offline settlement matches the online path.
+      if (from < 9) {
+        await m.addColumn(localSales, localSales.creditSettlementMethod);
+      }
+      // v9 -> v10: retain stock expiry dates in the offline mirror.
+      if (from < 10) {
+        await m.addColumn(localStock, localStock.expiryDate);
+      }
+      // v10 -> v11: offline-first product and category creation.
+      // localProducts exists since v1 — all existing DBs need addColumn.
+      // localProductCategories was created in the v5 step via createTable,
+      // which picks up the current schema at compile time. DBs that upgraded
+      // through v5 already have isSynced from that createTable call; only
+      // DBs that were already at v5+ before this change need addColumn.
+      if (from < 11) {
+        await m.addColumn(localProducts, localProducts.isSynced);
+        if (from >= 5) {
+          await m.addColumn(
+            localProductCategories,
+            localProductCategories.isSynced,
+          );
+        }
+      }
+      // v11 -> v12: wholesale batch/expiry mirror (FEFO depletion + expiry).
+      if (from < 12) await m.createTable(localProductBatches);
+      // v12 -> v13: wholesale depletion ledger (sale_item_batches mirror).
+      if (from < 13) await m.createTable(localSaleItemBatches);
+      // v13 -> v14: lot discard (soft-delete) on the batch mirror.
+      // localProductBatches is created (createTable) in the v12 step, which
+      // always builds the *current* schema — so a DB at from < 12 already
+      // gets deletedAt there and must NOT addColumn it again (duplicate-
+      // column error). Only DBs that were already at v12/v13 (table created
+      // before deletedAt existed) need the retrofit.
+      if (from >= 12 && from < 14) {
+        await m.addColumn(localProductBatches, localProductBatches.deletedAt);
+      }
+      // v14 -> v15: record who added each lot. Same createTable caveat as
+      // v14 — a DB from < 12 already has createdBy from the v12 step, so only
+      // DBs already at v12-v14 need the retrofit.
+      if (from >= 12 && from < 15) {
+        await m.addColumn(localProductBatches, localProductBatches.createdBy);
+      }
+      // v15 -> v16: per-lot correction ledger.
+      if (from < 16) await m.createTable(localBatchAdjustments);
+      // v16 -> v17: offline-first refunds (record side; restock rides the
+      // existing inventory_adjustments / batch_adjustments ledgers).
+      if (from < 17) {
+        await m.createTable(localRefunds);
+        await m.createTable(localRefundItems);
+      }
+      // v17 -> v18: hot-path indexes on the local replica.
+      if (from < 18) await _createPerformanceIndexes();
+      // v18 -> v19: local-only refund link on batch adjustments. Guarded
+      // from >= 16 because the v16 createTable already builds the current
+      // schema (a < 16 upgrade gets refundId there, must not re-add it).
+      if (from >= 16 && from < 19) {
+        await m.addColumn(
+          localBatchAdjustments,
+          localBatchAdjustments.refundId,
+        );
+      }
+      if (from >= 16 && from < 20) {
+        await m.addColumn(
+          localBatchAdjustments,
+          localBatchAdjustments.saleItemId,
+        );
+      }
+    },
+  );
 
   // ── Products ───────────────────────────────────────────────────────────────
 
@@ -409,8 +615,9 @@ class AppDatabase extends _$AppDatabase {
       (select(localProducts)..where((t) => t.isSynced.equals(false))).get();
 
   Future<void> markProductSynced(String id) =>
-      (update(localProducts)..where((t) => t.id.equals(id)))
-          .write(const LocalProductsCompanion(isSynced: Value(true)));
+      (update(localProducts)..where((t) => t.id.equals(id))).write(
+        const LocalProductsCompanion(isSynced: Value(true)),
+      );
 
   Future<List<ProductRow>> getProductsByShop(String shopId) =>
       (select(localProducts)
@@ -420,10 +627,12 @@ class AppDatabase extends _$AppDatabase {
 
   Future<List<ProductRow>> searchProducts(String shopId, String query) =>
       (select(localProducts)
-            ..where((t) =>
-                t.shopId.equals(shopId) &
-                t.isActive.equals(true) &
-                t.name.like('%$query%'))
+            ..where(
+              (t) =>
+                  t.shopId.equals(shopId) &
+                  t.isActive.equals(true) &
+                  t.name.like('%$query%'),
+            )
             ..limit(20))
           .get();
 
@@ -432,38 +641,410 @@ class AppDatabase extends _$AppDatabase {
   Future<void> upsertStock(List<LocalStockCompanion> rows) =>
       batch((b) => b.insertAllOnConflictUpdate(localStock, rows));
 
+  // ── Product batches (wholesale) ──────────────────────────────────────────────
+
+  Future<void> upsertProductBatches(List<LocalProductBatchesCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localProductBatches, rows));
+
+  /// A product's batches at a branch in FEFO order: soonest expiry first, nulls
+  /// (non-perishable) last. Empty/zero batches are kept out of depletion by the
+  /// caller. Used by Phase 3 (depletion) and Phase 4 (expiry display).
+  Future<List<ProductBatchRow>> getBatchesForProduct(
+    String branchId,
+    String productId,
+  ) =>
+      (select(localProductBatches)
+            ..where(
+              (t) =>
+                  t.branchId.equals(branchId) &
+                  t.productId.equals(productId) &
+                  t.deletedAt.isNull(),
+            ) // discarded lots are excluded everywhere
+            ..orderBy([
+              (t) => OrderingTerm.asc(t.expiryDate, nulls: NullsOrder.last),
+            ]))
+          .get();
+
+  Future<ProductBatchRow?> getBatch(String id) => (select(
+    localProductBatches,
+  )..where((t) => t.id.equals(id))).getSingleOrNull();
+
+  /// Discard a lot (expired/damaged): soft-delete locally + queue the push. The
+  /// caller recomputes the product rollup afterwards.
+  Future<void> discardBatch(String id, DateTime when) =>
+      (update(localProductBatches)..where((t) => t.id.equals(id))).write(
+        LocalProductBatchesCompanion(
+          deletedAt: Value(when),
+          isSynced: const Value(false),
+        ),
+      );
+
+  Future<List<ProductBatchRow>> getPendingProductBatches() => (select(
+    localProductBatches,
+  )..where((t) => t.isSynced.equals(false))).get();
+
+  Future<void> markProductBatchSynced(String id) =>
+      (update(localProductBatches)..where((t) => t.id.equals(id))).write(
+        const LocalProductBatchesCompanion(isSynced: Value(true)),
+      );
+
+  /// Product ids at [branchId] with an unpushed batch — so a background stock
+  /// refresh won't clobber the optimistic rollup before the batch syncs.
+  Future<Set<String>> getPendingBatchProductIds(String branchId) async {
+    final rows =
+        await (select(localProductBatches)..where(
+              (t) => t.branchId.equals(branchId) & t.isSynced.equals(false),
+            ))
+            .get();
+    return rows.map((r) => r.productId).toSet();
+  }
+
+  /// Product ids at [branchId] with pending refund restocks, including
+  /// refund-linked batch adjustments that are deliberately marked synced.
+  Future<Set<String>> getPendingRefundRestockProductIds(String branchId) async {
+    final pendingRefundRows = await customSelect(
+      '''
+      SELECT DISTINCT si.product_id AS product_id
+      FROM local_refunds r
+      INNER JOIN local_refund_items ri ON ri.refund_id = r.id
+      INNER JOIN local_sale_items si ON si.id = ri.sale_item_id
+      WHERE r.branch_id = ?
+        AND r.restock = 1
+        AND r.is_synced = 0
+        AND r.deleted_at IS NULL
+        AND ri.deleted_at IS NULL
+        AND si.product_id IS NOT NULL
+      ''',
+      variables: [Variable.withString(branchId)],
+      readsFrom: {localRefunds, localRefundItems, localSaleItems},
+    ).get();
+    final refundBatchRows = await customSelect(
+      '''
+      SELECT DISTINCT ba.product_id AS product_id
+      FROM local_batch_adjustments ba
+      INNER JOIN local_refunds r ON r.id = ba.refund_id
+      WHERE ba.branch_id = ?
+        AND ba.refund_id IS NOT NULL
+        AND ba.deleted_at IS NULL
+        AND r.restock = 1
+        AND r.is_synced = 0
+        AND r.deleted_at IS NULL
+      ''',
+      variables: [Variable.withString(branchId)],
+      readsFrom: {localBatchAdjustments, localRefunds},
+    ).get();
+    return {
+      for (final row in pendingRefundRows) row.read<String>('product_id'),
+      for (final row in refundBatchRows) row.read<String>('product_id'),
+    };
+  }
+
+  // ── Sale-item batches (depletion ledger, wholesale) ──────────────────────────
+
+  Future<void> upsertSaleItemBatches(
+    List<LocalSaleItemBatchesCompanion> rows,
+  ) => batch((b) => b.insertAllOnConflictUpdate(localSaleItemBatches, rows));
+
+  /// Non-deleted depletion summed per batch, for the given batch ids. Used to
+  /// compute FEFO `remaining(batch) = received − depleted`.
+  Future<Map<String, Decimal>> depletionByBatch(List<String> batchIds) async {
+    if (batchIds.isEmpty) return {};
+    final rows = await (select(
+      localSaleItemBatches,
+    )..where((t) => t.batchId.isIn(batchIds) & t.deletedAt.isNull())).get();
+    final map = <String, Decimal>{};
+    for (final r in rows) {
+      map[r.batchId] = (map[r.batchId] ?? Decimal.zero) + r.quantity;
+    }
+    return map;
+  }
+
+  /// The active depletions for a sale's items — used to build the sale RPC's
+  /// `p_item_batches` payload on push.
+  Future<List<SaleItemBatchRow>> getSaleItemBatchesForItems(
+    List<String> saleItemIds,
+  ) {
+    if (saleItemIds.isEmpty) return Future.value(const []);
+    return (select(localSaleItemBatches)
+          ..where((t) => t.saleItemId.isIn(saleItemIds) & t.deletedAt.isNull()))
+        .get();
+  }
+
+  /// Void: soft-delete a sale's depletions so the local rollup restores.
+  Future<void> softDeleteSaleItemBatches(
+    List<String> saleItemIds,
+    DateTime when,
+  ) async {
+    if (saleItemIds.isEmpty) return;
+    await (update(localSaleItemBatches)
+          ..where((t) => t.saleItemId.isIn(saleItemIds)))
+        .write(LocalSaleItemBatchesCompanion(deletedAt: Value(when)));
+  }
+
+  // ── Batch adjustments (per-lot corrections, wholesale) ───────────────────────
+
+  Future<void> upsertBatchAdjustments(
+    List<LocalBatchAdjustmentsCompanion> rows,
+  ) => batch((b) => b.insertAllOnConflictUpdate(localBatchAdjustments, rows));
+
+  /// Non-deleted correction delta summed per batch. Subtracted from remaining
+  /// alongside depletions: remaining = received − depleted − adjusted.
+  Future<Map<String, Decimal>> adjustmentByBatch(List<String> batchIds) async {
+    if (batchIds.isEmpty) return {};
+    final rows = await (select(
+      localBatchAdjustments,
+    )..where((t) => t.batchId.isIn(batchIds) & t.deletedAt.isNull())).get();
+    final map = <String, Decimal>{};
+    for (final r in rows) {
+      map[r.batchId] = (map[r.batchId] ?? Decimal.zero) + r.quantityDelta;
+    }
+    return map;
+  }
+
+  Future<List<BatchAdjustmentRow>> getPendingBatchAdjustments() => (select(
+    localBatchAdjustments,
+  )..where((t) => t.isSynced.equals(false))).get();
+
+  Future<Set<String>> getPendingBatchAdjustmentProductIds(
+    String branchId,
+  ) async {
+    final rows =
+        await (select(localBatchAdjustments)..where(
+              (t) =>
+                  t.branchId.equals(branchId) &
+                  t.isSynced.equals(false) &
+                  t.deletedAt.isNull(),
+            ))
+            .get();
+    return rows.map((r) => r.productId).toSet();
+  }
+
+  Future<void> markBatchAdjustmentSynced(String id) =>
+      (update(localBatchAdjustments)..where((t) => t.id.equals(id))).write(
+        const LocalBatchAdjustmentsCompanion(isSynced: Value(true)),
+      );
+
+  // ── Refunds ──────────────────────────────────────────────────────────────────
+
+  /// Local-first refund write: the refund row + its returned lines in one
+  /// transaction. Stock restoration is handled by the caller via the existing
+  /// adjustment ledgers (so it stays idempotent and offline-safe).
+  Future<void> insertRefundWithItems(
+    LocalRefundsCompanion refund,
+    List<LocalRefundItemsCompanion> items,
+  ) => transaction(() async {
+    await into(localRefunds).insert(refund);
+    await batch((b) => b.insertAll(localRefundItems, items));
+  });
+
+  Future<void> upsertRefunds(List<LocalRefundsCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localRefunds, rows));
+
+  Future<void> upsertRefundItems(List<LocalRefundItemsCompanion> rows) =>
+      batch((b) => b.insertAllOnConflictUpdate(localRefundItems, rows));
+
+  Future<List<RefundRow>> getPendingRefunds() =>
+      (select(localRefunds)..where((t) => t.isSynced.equals(false))).get();
+
+  Future<List<RefundItemRow>> getRefundItems(String refundId) => (select(
+    localRefundItems,
+  )..where((t) => t.refundId.equals(refundId) & t.deletedAt.isNull())).get();
+
+  /// The wholesale restock corrections written for a refund (negative deltas),
+  /// gathered so the refund push can send their ids to the RPC. Excludes
+  /// soft-deleted rows.
+  Future<List<BatchAdjustmentRow>> getRefundRestockAdjustments(
+    String refundId,
+  ) => (select(
+    localBatchAdjustments,
+  )..where((t) => t.refundId.equals(refundId) & t.deletedAt.isNull())).get();
+
+  Future<Map<String, Decimal>> refundRestockedQtyByBatchForSaleItem(
+    String saleItemId,
+  ) async {
+    final rows =
+        await (select(localBatchAdjustments)..where(
+              (t) =>
+                  t.saleItemId.equals(saleItemId) &
+                  t.refundId.isNotNull() &
+                  t.deletedAt.isNull(),
+            ))
+            .get();
+    final map = <String, Decimal>{};
+    for (final r in rows) {
+      if (r.quantityDelta < Decimal.zero) {
+        map[r.batchId] = (map[r.batchId] ?? Decimal.zero) + (-r.quantityDelta);
+      }
+    }
+    return map;
+  }
+
+  Future<void> markRefundSynced(String id) =>
+      (update(localRefunds)..where((t) => t.id.equals(id))).write(
+        const LocalRefundsCompanion(isSynced: Value(true)),
+      );
+
+  /// Units already refunded per sale_item for a given sale — drives the
+  /// remaining-refundable cap (original qty − this) so a line can't be
+  /// over-refunded. Excludes soft-deleted refunds/items.
+  Future<Map<String, Decimal>> refundedQtyBySaleItem(String saleId) async {
+    final refunds =
+        await (select(localRefunds)..where(
+              (t) => t.originalSaleId.equals(saleId) & t.deletedAt.isNull(),
+            ))
+            .get();
+    final refundIds = refunds.map((r) => r.id).toList();
+    if (refundIds.isEmpty) return {};
+    final items = await (select(
+      localRefundItems,
+    )..where((t) => t.refundId.isIn(refundIds) & t.deletedAt.isNull())).get();
+    final map = <String, Decimal>{};
+    for (final i in items) {
+      map[i.saleItemId] = (map[i.saleItemId] ?? Decimal.zero) + i.quantity;
+    }
+    return map;
+  }
+
+  /// Total refunded amount for a branch within [from, to) — nets refunds out of
+  /// reported revenue. Excludes soft-deleted refunds.
+  Future<Decimal> getRefundTotalByBranchRange(
+    String branchId,
+    DateTime from,
+    DateTime to,
+  ) async {
+    final rows =
+        await (select(localRefunds)..where(
+              (t) =>
+                  t.branchId.equals(branchId) &
+                  t.deletedAt.isNull() &
+                  t.createdAt.isBiggerOrEqualValue(from) &
+                  t.createdAt.isSmallerThanValue(to),
+            ))
+            .get();
+    return rows.fold<Decimal>(Decimal.zero, (sum, r) => sum + r.totalAmount);
+  }
+
+  Future<Decimal> getRefundTotalByBranchRangeAndProductCategory(
+    String branchId,
+    DateTime from,
+    DateTime to,
+    String categoryId,
+  ) async {
+    final rows = await customSelect(
+      '''
+      SELECT ri.amount AS amount
+      FROM local_refund_items ri
+      INNER JOIN local_refunds r ON r.id = ri.refund_id
+      INNER JOIN local_sale_items si ON si.id = ri.sale_item_id
+      INNER JOIN local_products p ON p.id = si.product_id
+      WHERE r.branch_id = ?
+        AND r.deleted_at IS NULL
+        AND ri.deleted_at IS NULL
+        AND r.created_at >= ?
+        AND r.created_at < ?
+        AND p.category_id = ?
+      ''',
+      variables: [
+        Variable.withString(branchId),
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        Variable.withString(categoryId),
+      ],
+      readsFrom: {
+        localRefunds,
+        localRefundItems,
+        localSaleItems,
+        localProducts,
+      },
+    ).get();
+    return rows.fold<Decimal>(
+      Decimal.zero,
+      (sum, row) => sum + Decimal.parse(row.read<String>('amount')),
+    );
+  }
+
+  /// Recompute the local stock rollup for a wholesale product from its batches:
+  /// `LocalStock.quantity = Σ(received) − Σ(depletions) − Σ(corrections)` — the
+  /// same derivation as the server rollup trigger (032). The stock row's expiry
+  /// = the soonest expiry among lots that still have remaining stock.
+  Future<void> recomputeStockFromBatches(
+    String branchId,
+    String productId,
+    DateTime now,
+  ) async {
+    final batches = await getBatchesForProduct(branchId, productId);
+    final ids = batches.map((b) => b.id).toList();
+    final depleted = await depletionByBatch(ids);
+    final adjusted = await adjustmentByBatch(ids);
+    var total = Decimal.zero;
+    DateTime? soonest;
+    for (final b in batches) {
+      final remaining =
+          b.quantity -
+          (depleted[b.id] ?? Decimal.zero) -
+          (adjusted[b.id] ?? Decimal.zero);
+      total += remaining;
+      if (remaining <= Decimal.zero) continue; // exhausted lot — ignore expiry
+      final e = b.expiryDate;
+      if (e != null && (soonest == null || e.isBefore(soonest))) soonest = e;
+    }
+    await setStockLevel(
+      branchId,
+      productId,
+      total,
+      expiryDate: soonest,
+      overwriteExpiry: true,
+    );
+  }
+
   Future<List<StockRow>> getStockByBranch(String branchId) =>
       (select(localStock)..where((t) => t.branchId.equals(branchId))).get();
 
   Future<Decimal?> getStockLevel(String branchId, String productId) async {
-    final row = await (select(localStock)
-          ..where((t) =>
-              t.branchId.equals(branchId) & t.productId.equals(productId)))
-        .getSingleOrNull();
+    final row =
+        await (select(localStock)..where(
+              (t) =>
+                  t.branchId.equals(branchId) & t.productId.equals(productId),
+            ))
+            .getSingleOrNull();
     return row?.quantity;
   }
 
-  Future<void> adjustStock(
-          String branchId, String productId, Decimal newQty) =>
-      (update(localStock)
-            ..where((t) =>
-                t.branchId.equals(branchId) & t.productId.equals(productId)))
-          .write(LocalStockCompanion(
-              quantity: Value(newQty), syncedAt: Value(DateTime.now())));
+  Future<void> adjustStock(String branchId, String productId, Decimal newQty) =>
+      (update(localStock)..where(
+            (t) => t.branchId.equals(branchId) & t.productId.equals(productId),
+          ))
+          .write(
+            LocalStockCompanion(
+              quantity: Value(newQty),
+              syncedAt: Value(DateTime.now()),
+            ),
+          );
 
   /// Upsert a single stock level (used by stock ops, which may target a
   /// product that has no local row yet — e.g. opening stock).
+  /// Upsert a single stock level. By default a null [expiryDate] leaves any
+  /// existing expiry untouched (callers that only set quantity). The batch
+  /// rollup is the authoritative projection of expiry, so it passes
+  /// [overwriteExpiry] to push null through and CLEAR a stale date once the
+  /// expiring lot is sold out or discarded.
   Future<void> setStockLevel(
-          String branchId, String productId, Decimal newQty,
-          {DateTime? expiryDate}) =>
-      into(localStock).insertOnConflictUpdate(LocalStockCompanion(
-        productId: Value(productId),
-        branchId: Value(branchId),
-        quantity: Value(newQty),
-        expiryDate:
-            expiryDate == null ? const Value.absent() : Value(expiryDate),
-        syncedAt: Value(DateTime.now()),
-      ));
+    String branchId,
+    String productId,
+    Decimal newQty, {
+    DateTime? expiryDate,
+    bool overwriteExpiry = false,
+  }) => into(localStock).insertOnConflictUpdate(
+    LocalStockCompanion(
+      productId: Value(productId),
+      branchId: Value(branchId),
+      quantity: Value(newQty),
+      expiryDate: overwriteExpiry || expiryDate != null
+          ? Value(expiryDate)
+          : const Value.absent(),
+      syncedAt: Value(DateTime.now()),
+    ),
+  );
 
   Future<List<ProductRow>> getProductsByIds(List<String> ids) =>
       (select(localProducts)..where((t) => t.id.isIn(ids))).get();
@@ -473,33 +1054,39 @@ class AppDatabase extends _$AppDatabase {
   Future<SaleRow> insertSaleWithItems(
     LocalSalesCompanion sale,
     List<LocalSaleItemsCompanion> items,
-  ) =>
-      transaction(() async {
-        final row = await into(localSales).insertReturning(sale);
-        for (final item in items) {
-          await into(localSaleItems).insert(item);
-        }
-        return row;
-      });
+  ) => transaction(() async {
+    final row = await into(localSales).insertReturning(sale);
+    for (final item in items) {
+      await into(localSaleItems).insert(item);
+    }
+    return row;
+  });
 
   Future<SaleRow?> getSale(String id) =>
       (select(localSales)..where((t) => t.id.equals(id))).getSingleOrNull();
 
   Future<List<SaleRow>> getSalesByBranch(
-          String branchId, DateTime from, DateTime to) =>
+    String branchId,
+    DateTime from,
+    DateTime to,
+  ) =>
       (select(localSales)
-            ..where((t) =>
-                t.branchId.equals(branchId) &
-                t.createdAt.isBiggerOrEqualValue(from) &
-                t.createdAt.isSmallerThanValue(to))
+            ..where(
+              (t) =>
+                  t.branchId.equals(branchId) &
+                  t.createdAt.isBiggerOrEqualValue(from) &
+                  t.createdAt.isSmallerThanValue(to),
+            )
             ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
           .get();
 
   Future<List<SaleItemRow>> getSaleItems(String saleId) =>
       (select(localSaleItems)..where((t) => t.saleId.equals(saleId))).get();
 
-  Future<List<SaleRow>> getSalesByCustomer(String customerId,
-          {int limit = 20}) =>
+  Future<List<SaleRow>> getSalesByCustomer(
+    String customerId, {
+    int limit = 20,
+  }) =>
       (select(localSales)
             ..where((t) => t.customerId.equals(customerId))
             ..orderBy([(t) => OrderingTerm.desc(t.createdAt)])
@@ -528,18 +1115,15 @@ class AppDatabase extends _$AppDatabase {
         const Variable<String>('untracked'),
         Variable<String>(branchId),
       ],
-      readsFrom: {
-        localSales,
-        localSaleItems,
-        localInventoryAdjustments,
-      },
+      readsFrom: {localSales, localSaleItems, localInventoryAdjustments},
     ).get();
     return rows.map((row) => row.read<String>('product_id')).toSet();
   }
 
   Future<void> markSaleSynced(String saleId) =>
-      (update(localSales)..where((t) => t.id.equals(saleId)))
-          .write(const LocalSalesCompanion(isSynced: Value(true)));
+      (update(localSales)..where((t) => t.id.equals(saleId))).write(
+        const LocalSalesCompanion(isSynced: Value(true)),
+      );
 
   /// Mark a single local credit sale settled (mirrors a server-side settlement
   /// so the offline sales list stops showing it as outstanding).
@@ -548,8 +1132,7 @@ class AppDatabase extends _$AppDatabase {
         LocalSalesCompanion(creditSettledAt: Value(DateTime.now())),
       );
 
-  Future<void> markSaleVoided(
-          String saleId, String reason, String voidedBy) =>
+  Future<void> markSaleVoided(String saleId, String reason, String voidedBy) =>
       (update(localSales)..where((t) => t.id.equals(saleId))).write(
         LocalSalesCompanion(
           status: const Value('voided'),
@@ -561,15 +1144,19 @@ class AppDatabase extends _$AppDatabase {
       );
 
   Future<Map<String, Decimal>> getTodayTotals(
-      String branchId, DateTime date) async {
+    String branchId,
+    DateTime date,
+  ) async {
     final from = DateTime(date.year, date.month, date.day);
     final to = from.add(const Duration(days: 1));
-    final rows = await (select(localSales)
-          ..where((t) =>
-              t.branchId.equals(branchId) &
-              t.createdAt.isBiggerOrEqualValue(from) &
-              t.createdAt.isSmallerThanValue(to)))
-        .get();
+    final rows =
+        await (select(localSales)..where(
+              (t) =>
+                  t.branchId.equals(branchId) &
+                  t.createdAt.isBiggerOrEqualValue(from) &
+                  t.createdAt.isSmallerThanValue(to),
+            ))
+            .get();
     // Revenue excludes voided sales, but the transaction count keeps them:
     // a voided sale still happened, so the day's transaction tally must not
     // shrink when one is voided.
@@ -599,8 +1186,7 @@ class AppDatabase extends _$AppDatabase {
 
   /// Update identity fields offline and flag the row for re-push. Leaves the
   /// locally-mirrored credit balance untouched.
-  Future<void> updateCustomerIdentity(
-          String id, String name, String? phone) =>
+  Future<void> updateCustomerIdentity(String id, String name, String? phone) =>
       (update(localCustomers)..where((t) => t.id.equals(id))).write(
         LocalCustomersCompanion(
           name: Value(name),
@@ -611,13 +1197,13 @@ class AppDatabase extends _$AppDatabase {
       );
 
   Future<void> markCustomerSynced(String id) =>
-      (update(localCustomers)..where((t) => t.id.equals(id)))
-          .write(const LocalCustomersCompanion(isSynced: Value(true)));
+      (update(localCustomers)..where((t) => t.id.equals(id))).write(
+        const LocalCustomersCompanion(isSynced: Value(true)),
+      );
 
   Future<List<CustomerRow>> searchCustomers(String shopId, String query) =>
       (select(localCustomers)
-            ..where((t) =>
-                t.shopId.equals(shopId) & t.name.like('%$query%'))
+            ..where((t) => t.shopId.equals(shopId) & t.name.like('%$query%'))
             ..orderBy([(t) => OrderingTerm.asc(t.name)])
             ..limit(10))
           .get();
@@ -631,46 +1217,56 @@ class AppDatabase extends _$AppDatabase {
   Future<void> insertOrReplaceExpense(LocalExpensesCompanion row) =>
       into(localExpenses).insertOnConflictUpdate(row);
 
-  Future<List<ExpenseRow>> getExpensesByBranch(
-          String branchId, DateTime day) =>
+  Future<List<ExpenseRow>> getExpensesByBranch(String branchId, DateTime day) =>
       (select(localExpenses)
-            ..where((t) =>
-                t.branchId.equals(branchId) &
-                t.date.equals(DateTime(day.year, day.month, day.day)))
+            ..where(
+              (t) =>
+                  t.branchId.equals(branchId) &
+                  t.date.equals(DateTime(day.year, day.month, day.day)),
+            )
             ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
           .get();
 
   Future<List<ExpenseRow>> getExpensesByBranchRange(
-          String branchId, DateTime from, DateTime to) =>
-      (select(localExpenses)
-            ..where((t) =>
+    String branchId,
+    DateTime from,
+    DateTime to,
+  ) =>
+      (select(localExpenses)..where(
+            (t) =>
                 t.branchId.equals(branchId) &
                 t.date.isBiggerOrEqualValue(from) &
-                t.date.isSmallerThanValue(to)))
+                t.date.isSmallerThanValue(to),
+          ))
           .get();
 
   Future<List<ExpenseRow>> getPendingExpenses() =>
       (select(localExpenses)..where((t) => t.isSynced.equals(false))).get();
 
   Future<List<ExpenseRow>> getPendingExpensesByBranch(
-          String branchId, DateTime day) =>
+    String branchId,
+    DateTime day,
+  ) =>
       (select(localExpenses)
-            ..where((t) =>
-                t.branchId.equals(branchId) &
-                t.isSynced.equals(false) &
-                t.date.equals(DateTime(day.year, day.month, day.day)))
+            ..where(
+              (t) =>
+                  t.branchId.equals(branchId) &
+                  t.isSynced.equals(false) &
+                  t.date.equals(DateTime(day.year, day.month, day.day)),
+            )
             ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
           .get();
 
   Future<void> markExpenseSynced(String id) =>
-      (update(localExpenses)..where((t) => t.id.equals(id)))
-          .write(const LocalExpensesCompanion(isSynced: Value(true)));
+      (update(localExpenses)..where((t) => t.id.equals(id))).write(
+        const LocalExpensesCompanion(isSynced: Value(true)),
+      );
 
   // ── Inventory adjustments queue ──────────────────────────────────────────────
 
   Future<void> insertInventoryAdjustment(
-          LocalInventoryAdjustmentsCompanion row) =>
-      into(localInventoryAdjustments).insert(row);
+    LocalInventoryAdjustmentsCompanion row,
+  ) => into(localInventoryAdjustments).insert(row);
 
   Future<List<InventoryAdjustmentRow>> getPendingInventoryAdjustments() =>
       (select(localInventoryAdjustments)
@@ -679,8 +1275,9 @@ class AppDatabase extends _$AppDatabase {
           .get();
 
   Future<void> markInventoryAdjustmentSynced(String id) =>
-      (update(localInventoryAdjustments)..where((t) => t.id.equals(id)))
-          .write(const LocalInventoryAdjustmentsCompanion(isSynced: Value(true)));
+      (update(localInventoryAdjustments)..where((t) => t.id.equals(id))).write(
+        const LocalInventoryAdjustmentsCompanion(isSynced: Value(true)),
+      );
 
   // ── Shop / branches (download-sync read caches) ──────────────────────────────
 
@@ -696,10 +1293,9 @@ class AppDatabase extends _$AppDatabase {
   Future<void> upsertBranches(List<LocalBranchesCompanion> rows) =>
       batch((b) => b.insertAllOnConflictUpdate(localBranches, rows));
 
-  Future<List<BranchRow>> getBranchesByShop(String shopId) =>
-      (select(localBranches)
-            ..where((t) => t.shopId.equals(shopId) & t.isActive.equals(true)))
-          .get();
+  Future<List<BranchRow>> getBranchesByShop(String shopId) => (select(
+    localBranches,
+  )..where((t) => t.shopId.equals(shopId) & t.isActive.equals(true))).get();
 
   /// Any local branch (for the device-level sync heartbeat, which needs a valid
   /// branch_id but isn't branch-specific). Null before the first seed.
@@ -719,25 +1315,27 @@ class AppDatabase extends _$AppDatabase {
   Future<void> upsertPaymentMethods(List<LocalPaymentMethodsCompanion> rows) =>
       batch((b) => b.insertAllOnConflictUpdate(localPaymentMethods, rows));
 
-  Future<List<PaymentMethodRow>> getPaymentMethods() =>
-      (select(localPaymentMethods)..where((t) => t.isActive.equals(true))).get();
+  Future<List<PaymentMethodRow>> getPaymentMethods() => (select(
+    localPaymentMethods,
+  )..where((t) => t.isActive.equals(true))).get();
 
   // ── Product categories ───────────────────────────────────────────────────────
 
   Future<void> upsertCategories(List<LocalProductCategoriesCompanion> rows) =>
       batch((b) => b.insertAllOnConflictUpdate(localProductCategories, rows));
 
-  Future<List<ProductCategoryRow>> getCategories(String shopId) =>
-      (select(localProductCategories)..where((t) => t.shopId.equals(shopId)))
-          .get();
+  Future<List<ProductCategoryRow>> getCategories(String shopId) => (select(
+    localProductCategories,
+  )..where((t) => t.shopId.equals(shopId))).get();
 
-  Future<List<ProductCategoryRow>> getPendingCategories() =>
-      (select(localProductCategories)..where((t) => t.isSynced.equals(false)))
-          .get();
+  Future<List<ProductCategoryRow>> getPendingCategories() => (select(
+    localProductCategories,
+  )..where((t) => t.isSynced.equals(false))).get();
 
   Future<void> markCategorySynced(String id) =>
-      (update(localProductCategories)..where((t) => t.id.equals(id)))
-          .write(const LocalProductCategoriesCompanion(isSynced: Value(true)));
+      (update(localProductCategories)..where((t) => t.id.equals(id))).write(
+        const LocalProductCategoriesCompanion(isSynced: Value(true)),
+      );
 
   // ── Measurement units ────────────────────────────────────────────────────────
 
@@ -757,8 +1355,8 @@ class AppDatabase extends _$AppDatabase {
   // ── Expense categories ───────────────────────────────────────────────────────
 
   Future<void> upsertExpenseCategories(
-          List<LocalExpenseCategoriesCompanion> rows) =>
-      batch((b) => b.insertAllOnConflictUpdate(localExpenseCategories, rows));
+    List<LocalExpenseCategoriesCompanion> rows,
+  ) => batch((b) => b.insertAllOnConflictUpdate(localExpenseCategories, rows));
 
   Future<List<ExpenseCategoryRow>> getExpenseCategories(String shopId) =>
       (select(localExpenseCategories)
@@ -775,13 +1373,11 @@ class AppDatabase extends _$AppDatabase {
     LocalSalesCompanion sale,
     List<LocalSaleItemsCompanion> items,
     String saleId,
-  ) =>
-      transaction(() async {
-        await into(localSales).insertOnConflictUpdate(sale);
-        await (delete(localSaleItems)..where((t) => t.saleId.equals(saleId)))
-            .go();
-        await batch((b) => b.insertAll(localSaleItems, items));
-      });
+  ) => transaction(() async {
+    await into(localSales).insertOnConflictUpdate(sale);
+    await (delete(localSaleItems)..where((t) => t.saleId.equals(saleId))).go();
+    await batch((b) => b.insertAll(localSaleItems, items));
+  });
 
   // ── Credit payments (offline payment history) ────────────────────────────────
 
@@ -792,10 +1388,12 @@ class AppDatabase extends _$AppDatabase {
   /// local DB (single-shop), newest first — drives the offline Credits views.
   Future<List<SaleRow>> getUnsettledCreditSales() =>
       (select(localSales)
-            ..where((t) =>
-                t.isCredit.equals(true) &
-                t.status.equals('completed') &
-                t.creditSettledAt.isNull())
+            ..where(
+              (t) =>
+                  t.isCredit.equals(true) &
+                  t.status.equals('completed') &
+                  t.creditSettledAt.isNull(),
+            )
             ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
           .get();
 
@@ -809,12 +1407,41 @@ class AppDatabase extends _$AppDatabase {
   /// compute remaining balances offline.
   Future<Map<String, Decimal>> getPaidBySale(List<String> saleIds) async {
     if (saleIds.isEmpty) return {};
-    final rows = await (select(localCreditPayments)
-          ..where((t) => t.saleId.isIn(saleIds)))
-        .get();
+    final rows = await (select(
+      localCreditPayments,
+    )..where((t) => t.saleId.isIn(saleIds))).get();
     final map = <String, Decimal>{};
     for (final r in rows) {
       map[r.saleId] = (map[r.saleId] ?? Decimal.zero) + r.amount;
+    }
+    return map;
+  }
+
+  /// Sum of non-deleted refund item amounts per sale. Credit balance views use
+  /// this to reduce the outstanding amount when unpaid goods are returned.
+  Future<Map<String, Decimal>> getRefundedAmountBySale(
+    List<String> saleIds,
+  ) async {
+    if (saleIds.isEmpty) return {};
+    final placeholders = List.filled(saleIds.length, '?').join(', ');
+    final rows = await customSelect(
+      '''
+      SELECT r.original_sale_id AS sale_id, ri.amount AS amount
+      FROM local_refund_items ri
+      INNER JOIN local_refunds r ON r.id = ri.refund_id
+      WHERE r.original_sale_id IN ($placeholders)
+        AND r.deleted_at IS NULL
+        AND ri.deleted_at IS NULL
+      ''',
+      variables: [for (final id in saleIds) Variable.withString(id)],
+      readsFrom: {localRefunds, localRefundItems},
+    ).get();
+    final map = <String, Decimal>{};
+    for (final row in rows) {
+      final saleId = row.read<String>('sale_id');
+      map[saleId] =
+          (map[saleId] ?? Decimal.zero) +
+          Decimal.parse(row.read<String>('amount'));
     }
     return map;
   }
@@ -828,26 +1455,28 @@ class AppDatabase extends _$AppDatabase {
     required Decimal amount,
     required String method,
     String? notes,
-  }) =>
-      into(localCreditPayments).insert(LocalCreditPaymentsCompanion(
-        id: Value(id),
-        saleId: Value(saleId),
-        customerId: Value(customerId),
-        amount: Value(amount),
-        method: Value(method),
-        notes: Value(notes),
-        createdAt: Value(DateTime.now()),
-        syncedAt: Value(DateTime.now()),
-        isSynced: const Value(false),
-      ));
+  }) => into(localCreditPayments).insert(
+    LocalCreditPaymentsCompanion(
+      id: Value(id),
+      saleId: Value(saleId),
+      customerId: Value(customerId),
+      amount: Value(amount),
+      method: Value(method),
+      notes: Value(notes),
+      createdAt: Value(DateTime.now()),
+      syncedAt: Value(DateTime.now()),
+      isSynced: const Value(false),
+    ),
+  );
 
-  Future<List<CreditPaymentRow>> getPendingCreditPayments() =>
-      (select(localCreditPayments)..where((t) => t.isSynced.equals(false)))
-          .get();
+  Future<List<CreditPaymentRow>> getPendingCreditPayments() => (select(
+    localCreditPayments,
+  )..where((t) => t.isSynced.equals(false))).get();
 
   Future<void> markCreditPaymentSynced(String id) =>
-      (update(localCreditPayments)..where((t) => t.id.equals(id)))
-          .write(const LocalCreditPaymentsCompanion(isSynced: Value(true)));
+      (update(localCreditPayments)..where((t) => t.id.equals(id))).write(
+        const LocalCreditPaymentsCompanion(isSynced: Value(true)),
+      );
 
   /// Stamp a credit sale settled locally AND flag it unsynced, so the sale push
   /// re-sends it carrying `credit_settled_at` (+ method). [method] is the single
@@ -872,34 +1501,37 @@ class AppDatabase extends _$AppDatabase {
     required Decimal amount,
     required String method,
     String? notes,
-  }) =>
-      transaction(() async {
-        await recordLocalCreditPayment(
-          id: id,
-          saleId: saleId,
-          customerId: customerId,
-          amount: amount,
-          method: method,
-          notes: notes,
-        );
-        final paid = (await getPaidBySale([saleId]))[saleId] ?? Decimal.zero;
-        if (paid < saleTotal) return false;
-        // Settled: claim a single method only when every payment used the same.
-        final methods =
-            (await getCreditPaymentsForSale(saleId)).map((p) => p.method).toSet();
-        await markSaleSettledLocal(saleId,
-            method: methods.length == 1 ? methods.first : null);
-        return true;
-      });
+  }) => transaction(() async {
+    await recordLocalCreditPayment(
+      id: id,
+      saleId: saleId,
+      customerId: customerId,
+      amount: amount,
+      method: method,
+      notes: notes,
+    );
+    final paid = (await getPaidBySale([saleId]))[saleId] ?? Decimal.zero;
+    if (paid < saleTotal) return false;
+    // Settled: claim a single method only when every payment used the same.
+    final methods = (await getCreditPaymentsForSale(
+      saleId,
+    )).map((p) => p.method).toSet();
+    await markSaleSettledLocal(
+      saleId,
+      method: methods.length == 1 ? methods.first : null,
+    );
+    return true;
+  });
 
   /// Sale items for many sales in one query, grouped by saleId (avoids N+1 when
   /// building a sales list).
   Future<Map<String, List<SaleItemRow>>> getSaleItemsForSales(
-      List<String> saleIds) async {
+    List<String> saleIds,
+  ) async {
     if (saleIds.isEmpty) return {};
-    final rows = await (select(localSaleItems)
-          ..where((t) => t.saleId.isIn(saleIds)))
-        .get();
+    final rows = await (select(
+      localSaleItems,
+    )..where((t) => t.saleId.isIn(saleIds))).get();
     final map = <String, List<SaleItemRow>>{};
     for (final r in rows) {
       (map[r.saleId] ??= []).add(r);
@@ -912,18 +1544,20 @@ class AppDatabase extends _$AppDatabase {
   /// The max server `updated_at` already pulled for [tableName], or null if the
   /// table has never been pulled (→ the delta pull does a full first download).
   Future<DateTime?> getPullCursor(String tableName) async {
-    final row = await (select(localSyncState)
-          ..where((t) => t.tableKey.equals(tableName)))
-        .getSingleOrNull();
+    final row = await (select(
+      localSyncState,
+    )..where((t) => t.tableKey.equals(tableName))).getSingleOrNull();
     return row?.lastPulledAt;
   }
 
   /// Advance (or set) the delta cursor for [tableName] to [lastPulledAt].
   Future<void> setPullCursor(String tableName, DateTime lastPulledAt) =>
-      into(localSyncState).insertOnConflictUpdate(LocalSyncStateCompanion(
-        tableKey: Value(tableName),
-        lastPulledAt: Value(lastPulledAt),
-      ));
+      into(localSyncState).insertOnConflictUpdate(
+        LocalSyncStateCompanion(
+          tableKey: Value(tableName),
+          lastPulledAt: Value(lastPulledAt),
+        ),
+      );
 
   /// Emits whether any local write is waiting to push. Drives a debounced sync
   /// nudge after offline writes. Loop-safe: pulled rows are `is_synced = 1`, so a
@@ -933,22 +1567,47 @@ class AppDatabase extends _$AppDatabase {
       'SELECT ('
       'EXISTS(SELECT 1 FROM local_product_categories WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_products WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_product_batches WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_batch_adjustments WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_sales WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_expenses WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_inventory_adjustments WHERE is_synced = 0) OR '
       'EXISTS(SELECT 1 FROM local_customers WHERE is_synced = 0) OR '
-      'EXISTS(SELECT 1 FROM local_credit_payments WHERE is_synced = 0)'
+      'EXISTS(SELECT 1 FROM local_credit_payments WHERE is_synced = 0) OR '
+      'EXISTS(SELECT 1 FROM local_refunds WHERE is_synced = 0)'
       ') AS has_pending',
       readsFrom: {
         localProductCategories,
         localProducts,
+        localProductBatches,
+        localBatchAdjustments,
         localSales,
         localExpenses,
         localInventoryAdjustments,
         localCustomers,
         localCreditPayments,
+        localRefunds,
       },
     ).watch().map((rows) => rows.first.read<int>('has_pending') == 1);
+  }
+
+  /// Total unsynced rows across every push queue — for the sync-health view.
+  Future<int> pendingPushCount() async {
+    final row = await customSelect(
+      'SELECT ('
+      '(SELECT COUNT(*) FROM local_product_categories WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_products WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_product_batches WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_batch_adjustments WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_sales WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_expenses WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_inventory_adjustments WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_customers WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_credit_payments WHERE is_synced = 0) + '
+      '(SELECT COUNT(*) FROM local_refunds WHERE is_synced = 0)'
+      ') AS pending',
+    ).getSingle();
+    return row.read<int>('pending');
   }
 
   /// Tables the delta pull may hard-remove rows from by `id` (server
@@ -964,10 +1623,15 @@ class AppDatabase extends _$AppDatabase {
     'local_product_categories',
     'local_measurement_units',
     'local_products',
+    'local_product_batches',
+    'local_sale_item_batches',
+    'local_batch_adjustments',
     'local_customers',
     'local_expense_categories',
     'local_expenses',
     'local_credit_payments',
+    'local_refunds',
+    'local_refund_items',
   };
 
   /// Hard-remove rows by `id` from an id-keyed replica table — used by the delta
@@ -977,9 +1641,15 @@ class AppDatabase extends _$AppDatabase {
     if (ids.isEmpty) return;
     if (!_deletableByIdTables.contains(sqlTable)) {
       throw ArgumentError.value(
-          sqlTable, 'sqlTable', 'not an id-keyed delta-replica table');
+        sqlTable,
+        'sqlTable',
+        'not an id-keyed delta-replica table',
+      );
     }
     final placeholders = List.filled(ids.length, '?').join(', ');
-    await customStatement('DELETE FROM $sqlTable WHERE id IN ($placeholders)', ids);
+    await customStatement(
+      'DELETE FROM $sqlTable WHERE id IN ($placeholders)',
+      ids,
+    );
   }
 }

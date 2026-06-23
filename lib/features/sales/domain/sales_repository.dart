@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../../../data/local/app_database.dart';
 import '../../../domain/models/product.dart';
 import '../../../domain/models/sale.dart';
+import '../../inventory/domain/batch_allocation.dart';
 import '../data/sales_remote.dart';
 
 abstract interface class ISalesRepository {
@@ -27,12 +28,17 @@ abstract interface class ISalesRepository {
     bool isCredit,
     String? notes,
     String? discountReason,
+    bool useBatches,
   });
   Future<void> voidSale({
     required String saleId,
     required String voidedBy,
     required String reason,
     required String branchId,
+  });
+  Future<bool> wouldUseExpiredBatch({
+    required String branchId,
+    required List<CartItem> items,
   });
   Future<Sale> getSale(String saleId);
   Future<List<Sale>> getSalesForBranch({
@@ -127,6 +133,7 @@ class SalesRepository implements ISalesRepository {
     bool isCredit = false,
     String? notes,
     String? discountReason,
+    bool useBatches = false,
   }) async {
     final saleId = const Uuid().v4();
 
@@ -180,60 +187,163 @@ class SalesRepository implements ISalesRepository {
         isCredit: isCredit,
         notes: notes,
         discountReason: discountReason,
+        useBatches: useBatches,
       );
     }
 
-    final itemCompanions = items.map((item) {
-      InventoryStatus status = InventoryStatus.untracked;
-      if (item.productId != null) status = InventoryStatus.tracked;
-      return LocalSaleItemsCompanion(
-        id: Value(const Uuid().v4()),
-        saleId: Value(saleId),
-        productId: Value(item.productId),
-        productNameSnapshot: Value(item.productName),
-        measurementUnitId: Value(item.measurementUnitId),
-        quantity: Value(item.quantity),
-        unitPrice: Value(item.unitPrice),
-        discountAmount: Value(item.discountAmount),
-        total: Value(item.lineTotal),
-        inventoryStatus: Value(status.name),
-        costPriceSnapshot: Value(item.costPrice),
+    // Pre-generate sale-item ids so the wholesale path can link depletion-ledger
+    // rows (sale_item_batches) to the lines they drew from.
+    final saleItemIds = [for (var i = 0; i < items.length; i++) const Uuid().v4()];
+    final itemCompanions = [
+      for (var i = 0; i < items.length; i++)
+        LocalSaleItemsCompanion(
+          id: Value(saleItemIds[i]),
+          saleId: Value(saleId),
+          productId: Value(items[i].productId),
+          productNameSnapshot: Value(items[i].productName),
+          measurementUnitId: Value(items[i].measurementUnitId),
+          quantity: Value(items[i].quantity),
+          unitPrice: Value(items[i].unitPrice),
+          discountAmount: Value(items[i].discountAmount),
+          total: Value(items[i].lineTotal),
+          inventoryStatus: Value((items[i].productId != null
+                  ? InventoryStatus.tracked
+                  : InventoryStatus.untracked)
+              .name),
+          costPriceSnapshot: Value(items[i].costPrice),
+        ),
+    ];
+
+    // One local transaction for the whole sale write. For wholesale this is
+    // essential: if any batch allocation or rollup fails AFTER the sale insert,
+    // the sale would otherwise persist (isSynced=false) with no batch ledger —
+    // and SyncService would then push it with p_item_batches=null, which the
+    // server treats as a RETAIL stock decrement, corrupting the rollup. On any
+    // failure the entire sale rolls back instead.
+    final saleRow = await _db.transaction(() async {
+      final row = await _db.insertSaleWithItems(
+        LocalSalesCompanion(
+          id: Value(saleId),
+          branchId: Value(branchId),
+          customerId: Value(customerId),
+          cashierId: Value(cashierId),
+          paymentMethodId: Value(paymentMethodId),
+          subtotal: Value(subtotal),
+          discountAmount: Value(totalDiscount),
+          total: Value(total),
+          status: const Value('completed'),
+          isCredit: Value(isCredit),
+          notes: Value(notes),
+          createdAt: Value(now),
+          isSynced: const Value(false),
+        ),
+        itemCompanions,
       );
-    }).toList();
 
-    final saleRow = await _db.insertSaleWithItems(
-      LocalSalesCompanion(
-        id: Value(saleId),
-        branchId: Value(branchId),
-        customerId: Value(customerId),
-        cashierId: Value(cashierId),
-        paymentMethodId: Value(paymentMethodId),
-        subtotal: Value(subtotal),
-        discountAmount: Value(totalDiscount),
-        total: Value(total),
-        status: const Value('completed'),
-        isCredit: Value(isCredit),
-        notes: Value(notes),
-        createdAt: Value(now),
-        isSynced: const Value(false),
-      ),
-      itemCompanions,
-    );
-
-    // Update local stock levels
-    for (final item in items) {
-      if (item.productId == null) continue;
-      final stock = await _db.getStockLevel(branchId, item.productId!);
-      if (stock != null) {
-        await _db.adjustStock(branchId, item.productId!, stock - item.quantity);
+      if (useBatches) {
+        // Wholesale: FEFO-deplete batches and record the depletion ledger. The
+        // local rollup becomes Σ(received) − Σ(depletions). Items are processed
+        // in order so two lines of the same product see each other's draws (each
+        // recompute reflects the prior line's ledger rows).
+        for (var i = 0; i < items.length; i++) {
+          final item = items[i];
+          if (item.productId == null) continue;
+          final batches =
+              await _db.getBatchesForProduct(branchId, item.productId!);
+          final ids = batches.map((b) => b.id).toList();
+          final depleted = await _db.depletionByBatch(ids);
+          final adjusted = await _db.adjustmentByBatch(ids);
+          final available = [
+            for (final b in batches)
+              BatchAvailability(
+                  b.id,
+                  b.quantity -
+                      (depleted[b.id] ?? Decimal.zero) -
+                      (adjusted[b.id] ?? Decimal.zero),
+                  b.expiryDate),
+          ];
+          final result = allocateFefo(available, item.quantity, now);
+          // A tracked item with no lots can't be expressed as a batch depletion
+          // (oversell piles the shortfall onto a drawn lot; with zero lots there
+          // is nothing to pile onto, so the allocation is empty). Persisting it
+          // would sync as a retail decrement — reject the sale instead.
+          final allocated = result.allocations
+              .fold(Decimal.zero, (sum, a) => sum + a.quantity);
+          if (allocated < item.quantity) {
+            throw StateError(
+              'No stock lots available for ${item.productName}. '
+              'Add stock before selling.',
+            );
+          }
+          await _db.upsertSaleItemBatches([
+            for (final a in result.allocations)
+              LocalSaleItemBatchesCompanion(
+                id: Value(const Uuid().v4()),
+                saleItemId: Value(saleItemIds[i]),
+                batchId: Value(a.batchId),
+                quantity: Value(a.quantity),
+                syncedAt: Value(now),
+              ),
+          ]);
+          await _db.recomputeStockFromBatches(branchId, item.productId!, now);
+        }
+      } else {
+        // Retail: decrement the single stock quantity.
+        for (final item in items) {
+          if (item.productId == null) continue;
+          final stock = await _db.getStockLevel(branchId, item.productId!);
+          if (stock != null) {
+            await _db.adjustStock(
+                branchId, item.productId!, stock - item.quantity);
+          }
+        }
       }
-    }
+      return row;
+    });
 
     // No inline push (offline-first v2 absolute boundary): the sale stays
     // isSynced=false and SyncService is the sole pusher. The caller nudges a
     // sync after a successful write (see CreateSaleNotifier.submit).
     final itemRows = await _db.getSaleItems(saleId);
     return _saleFromRows(saleRow, itemRows);
+  }
+
+  // ── Expired-batch pre-check (wholesale, read-only) ───────────────────────────
+
+  /// True if completing this sale would draw from an expired lot under FEFO.
+  /// Pure read — runs the same allocation as the sale but writes nothing. The
+  /// caller warns and asks to confirm (warn-but-allow); it never blocks.
+  @override
+  Future<bool> wouldUseExpiredBatch({
+    required String branchId,
+    required List<CartItem> items,
+  }) async {
+    if (_db == null) return false;
+    final now = DateTime.now();
+    // Aggregate per product so two lines of the same product share batches.
+    final needed = <String, Decimal>{};
+    for (final item in items) {
+      if (item.productId == null) continue;
+      needed[item.productId!] =
+          (needed[item.productId!] ?? Decimal.zero) + item.quantity;
+    }
+    for (final entry in needed.entries) {
+      final batches = await _db.getBatchesForProduct(branchId, entry.key);
+      final ids = batches.map((b) => b.id).toList();
+      final depleted = await _db.depletionByBatch(ids);
+      final adjusted = await _db.adjustmentByBatch(ids);
+      final available = [
+        for (final b in batches)
+          BatchAvailability(
+              b.id,
+              b.quantity -
+                  (depleted[b.id] ?? Decimal.zero) -
+                  (adjusted[b.id] ?? Decimal.zero),
+              b.expiryDate),
+      ];
+      if (allocateFefo(available, entry.value, now).usedExpired) return true;
+    }
+    return false;
   }
 
   // ── Void sale ──────────────────────────────────────────────────────────────
@@ -270,6 +380,28 @@ class SalesRepository implements ISalesRepository {
       rethrow;
     }
     await _db?.markSaleVoided(saleId, reason, voidedBy);
+
+    // Wholesale: reverse the depletion ledger locally so the rollup restores to
+    // the exact lots the sale drew from (the server void RPC soft-deletes them
+    // too; this keeps the device consistent before the next pull). Auto-detected
+    // by the presence of local depletion rows — no shop-type read needed.
+    final db = _db;
+    if (db != null) {
+      final items = await db.getSaleItems(saleId);
+      final itemIds = items.map((i) => i.id).toList();
+      final sib = await db.getSaleItemBatchesForItems(itemIds);
+      if (sib.isNotEmpty) {
+        final now = DateTime.now();
+        await db.softDeleteSaleItemBatches(itemIds, now);
+        final productIds = items
+            .where((i) => i.productId != null)
+            .map((i) => i.productId!)
+            .toSet();
+        for (final pid in productIds) {
+          await db.recomputeStockFromBatches(branchId, pid, now);
+        }
+      }
+    }
   }
 
   // ── Reads ──────────────────────────────────────────────────────────────────

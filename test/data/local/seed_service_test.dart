@@ -1,6 +1,10 @@
 import 'dart:io';
 
+import 'package:decimal/decimal.dart';
+import 'package:drift/drift.dart' hide isNull;
+import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:suq/data/local/app_database.dart';
 import 'package:suq/data/local/seed_service.dart';
 
 void main() {
@@ -84,5 +88,134 @@ void main() {
         reason: 'license_keys must never be pulled into the replica');
     expect(src.contains("from('shop_controls')"), isFalse,
         reason: 'shop_controls must never be pulled into the replica');
+  });
+
+  test(
+      'stock pull preserves local stock with pending batches, adjustments, and refund restocks',
+      () async {
+    final db = AppDatabase(NativeDatabase.memory());
+    addTearDown(db.close);
+    final now = DateTime(2026, 6, 23);
+
+    Future<void> stock(String productId, String qty) => db.upsertStock([
+          LocalStockCompanion(
+            productId: Value(productId),
+            branchId: const Value('b-1'),
+            quantity: Value(Decimal.parse(qty)),
+            syncedAt: Value(now),
+          ),
+        ]);
+
+    await stock('p-batch', '10');
+    await stock('p-adjustment', '20');
+    await stock('p-refund', '30');
+    await stock('p-remote', '40');
+
+    await db.upsertProductBatches([
+      LocalProductBatchesCompanion(
+        id: const Value('batch-pending'),
+        branchId: const Value('b-1'),
+        productId: const Value('p-batch'),
+        batchNumber: const Value('LOT-1'),
+        quantity: Value(Decimal.parse('10')),
+        receivedAt: Value(now),
+        syncedAt: Value(now),
+        isSynced: const Value(false),
+      ),
+      LocalProductBatchesCompanion(
+        id: const Value('batch-adjusted'),
+        branchId: const Value('b-1'),
+        productId: const Value('p-adjustment'),
+        batchNumber: const Value('LOT-2'),
+        quantity: Value(Decimal.parse('20')),
+        receivedAt: Value(now),
+        syncedAt: Value(now),
+      ),
+    ]);
+    await db.upsertBatchAdjustments([
+      LocalBatchAdjustmentsCompanion(
+        id: const Value('adjustment-pending'),
+        batchId: const Value('batch-adjusted'),
+        branchId: const Value('b-1'),
+        productId: const Value('p-adjustment'),
+        quantityDelta: Value(Decimal.one),
+        reason: const Value('count'),
+        createdAt: Value(now),
+        syncedAt: Value(now),
+        isSynced: const Value(false),
+      ),
+    ]);
+    await db.insertSaleWithItems(
+      LocalSalesCompanion(
+        id: const Value('sale-refund'),
+        branchId: const Value('b-1'),
+        cashierId: const Value('u-1'),
+        paymentMethodId: const Value('pm-1'),
+        subtotal: Value(Decimal.parse('30')),
+        discountAmount: Value(Decimal.zero),
+        total: Value(Decimal.parse('30')),
+        status: const Value('completed'),
+        isCredit: const Value(false),
+        createdAt: Value(now),
+        isSynced: const Value(true),
+      ),
+      [
+        LocalSaleItemsCompanion(
+          id: const Value('sale-item-refund'),
+          saleId: const Value('sale-refund'),
+          productId: const Value('p-refund'),
+          productNameSnapshot: const Value('Refunded product'),
+          quantity: Value(Decimal.one),
+          unitPrice: Value(Decimal.parse('30')),
+          discountAmount: Value(Decimal.zero),
+          total: Value(Decimal.parse('30')),
+          inventoryStatus: const Value('tracked'),
+        ),
+      ],
+    );
+    await db.insertRefundWithItems(
+      LocalRefundsCompanion(
+        id: const Value('refund-pending'),
+        originalSaleId: const Value('sale-refund'),
+        branchId: const Value('b-1'),
+        refundedBy: const Value('u-1'),
+        reason: const Value('returned'),
+        totalAmount: Value(Decimal.parse('30')),
+        restock: const Value(true),
+        createdAt: Value(now),
+        syncedAt: Value(now),
+        isSynced: const Value(false),
+      ),
+      [
+        LocalRefundItemsCompanion(
+          id: const Value('refund-item-pending'),
+          refundId: const Value('refund-pending'),
+          saleItemId: const Value('sale-item-refund'),
+          quantity: Value(Decimal.one),
+          amount: Value(Decimal.parse('30')),
+          syncedAt: Value(now),
+        ),
+      ],
+    );
+
+    await SeedService.applyStockRowsForTest(
+      db,
+      'b-1',
+      [
+        {'product_id': 'p-batch', 'quantity': '1'},
+        {'product_id': 'p-adjustment', 'quantity': '2'},
+        {'product_id': 'p-refund', 'quantity': '3'},
+        {'product_id': 'p-remote', 'quantity': '4'},
+      ],
+      now,
+    );
+
+    expect(await db.getStockLevel('b-1', 'p-batch'), Decimal.parse('10'));
+    expect(
+      await db.getStockLevel('b-1', 'p-adjustment'),
+      Decimal.parse('20'),
+    );
+    expect(await db.getStockLevel('b-1', 'p-refund'), Decimal.parse('30'));
+    expect(await db.getStockLevel('b-1', 'p-remote'), Decimal.parse('4'));
   });
 }

@@ -54,6 +54,7 @@ class _StubSalesRemote implements SalesRemote {
     bool isCredit = false,
     String? notes,
     String? discountReason,
+    bool useBatches = false,
   }) async =>
       throw Exception('stub: remote not available');
 
@@ -95,6 +96,7 @@ class _SuccessStubRemote extends _StubSalesRemote {
     bool isCredit = false,
     String? notes,
     String? discountReason,
+    bool useBatches = false,
   }) async =>
       _stubSale(id, branchId: branchId, cashierId: cashierId,
           paymentMethodId: paymentMethodId, isCredit: isCredit);
@@ -699,6 +701,161 @@ void main() {
     test('falls through to stub remote when no local match', () async {
       final results = await repo.searchCustomers(shopId, 'Unknown');
       expect(results, isEmpty);
+    });
+  });
+
+  // ── Wholesale batch depletion (useBatches) ──────────────────────────────────
+
+  group('createSale — wholesale FEFO depletion', () {
+    Future<void> seedBatch(String id, Decimal qty, DateTime? expiry) =>
+        db.upsertProductBatches([
+          LocalProductBatchesCompanion(
+            id: Value(id),
+            branchId: const Value(branchId),
+            productId: const Value('p-1'),
+            quantity: Value(qty),
+            expiryDate: Value(expiry),
+            receivedAt: Value(DateTime.now()),
+            syncedAt: Value(DateTime.now()),
+            isSynced: const Value(true),
+          )
+        ]);
+
+    test('delegates wholesale checkout to remote on web',
+        () async {
+      final repoNoDb = SalesRepository(_SuccessStubRemote(), null);
+
+      final sale = await repoNoDb.createSale(
+        branchId: branchId,
+        shopId: shopId,
+        cashierId: cashierId,
+        paymentMethodId: pmId,
+        items: [_item(quantity: Decimal.parse('5'))],
+        useBatches: true,
+      );
+
+      expect(sale.status, SaleStatus.completed);
+    });
+
+    test('depletes the soonest-expiry lot first and records the ledger',
+        () async {
+      await _seedProduct(db);
+      await seedBatch('late', Decimal.parse('10'), DateTime(2027, 1, 1));
+      await seedBatch('soon', Decimal.parse('3'), DateTime(2026, 9, 1));
+      await db.recomputeStockFromBatches(branchId, 'p-1', DateTime.now());
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('13'));
+
+      await repo.createSale(
+        branchId: branchId,
+        shopId: shopId,
+        cashierId: cashierId,
+        paymentMethodId: pmId,
+        items: [_item(quantity: Decimal.parse('5'))],
+        useBatches: true,
+      );
+
+      // Rollup dropped by 5.
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('8'));
+      // FEFO: soon (3) fully drawn, late drawn by 2.
+      final depl = await db.depletionByBatch(['soon', 'late']);
+      expect(depl['soon'], Decimal.parse('3'));
+      expect(depl['late'], Decimal.parse('2'));
+    });
+
+    test('void reverses the depletion and restores the rollup', () async {
+      await _seedProduct(db);
+      await seedBatch('b1', Decimal.parse('10'), DateTime(2027, 1, 1));
+      await db.recomputeStockFromBatches(branchId, 'p-1', DateTime.now());
+
+      final sale = await repo.createSale(
+        branchId: branchId,
+        shopId: shopId,
+        cashierId: cashierId,
+        paymentMethodId: pmId,
+        items: [_item(quantity: Decimal.parse('4'))],
+        useBatches: true,
+      );
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('6'));
+
+      await repo.voidSale(
+        saleId: sale.id,
+        voidedBy: cashierId,
+        reason: 'mistake',
+        branchId: branchId,
+      );
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('10'));
+    });
+
+    test('wouldUseExpiredBatch flags a draw from an expired lot', () async {
+      await _seedProduct(db);
+      await seedBatch('exp', Decimal.parse('10'), DateTime(2020, 1, 1));
+      await db.recomputeStockFromBatches(branchId, 'p-1', DateTime.now());
+
+      expect(
+        await repo.wouldUseExpiredBatch(
+            branchId: branchId, items: [_item(quantity: Decimal.one)]),
+        isTrue,
+      );
+    });
+
+    test('wouldUseExpiredBatch is false when the drawn lot is fresh', () async {
+      await _seedProduct(db);
+      await seedBatch('fresh', Decimal.parse('10'), DateTime(2030, 1, 1));
+      await db.recomputeStockFromBatches(branchId, 'p-1', DateTime.now());
+
+      expect(
+        await repo.wouldUseExpiredBatch(
+            branchId: branchId, items: [_item(quantity: Decimal.one)]),
+        isFalse,
+      );
+    });
+
+    test('rejects (and rolls back) a wholesale sale with no stock lots',
+        () async {
+      await _seedProduct(db);
+      // A stock row exists (qty > 0) but there are NO batches to draw from —
+      // selling it would persist a wholesale sale with no ledger that syncs as a
+      // retail decrement. The guard must reject, and the transaction roll back.
+      await db.setStockLevel(branchId, 'p-1', Decimal.parse('10'));
+
+      await expectLater(
+        repo.createSale(
+          branchId: branchId,
+          shopId: shopId,
+          cashierId: cashierId,
+          paymentMethodId: pmId,
+          items: [_item(quantity: Decimal.parse('5'))],
+          useBatches: true,
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      // Whole write rolled back: no sale, no ledger rows.
+      expect(await db.getPendingSales(), isEmpty);
+    });
+
+    test('rollup clears a stale stock expiry when the expiring lot sells out',
+        () async {
+      await _seedProduct(db);
+      await seedBatch('exp', Decimal.parse('2'), DateTime(2026, 9, 1));
+      await seedBatch('noexp', Decimal.parse('10'), null);
+      await db.recomputeStockFromBatches(branchId, 'p-1', DateTime.now());
+      var stock = await db.getStockByBranch(branchId);
+      expect(stock.first.expiryDate, DateTime(2026, 9, 1));
+
+      // FEFO sells out the only expiring lot (2 units).
+      await repo.createSale(
+        branchId: branchId,
+        shopId: shopId,
+        cashierId: cashierId,
+        paymentMethodId: pmId,
+        items: [_item(quantity: Decimal.parse('2'))],
+        useBatches: true,
+      );
+
+      // Only the no-expiry lot remains — the stale expiry must be cleared.
+      stock = await db.getStockByBranch(branchId);
+      expect(stock.first.expiryDate, null);
     });
   });
 }

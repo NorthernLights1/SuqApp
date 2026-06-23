@@ -41,6 +41,63 @@ class InventoryRepository {
     return _remote.getMeasurementUnits(shopId);
   }
 
+  Future<MeasurementUnit> createMeasurementUnit({
+    required String shopId,
+    required String name,
+    required String abbreviation,
+  }) async {
+    // ponytail: custom units are reference data added rarely (usually online at
+    // setup). Create is remote-only; the delta pull mirrors it back. We also
+    // optimistically upsert into the local cache so the picker shows it at once.
+    // Offline support deferred — add a local-first path if shops report needing
+    // to add units while disconnected.
+    final unit = await _remote.createMeasurementUnit(
+      shopId: shopId,
+      name: name,
+      abbreviation: abbreviation,
+    );
+    await _db?.upsertUnits([
+      LocalMeasurementUnitsCompanion(
+        id: Value(unit.id),
+        name: Value(unit.name),
+        abbreviation: Value(unit.abbreviation),
+        syncedAt: Value(DateTime.now()),
+      ),
+    ]);
+    return unit;
+  }
+
+  /// A product's live batches (remaining > 0) at a branch, FEFO-ordered
+  /// (soonest expiry first). Wholesale display only; empty when there's no local
+  /// DB (web) or no batches.
+  Future<List<ProductBatchView>> getProductBatches(
+      String branchId, String productId) async {
+    // Web (no local DB): read the lots straight from Supabase.
+    if (_db == null) return _remote.getProductBatches(branchId, productId);
+    final batches = await _db.getBatchesForProduct(branchId, productId);
+    final ids = batches.map((b) => b.id).toList();
+    final depleted = await _db.depletionByBatch(ids);
+    final adjusted = await _db.adjustmentByBatch(ids);
+    // Resolve "added by" ids to display names from the profiles mirror.
+    final names = {
+      for (final p in await _db.getProfiles()) p.id: p.fullName,
+    };
+    return [
+      for (final b in batches)
+        ProductBatchView(
+          id: b.id,
+          batchNumber: b.batchNumber,
+          expiryDate: b.expiryDate,
+          remaining: b.quantity -
+              (depleted[b.id] ?? Decimal.zero) -
+              (adjusted[b.id] ?? Decimal.zero),
+          received: b.quantity,
+          receivedAt: b.receivedAt,
+          addedByName: b.createdBy == null ? null : names[b.createdBy],
+        ),
+    ].where((v) => v.remaining > Decimal.zero).toList();
+  }
+
   Future<List<ProductCategory>> getProductCategories(String shopId) async {
     // Local-first: categories can legitimately be empty (a shop may have none),
     // so when the local DB is present we trust it outright — never error offline.
@@ -245,10 +302,10 @@ class InventoryRepository {
       final remote = await _remote
           .getStockLevels(branchId)
           .timeout(AppConstants.remoteReadTimeout);
-      final pendingIds = (await _db!.getPendingInventoryAdjustments())
-          .where((a) => a.branchId == branchId)
-          .map((a) => a.productId)
-          .toSet();
+      final pendingIds = (await _db!.getPendingStockProductIds(branchId))
+        ..addAll(await _db.getPendingBatchProductIds(branchId))
+        ..addAll(await _db.getPendingBatchAdjustmentProductIds(branchId))
+        ..addAll(await _db.getPendingRefundRestockProductIds(branchId));
       final toCache = remote.where((s) => !pendingIds.contains(s.productId));
       await _db.upsertStock([
         for (final s in toCache)
@@ -329,6 +386,143 @@ class InventoryRepository {
       adjustedBy: adjustedBy,
       expiryDate: expiryDate,
     );
+  }
+
+  /// Wholesale stock-in: create a BATCH (qty + its own expiry/batch number).
+  /// The server rollup trigger maintains `inventory.quantity`; no
+  /// inventory_adjustments ledger row — the batch row IS the record. Local-first:
+  /// write the batch (isSynced=false) and recompute the local stock rollup;
+  /// SyncService pushes the batch (idempotent upsert by UUID).
+  ///
+  /// NOTE: for a wholesale product, ALL stock-in must go through here — writing
+  /// `inventory.quantity` directly (the retail path) would be overwritten by the
+  /// rollup trigger on the next batch change. The shop_type gate lives in the
+  /// provider/UI layer.
+  Future<void> addStockBatch({
+    required String branchId,
+    required String productId,
+    required Decimal quantity,
+    required String adjustedBy,
+    String? batchNumber,
+    DateTime? expiryDate,
+    Decimal? costPrice,
+  }) async {
+    final id = const Uuid().v4();
+
+    // Web (no local DB): insert straight to the server.
+    if (_db == null) {
+      await _remote.insertBatch(
+        id: id,
+        branchId: branchId,
+        productId: productId,
+        batchNumber: batchNumber,
+        expiryDate: expiryDate,
+        quantity: quantity,
+        costPrice: costPrice,
+        createdBy: adjustedBy,
+      );
+      return;
+    }
+
+    await _db.upsertProductBatches([
+      LocalProductBatchesCompanion(
+        id: Value(id),
+        branchId: Value(branchId),
+        productId: Value(productId),
+        batchNumber: Value(batchNumber),
+        expiryDate: Value(expiryDate),
+        quantity: Value(quantity),
+        costPrice: Value(costPrice),
+        receivedAt: Value(DateTime.now()),
+        syncedAt: Value(DateTime.now()),
+        createdBy: Value(adjustedBy),
+        isSynced: const Value(false),
+      ),
+    ]);
+    await _recomputeLocalRollup(branchId, productId);
+  }
+
+  /// Recompute the local stock rollup from this product's batches (= Σ received
+  /// − Σ depletions). Shared with the sale path via the DB helper.
+  Future<void> _recomputeLocalRollup(String branchId, String productId) =>
+      _db?.recomputeStockFromBatches(branchId, productId, DateTime.now()) ??
+      Future.value();
+
+  /// Discard a lot (expired/damaged): soft-delete it + recompute the rollup so
+  /// its remaining drops out immediately and offline. SyncService pushes the
+  /// soft-delete; the server rollup trigger restates inventory.quantity.
+  Future<void> discardBatch(String batchId) async {
+    if (_db == null) return;
+    final batch = await _db.getBatch(batchId);
+    if (batch == null) return;
+    await _db.discardBatch(batchId, DateTime.now());
+    await _recomputeLocalRollup(batch.branchId, batch.productId);
+  }
+
+  /// Correct ONE lot's remaining to a counted quantity. Records the difference
+  /// as an append-only adjustment (positive delta = removed, negative = added
+  /// back) with a reason, then recomputes the rollup. Offline-first; the server
+  /// trigger restates inventory.quantity on push.
+  Future<void> correctBatch({
+    required String batchId,
+    required String branchId,
+    required String productId,
+    required Decimal countedRemaining,
+    required String reason,
+    required String adjustedBy,
+  }) async {
+    final id = const Uuid().v4();
+    final now = DateTime.now();
+
+    if (_db == null) {
+      // Web: derive the current remaining from the server, then post the delta.
+      final views = await _remote.getProductBatches(branchId, productId);
+      Decimal? current;
+      for (final v in views) {
+        if (v.id == batchId) {
+          current = v.remaining;
+          break;
+        }
+      }
+      if (current == null) return;
+      final delta = current - countedRemaining;
+      if (delta == Decimal.zero) return;
+      await _remote.insertBatchAdjustment(
+        id: id,
+        batchId: batchId,
+        branchId: branchId,
+        productId: productId,
+        quantityDelta: delta,
+        reason: reason,
+        createdBy: adjustedBy,
+      );
+      return;
+    }
+
+    final batch = await _db.getBatch(batchId);
+    if (batch == null) return;
+    final depleted =
+        (await _db.depletionByBatch([batchId]))[batchId] ?? Decimal.zero;
+    final adjusted =
+        (await _db.adjustmentByBatch([batchId]))[batchId] ?? Decimal.zero;
+    final current = batch.quantity - depleted - adjusted;
+    final delta = current - countedRemaining;
+    if (delta == Decimal.zero) return;
+    await _db.upsertBatchAdjustments([
+      LocalBatchAdjustmentsCompanion(
+        id: Value(id),
+        batchId: Value(batchId),
+        branchId: Value(branchId),
+        productId: Value(productId),
+        quantityDelta: Value(delta),
+        reason: Value(reason),
+        createdBy: Value(adjustedBy),
+        createdAt: Value(now),
+        syncedAt: Value(now),
+        isSynced: const Value(false),
+      ),
+    ]);
+    await _recomputeLocalRollup(branchId, productId);
   }
 
   Future<void> manualAdjustment({

@@ -2,6 +2,41 @@
 
 ---
 
+## Decision: Per-lot stock correction = append-only adjustment ledger
+Date: 2026-06-22 | Status: Active (`feat/batch-tracking`, migration `032`)
+
+Correcting ONE lot's remaining (miscount / partial damage) is recorded as a
+`batch_adjustments` row (delta + reason + created_by), NOT by mutating the
+immutable `product_batches.quantity`. Temesgen chose "log an adjustment + reason"
+over "just edit the quantity" — keeps a full audit trail and stays offline-safe
+(append-only, idempotent, order-independent), matching the depletion model.
+`remaining = received − Σ(sale_item_batches) − Σ(batch_adjustments)`. The rollup
+and batch-conflict functions gain the adjustment term; everything that computes
+remaining (local recompute, getProductBatches, sale FEFO availability) subtracts
+it, so a corrected-down lot drops from stock AND from what's sellable.
+
+## Decision: Sale↔batch traceability lives on Reports, not the inventory tap
+Date: 2026-06-22 | Status: Active
+
+Per-item inventory detail shows CURRENT state (what's on hand per lot). The
+historical "which sale/customer drew from which lot, who sold it" is a recall/
+audit need → a dedicated **recall report on the Reports screen** (server query
+over `sale_item_batches`), not embedded under each batch. Keeps inventory about
+"what do I have now"; reports about "what happened". (Recall report deferred.)
+
+## Decision: web stays online-only (no WASM SQLite) — phone is the offline target
+Date: 2026-06-22 | Status: Active
+
+Drift/SQLite runs on phones, not in the browser (as configured), so web is
+Supabase-direct (online-only) while the phone is offline-first. Same single
+Supabase schema — only the read/write PATH differs. Every read must have a
+web/Supabase-direct fallback (batch reads were missing one → fixed `8ff3b48`).
+Enabling WASM SQLite on web (so browser testing matches the phone) was considered
+and DEFERRED — extra setup (wasm+worker assets, COOP/COEP headers, "reset = clear
+site data"); revisit if browser↔phone discrepancies become costly.
+
+---
+
 ## Decision: Offline-first — local DB is the read source; Supabase is sync only
 Date: 2026-06-12 | Status: Active (branch `offline-first`, in progress)
 
@@ -130,6 +165,39 @@ fire-and-forget push to remove).
   on `LocalSales`), so pilot devices migrate one time across B+C.
 - Triggering already satisfied by `SyncScheduler`; B just repoints `onPull` at the
   new delta pull. Optional debounced post-write nudge if needed.
+
+## Decision: Retail vs Wholesale split via a locked `shop_type` setting
+Date: 2026-06-21 | Status: Active
+
+Suq targets both retail shops and (irregular) wholesalers/distributors — e.g. a
+pharma distributor with no warehouse or barcode printer. Rather than fork the
+app, one `shop_type` shop_setting (`'retail'` | `'wholesale'`) gates the
+differences.
+
+- **Chosen at onboarding (step 1, before naming the shop), LOCKED afterward.**
+  Locking is intentional: switching mid-data has pricing/tier implications we
+  haven't designed, and avoids weird half-migrated states. Revisit if a real
+  need appears.
+- **`shopTypeProvider`** (FutureProvider, local-cache fallback) +
+  `AsyncValue<String>.isWholesale` extension is the single gate. Features wrap
+  with `if (ref.watch(shopTypeProvider).isWholesale)`. No per-feature flags.
+- **Wholesale gating so far:** customer mandatory on every sale (not just
+  credit). Planned: batch/expiry tracking, refunds. Retail paths stay untouched
+  so the simple shop keeps the simple flow.
+- **Why not a column on `shops`?** `shop_settings` is the existing config
+  mechanism, already synced to the local replica; a column would need a schema
+  migration + model change for the same result. (Key rule #1: config via
+  `shop_settings`.)
+
+## Decision: Custom measurement units are create-online-only (for now)
+Date: 2026-06-21 | Status: Active
+
+`measurement_units` already allows shop-scoped rows (RLS) and is in the delta
+pull, so reads/sync were free. Create writes straight to Supabase + optimistically
+mirrors locally; the local units table has no `is_synced`/`shop_id` and no
+SyncService push path. Units are reference data added rarely (usually online at
+setup), so a full offline-first create path (schema bump + push descriptor) isn't
+worth it yet. Add it if shops report needing to add units while disconnected.
 
 ## Decision: Staff invites use an email CODE, not a magic link
 Date: 2026-06-09 | Status: Active
