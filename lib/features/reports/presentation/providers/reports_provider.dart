@@ -1,4 +1,5 @@
 import 'package:decimal/decimal.dart';
+import 'package:drift/drift.dart' show Variable;
 import 'package:equatable/equatable.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
@@ -42,16 +43,16 @@ class ReportSummary extends Equatable {
 
   @override
   List<Object?> get props => [
-        salesTotal,
-        salesCount,
-        creditTotal,
-        creditCount,
-        expenseTotal,
-        expenseByCategory,
-        grossProfit,
-        profitItemCount,
-        refundTotal,
-      ];
+    salesTotal,
+    salesCount,
+    creditTotal,
+    creditCount,
+    expenseTotal,
+    expenseByCategory,
+    grossProfit,
+    profitItemCount,
+    refundTotal,
+  ];
 }
 
 class _ReportPeriodNotifier extends Notifier<ReportPeriod> {
@@ -61,7 +62,9 @@ class _ReportPeriodNotifier extends Notifier<ReportPeriod> {
 }
 
 final reportPeriodProvider =
-    NotifierProvider<_ReportPeriodNotifier, ReportPeriod>(_ReportPeriodNotifier.new);
+    NotifierProvider<_ReportPeriodNotifier, ReportPeriod>(
+      _ReportPeriodNotifier.new,
+    );
 
 // Holds the user-selected custom date range (only used when period == custom).
 class _CustomRangeNotifier extends Notifier<DateTimeRange?> {
@@ -71,32 +74,37 @@ class _CustomRangeNotifier extends Notifier<DateTimeRange?> {
 }
 
 final reportCustomRangeProvider =
-    NotifierProvider<_CustomRangeNotifier, DateTimeRange?>(_CustomRangeNotifier.new);
+    NotifierProvider<_CustomRangeNotifier, DateTimeRange?>(
+      _CustomRangeNotifier.new,
+    );
 
 ({DateTime start, DateTime end}) _rangeFor(
-    ReportPeriod period, DateTimeRange? custom) {
+  ReportPeriod period,
+  DateTimeRange? custom,
+) {
   final now = DateTime.now();
   final today = DateTime(now.year, now.month, now.day);
   return switch (period) {
-    ReportPeriod.today => (start: today, end: today.add(const Duration(days: 1))),
+    ReportPeriod.today => (
+      start: today,
+      end: today.add(const Duration(days: 1)),
+    ),
     ReportPeriod.week => (
-        start: today.subtract(Duration(days: today.weekday - 1)),
-        end: today.add(const Duration(days: 1)),
-      ),
+      start: today.subtract(Duration(days: today.weekday - 1)),
+      end: today.add(const Duration(days: 1)),
+    ),
     ReportPeriod.month => (
-        start: DateTime(now.year, now.month, 1),
-        end: today.add(const Duration(days: 1)),
-      ),
+      start: DateTime(now.year, now.month, 1),
+      end: today.add(const Duration(days: 1)),
+    ),
     ReportPeriod.year => (
-        start: DateTime(now.year, 1, 1),
-        end: today.add(const Duration(days: 1)),
-      ),
-    ReportPeriod.custom => custom != null
-        ? (
-            start: custom.start,
-            end: custom.end.add(const Duration(days: 1)),
-          )
-        : (start: today, end: today.add(const Duration(days: 1))),
+      start: DateTime(now.year, 1, 1),
+      end: today.add(const Duration(days: 1)),
+    ),
+    ReportPeriod.custom =>
+      custom != null
+          ? (start: custom.start, end: custom.end.add(const Duration(days: 1)))
+          : (start: today, end: today.add(const Duration(days: 1))),
   };
 }
 
@@ -108,11 +116,18 @@ class _ReportCategoryNotifier extends Notifier<String?> {
 }
 
 final reportCategoryFilterProvider =
-    NotifierProvider<_ReportCategoryNotifier, String?>(_ReportCategoryNotifier.new);
+    NotifierProvider<_ReportCategoryNotifier, String?>(
+      _ReportCategoryNotifier.new,
+    );
 
-Decimal _refundedFromSaleItems(List items) {
+Decimal _refundedFromSaleItems(List items, {String? categoryFilter}) {
   var total = Decimal.zero;
   for (final item in items) {
+    if (categoryFilter != null) {
+      final catId =
+          (item as Map<String, dynamic>)['products'] as Map<String, dynamic>?;
+      if (catId?['category_id'] != categoryFilter) continue;
+    }
     final refunds =
         (item as Map<String, dynamic>)['refund_items'] as List? ?? const [];
     for (final refundItem in refunds) {
@@ -126,6 +141,35 @@ Decimal _refundedFromSaleItems(List items) {
   return total;
 }
 
+Future<Map<String, Decimal>> _getRefundedAmountBySaleItem(
+  AppDatabase db,
+  List<String> saleItemIds,
+) async {
+  if (saleItemIds.isEmpty) return {};
+  final placeholders = List.filled(saleItemIds.length, '?').join(', ');
+  final rows = await db
+      .customSelect(
+        '''
+    SELECT ri.sale_item_id AS sale_item_id, ri.amount AS amount
+    FROM local_refund_items ri
+    INNER JOIN local_refunds r ON r.id = ri.refund_id
+    WHERE ri.sale_item_id IN ($placeholders)
+      AND r.deleted_at IS NULL
+      AND ri.deleted_at IS NULL
+    ''',
+        variables: [for (final id in saleItemIds) Variable.withString(id)],
+      )
+      .get();
+  final map = <String, Decimal>{};
+  for (final row in rows) {
+    final saleItemId = row.read<String>('sale_item_id');
+    map[saleItemId] =
+        (map[saleItemId] ?? Decimal.zero) +
+        Decimal.parse(row.read<String>('amount'));
+  }
+  return map;
+}
+
 /// The individual completed sales behind the report summary, honouring the
 /// same period + category filters. Drives the tappable Transactions/Credits
 /// drill-downs. Each row maps to a full [Sale] (with customer/cashier joins),
@@ -136,7 +180,8 @@ final reportSalesProvider = FutureProvider<List<Sale>>((ref) async {
   final categoryFilter = ref.watch(reportCategoryFilterProvider);
   final branches = await ref.watch(currentShopBranchesProvider.future);
   final branch =
-      ref.watch(activeBranchProvider) ?? (branches.isNotEmpty ? branches.first : null);
+      ref.watch(activeBranchProvider) ??
+      (branches.isNotEmpty ? branches.first : null);
   if (branch == null) return const [];
 
   final range = _rangeFor(period, customRange);
@@ -154,7 +199,8 @@ final reportSalesProvider = FutureProvider<List<Sale>>((ref) async {
   final data = await client
       .from('sales')
       .select(
-          '*, sale_items(*, products(category_id)), customers(id, name, phone), payment_methods(id, name, code), cashier:profiles!sales_cashier_id_fkey(full_name)')
+        '*, sale_items(*, products(category_id)), customers(id, name, phone), payment_methods(id, name, code), cashier:profiles!sales_cashier_id_fkey(full_name)',
+      )
       .eq('branch_id', branch.id)
       .eq('status', 'completed')
       .gte('created_at', range.start.toUtc().toIso8601String())
@@ -168,9 +214,11 @@ final reportSalesProvider = FutureProvider<List<Sale>>((ref) async {
       ? rows
       : rows.where((row) {
           final items = (row['sale_items'] as List? ?? []);
-          return items.any((item) =>
-              (item['products'] as Map<String, dynamic>?)?['category_id'] ==
-              categoryFilter);
+          return items.any(
+            (item) =>
+                (item['products'] as Map<String, dynamic>?)?['category_id'] ==
+                categoryFilter,
+          );
         }).toList();
   return filtered.map((e) => Sale.fromJson(e)).toList();
 });
@@ -182,9 +230,11 @@ Future<List<Sale>> _localReportSales(
   ({DateTime start, DateTime end}) range,
   String? categoryFilter,
 ) async {
-  final rows = (await db.getSalesByBranch(branchId, range.start, range.end))
-      .where((r) => r.status == 'completed')
-      .toList();
+  final rows = (await db.getSalesByBranch(
+    branchId,
+    range.start,
+    range.end,
+  )).where((r) => r.status == 'completed').toList();
   final custNames = {
     if (shopId != null)
       for (final c in await db.getCustomersByShop(shopId)) c.id: c,
@@ -192,16 +242,15 @@ Future<List<Sale>> _localReportSales(
   final cashierNames = {
     for (final p in await db.getProfiles()) p.id: p.fullName,
   };
-  final payNames = {
-    for (final m in await db.getPaymentMethods()) m.id: m.name,
-  };
+  final payNames = {for (final m in await db.getPaymentMethods()) m.id: m.name};
   final prodCat = <String, String?>{
     if (shopId != null)
       for (final p in await db.getProductsByShop(shopId)) p.id: p.categoryId,
   };
   // Batch the items for all sales in one query (avoids N+1 across the period).
-  final itemsBySale =
-      await db.getSaleItemsForSales(rows.map((r) => r.id).toList());
+  final itemsBySale = await db.getSaleItemsForSales(
+    rows.map((r) => r.id).toList(),
+  );
 
   final result = <Sale>[];
   for (final r in rows) {
@@ -211,29 +260,31 @@ Future<List<Sale>> _localReportSales(
       continue;
     }
     final cust = custNames[r.customerId];
-    result.add(Sale(
-      id: r.id,
-      branchId: r.branchId,
-      customerId: r.customerId,
-      customerName: cust?.name,
-      customerPhone: cust?.phone,
-      cashierId: r.cashierId,
-      cashierName: cashierNames[r.cashierId],
-      paymentMethodId: r.paymentMethodId,
-      paymentMethodName: payNames[r.paymentMethodId],
-      subtotal: r.subtotal,
-      discountAmount: r.discountAmount,
-      total: r.total,
-      status: saleStatusFromName(r.status),
-      voidReason: r.voidReason,
-      voidedBy: r.voidedBy,
-      voidedAt: r.voidedAt,
-      isCredit: r.isCredit,
-      creditSettledAt: r.creditSettledAt,
-      notes: r.notes,
-      createdAt: r.createdAt,
-      items: items
-          .map((i) => SaleItem(
+    result.add(
+      Sale(
+        id: r.id,
+        branchId: r.branchId,
+        customerId: r.customerId,
+        customerName: cust?.name,
+        customerPhone: cust?.phone,
+        cashierId: r.cashierId,
+        cashierName: cashierNames[r.cashierId],
+        paymentMethodId: r.paymentMethodId,
+        paymentMethodName: payNames[r.paymentMethodId],
+        subtotal: r.subtotal,
+        discountAmount: r.discountAmount,
+        total: r.total,
+        status: saleStatusFromName(r.status),
+        voidReason: r.voidReason,
+        voidedBy: r.voidedBy,
+        voidedAt: r.voidedAt,
+        isCredit: r.isCredit,
+        creditSettledAt: r.creditSettledAt,
+        notes: r.notes,
+        createdAt: r.createdAt,
+        items: items
+            .map(
+              (i) => SaleItem(
                 id: i.id,
                 saleId: i.saleId,
                 productId: i.productId,
@@ -244,9 +295,11 @@ Future<List<Sale>> _localReportSales(
                 discountAmount: i.discountAmount,
                 total: i.total,
                 inventoryStatus: inventoryStatusFromName(i.inventoryStatus),
-              ))
-          .toList(),
-    ));
+              ),
+            )
+            .toList(),
+      ),
+    );
   }
   return result;
 }
@@ -333,6 +386,10 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
         // Category mode: sum only items from the selected category.
         Decimal catRevenue = Decimal.zero;
         bool hasCatItem = false;
+        final catRefunded = _refundedFromSaleItems(
+          items,
+          categoryFilter: categoryFilter,
+        );
         for (final item in items) {
           final catId =
               (item['products'] as Map<String, dynamic>?)?['category_id'];
@@ -356,9 +413,12 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
         salesTotal += catRevenue;
         salesCount++;
         if (isOutstandingCredit) {
-          creditTotal += catRevenue < remainingCredit
-              ? catRevenue
-              : remainingCredit;
+          final catRemaining = catRevenue - catRefunded;
+          if (catRemaining > Decimal.zero) {
+            creditTotal += catRemaining < remainingCredit
+                ? catRemaining
+                : remainingCredit;
+          }
           creditCount++;
         }
       } else {
@@ -485,6 +545,16 @@ Future<ReportSummary> _localReportSummary(
   final itemsBySale = await db.getSaleItemsForSales(completedIds);
   final paidBySale = await db.getPaidBySale(completedIds);
   final refundedBySale = await db.getRefundedAmountBySale(completedIds);
+  final refundedBySaleItem = categoryFilter == null
+      ? const <String, Decimal>{}
+      : await _getRefundedAmountBySaleItem(
+          db,
+          itemsBySale.values
+              .expand((items) => items)
+              .where((item) => prodCat[item.productId] == categoryFilter)
+              .map((item) => item.id)
+              .toList(),
+        );
 
   Decimal salesTotal = Decimal.zero;
   Decimal creditTotal = Decimal.zero;
@@ -504,11 +574,13 @@ Future<ReportSummary> _localReportSummary(
 
     if (categoryFilter != null) {
       Decimal catRevenue = Decimal.zero;
+      Decimal catRefunded = Decimal.zero;
       bool hasCatItem = false;
       for (final item in items) {
         if (prodCat[item.productId] != categoryFilter) continue;
         hasCatItem = true;
         catRevenue += (item.unitPrice * item.quantity) - item.discountAmount;
+        catRefunded += refundedBySaleItem[item.id] ?? Decimal.zero;
         if (item.costPriceSnapshot != null) {
           grossProfit +=
               ((item.unitPrice * item.quantity) - item.discountAmount) -
@@ -520,9 +592,12 @@ Future<ReportSummary> _localReportSummary(
       salesTotal += catRevenue;
       salesCount++;
       if (isOutstandingCredit) {
-        creditTotal += catRevenue < remainingCredit
-            ? catRevenue
-            : remainingCredit;
+        final catRemaining = catRevenue - catRefunded;
+        if (catRemaining > Decimal.zero) {
+          creditTotal += catRemaining < remainingCredit
+              ? catRemaining
+              : remainingCredit;
+        }
         creditCount++;
       }
     } else {

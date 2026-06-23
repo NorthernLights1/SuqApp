@@ -31,6 +31,35 @@ create or replace trigger trg_batch_adjustments_set_updated_at
   before insert or update on batch_adjustments
   for each row execute function public.set_updated_at();
 
+create or replace function public.validate_batch_adjustment_batch_match()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_branch  uuid;
+  v_product uuid;
+begin
+  select branch_id, product_id into v_branch, v_product
+  from public.product_batches
+  where id = NEW.batch_id;
+
+  if v_branch is null
+     or NEW.branch_id is distinct from v_branch
+     or NEW.product_id is distinct from v_product then
+    raise exception 'batch_adjustments branch_id/product_id must match batch_id';
+  end if;
+
+  return NEW;
+end;
+$$;
+
+drop trigger if exists trg_batch_adjustments_validate_batch_match on public.batch_adjustments;
+create trigger trg_batch_adjustments_validate_batch_match
+  before insert or update of batch_id, branch_id, product_id on public.batch_adjustments
+  for each row execute function public.validate_batch_adjustment_batch_match();
+
 -- ── Rollup: inventory = Σ(received) − Σ(depletions) − Σ(adjustments) ─────────
 create or replace function public.recompute_product_rollup(
   p_branch uuid,
@@ -160,11 +189,21 @@ create policy "batch_adjustments_select" on batch_adjustments for select
   using (private.is_shop_member(private.shop_id_from_branch(branch_id)));
 create policy "batch_adjustments_write" on batch_adjustments for all
   to authenticated
-  using (private.has_permission(
-    private.shop_id_from_branch(branch_id), 'inventory.adjust'
+  using (exists (
+    select 1
+    from public.product_batches pb
+    where pb.id = batch_adjustments.batch_id
+      and private.has_permission(
+        private.shop_id_from_branch(pb.branch_id), 'inventory.adjust'
+      )
   ))
-  with check (private.has_permission(
-    private.shop_id_from_branch(branch_id), 'inventory.adjust'
+  with check (exists (
+    select 1
+    from public.product_batches pb
+    where pb.id = batch_adjustments.batch_id
+      and private.has_permission(
+        private.shop_id_from_branch(pb.branch_id), 'inventory.adjust'
+      )
   ));
 
 grant select, insert, update, delete on batch_adjustments to authenticated;
