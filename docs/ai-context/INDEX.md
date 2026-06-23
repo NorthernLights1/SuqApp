@@ -9,13 +9,14 @@ Then read only the specific files you need — do not load all of them.
 
 | File | Purpose | Read when |
 |---|---|---|
-| `INDEX.md` | This file. Table of contents + usage rules. | Always first |
-| `CURRENT_STATE.md` | What the project is, where it stands, key constraints | Starting a new session |
-| `OPEN_TASKS.md` | Prioritized task list — what to do next | Planning work or resuming a task |
-| `DECISIONS.md` | Architecture and tech decisions with rationale | Before changing structure, choosing a lib, or overriding a pattern |
-| `FILE_MAP.md` | Important files, their purpose, and when to edit them | Before editing an unfamiliar file or adding a new feature |
-| `BUGS_AND_FIXES.md` | History of bugs encountered and how they were fixed | Debugging, or before touching auth/router/Supabase trigger code |
-| `COMMANDS_RUN.md` | Useful CLI commands with results | Running builds, analysis, migrations, or pub commands |
+| [[INDEX]] | This file. Table of contents + usage rules. | Always first |
+| [[CURRENT_STATE]] | What the project is, where it stands, key constraints | Starting a new session |
+| [[OPEN_TASKS]] | Prioritized task list — what to do next | Planning work or resuming a task |
+| [[DECISIONS]] | Architecture and tech decisions with rationale | Before changing structure, choosing a lib, or overriding a pattern |
+| [[FILE_MAP]] | Important files, their purpose, and when to edit them | Before editing an unfamiliar file or adding a new feature |
+| [[BUGS_AND_FIXES]] | History of bugs encountered and how they were fixed | Debugging, or before touching auth/router/Supabase trigger code |
+| [[COMMANDS_RUN]] | Useful CLI commands with results | Running builds, analysis, migrations, or pub commands |
+| [[OFFLINE_QA_CHECKLIST]] | QA checklist for offline/sync testing | Before testing device offline behaviour |
 | `ARCHIVE/` | Old context no longer active | Rarely — only if explicitly asked |
 
 ---

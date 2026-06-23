@@ -183,23 +183,19 @@ Impact: `appDatabaseProvider` returns `AppDatabase?` — null on web. All caller
 ---
 
 ## Decision: Riverpod for state management
-Date: 2026-05-29 | Status: Active — pinned to 2.x
+Date: 2026-05-29 | Status: Active — on 3.x (migrated session 8)
 
-`flutter_riverpod: ^2.6.1` + `riverpod_annotation: ^2.6.1`. `AsyncNotifier` for async writes, `FutureProvider` for reads. `StateProvider` / `StateNotifierProvider` used for simple mutable state.
+`flutter_riverpod: ^3.3.1` + `riverpod_annotation: ^4.0.2`. `AsyncNotifier` for async writes, `FutureProvider` for reads. All `StateProvider`/`StateNotifierProvider` replaced with `Notifier` + `NotifierProvider`. All `.valueOrNull` replaced with `.asData?.value`.
 
 Reason: Compile-time safety, clean async support, testable.
-
-Migration to Riverpod 3.x is planned but not yet done. Do not bump the version in pubspec.yaml until the migration task is complete (see OPEN_TASKS.md). Riverpod 3.x removes `StateProvider`, `StateNotifierProvider`, and `valueOrNull` — all require code changes.
 
 ---
 
 ## Decision: Go Router for navigation
-Date: 2026-05-29 | Status: Active — pinned to v14
+Date: 2026-05-29 | Status: Active — on v17 (migrated session 8)
 
-`go_router: ^14.8.1` with `_AuthRefreshNotifier` listening to Supabase auth stream.
+`go_router: ^17.2.3` with `_AuthRefreshNotifier` listening to Supabase auth stream.
 Router instantiated once as `late final` in `ConsumerStatefulWidget`. See BUGS_AND_FIXES.md for the router-in-build() bug.
-
-Migration to go_router v17 is planned alongside the Riverpod 3.x migration.
 
 ---
 
@@ -293,6 +289,9 @@ Decision: Replaced with "Receive Payment" dialog. Pre-filled with full balance; 
 - Amount ≥ balance → zero out (full settlement)
 - Amount < balance → reduce by entered amount
 
-Implementation: `CustomerFormNotifier.receivePayment(customerId, amount)` — fetches current balance, subtracts, updates. No separate "credit payments" table — balance is updated directly on `customers.credit_balance`.
+Implementation: `CustomerFormNotifier.receivePayment(customerId, amount)` — fetches current balance, subtracts, updates directly on `customers.credit_balance`. `settleCreditSale` (credits tab per-bill flow) uses the `record_credit_payment` RPC which writes to the `credit_payments` table (migration 017/018, added session 15) for audit trail.
 
-Reason: Simple, matches how small shops track debt. If audit trail is needed later, a `credit_payments` table can be added.
+Reason: Simple, matches how small shops track debt.
+
+---
+*Related: [[INDEX]] · [[CURRENT_STATE]] · [[OPEN_TASKS]] · [[BUGS_AND_FIXES]] · [[FILE_MAP]]*

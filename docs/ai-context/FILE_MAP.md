@@ -24,7 +24,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 | `core/constants/setting_keys.dart` | All `shop_settings` key names | Adding a new shop setting |
 | `core/errors/app_error.dart` | Sealed error hierarchy | Adding a new error type |
 | `core/services/permission_service.dart` | Central RBAC — queries `shop_users→roles→permissions` | Changing permission logic |
-| `core/services/sync_service.dart` | Offline sync — pushes pending sales to Supabase | Changing sync behavior |
+| `core/services/sync_service.dart` | Offline sync — bulk-upserts all pending entities (customers→sales→expenses→credit payments→products→categories) in FK order | Changing sync behavior |
 
 ---
 
@@ -46,7 +46,7 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 | `data/local/database_provider.dart` | `appDatabaseProvider` — returns `AppDatabase?` (null on web) | Changing DB provider behavior |
 | `data/local/open_database.dart` | Web stub — throws UnsupportedError | Rarely |
 | `data/local/open_database_native.dart` | Native DB opener — `LazyDatabase` pointing to `suq.db` in documents dir | Rarely |
-| `data/local/seed_service.dart` | Seeds products/stock/customers from Supabase into Drift on first load | Changing seed logic |
+| `data/local/seed_service.dart` | Delta pull engine — per-table cursor (`LocalSyncState`), fetches `updated_at >= cursor`, upserts live rows, hard-deletes soft-deleted rows. First pull is full. 13 `_seedX` registry methods. | Changing pull/sync logic |
 
 ---
 
@@ -130,8 +130,11 @@ All paths relative to `c:/Projects/SuqApp/` (repo root = Flutter project root).
 |---|---|
 | `features/expenses/` | Record expense, categories, date filter |
 | `features/reports/` | Sales summary, gross profit, expense breakdown, low-stock |
-| `features/staff/` | Staff list, invite via Edge Function, suspend/restore |
+| `features/staff/` | Staff list, invite via Edge Function (OTP code flow), suspend/restore |
 | `features/dashboard/` | Bottom nav shell, home tab, summary cards |
+| `features/licensing/presentation/providers/license_provider.dart` | `licenseStatusProvider` (trial/expired/blocked), `ActivateLicenseNotifier` |
+| `features/licensing/presentation/screens/license_gate.dart` | `LicenseGate` — wraps whole app in `MaterialApp.builder`; shows blocked/expired screens |
+| `features/licensing/presentation/widgets/license_banner.dart` | `LicenseWarningBanner` — amber countdown strip; `showSerialEntryDialog` for in-app renewal |
 
 ---
 
@@ -146,7 +149,7 @@ Run `flutter gen-l10n` after editing `app_en.arb`.
 
 ---
 
-## Supabase Migrations (`supabase/migrations/`)
+## Supabase Migrations (`supabase/migrations/`) — all applied live
 
 | File | Domain |
 |---|---|
@@ -156,6 +159,22 @@ Run `flutter gen-l10n` after editing `app_en.arb`.
 | `004_supplies.sql` | suppliers, supply_orders (stub) |
 | `005_financials.sql` | expense_categories, expenses, cash_reconciliations |
 | `006_system.sql` | shop_settings, notification tables, export_jobs, sync_logs, handle_new_user trigger |
+| `007–011` | selling_price, expiry_date, RLS fix, private schema helpers, credit_settled_at |
+| `012_notifications.sql` | notification_channels, pg_cron/pg_net extensions, verify_cron_secret |
+| `013_grant_service_role.sql` | Restore service_role DML grants on all public tables |
+| `014_profiles_shopmate_read.sql` | shares_shop_with() — staff names visible to shopmates |
+| `015_activate_membership.sql` | activate_my_membership() SECURITY DEFINER RPC |
+| `016_scheduled_low_stock_notifications.sql` | pg_cron jobs (9am/9pm EAT) |
+| `017–018` | credit_payments table + grants |
+| `019_platform_licensing.sql` | shop_controls, license_keys, activate_license RPC |
+| `020_license_periods.sql` | License duration logic |
+| `021_stock_conflicts.sql` | stock_conflicts table + detect_stock_conflict trigger |
+| `022_stock_conflicts_product_idx.sql` | product_id index on stock_conflicts |
+| `023_offline_sync_metadata.sql` | updated_at + deleted_at on all 16 replica tables; set_updated_at() trigger |
+| `024_offline_first_v2_correctness.sql` | record_credit_payment RPC (atomic, idempotent) |
+| `025_one_shop_one_branch.sql` | Schema constraint for single-shop/branch model |
+| `026_preserve_offline_timestamps.sql` | p_created_at param on record_credit_payment |
+| `027_lock_down_trigger_function.sql` | SECURITY DEFINER audit / trigger hardening |
 
 ---
 
@@ -163,6 +182,15 @@ Run `flutter gen-l10n` after editing `app_en.arb`.
 
 | Path | Purpose |
 |---|---|
-| `test/data/local/app_database_test.dart` | Drift DB unit tests + edge cases (27 tests) |
-| `test/domain/models/models_test.dart` | Model parsing tests — CartItem, Sale, Product, Customer, PaymentMethod (30 tests) |
-| `test/features/sales/sales_repository_test.dart` | SalesRepository tests — inventory enforcement, totals, DB writes, search (34 tests). Uses `_StubSalesRemote implements SalesRemote` (no mocking library needed). |
+| `test/data/local/app_database_test.dart` | Drift DB unit tests + edge cases |
+| `test/data/local/seed_service_test.dart` | Delta-pull partition logic (`partitionDelta`) |
+| `test/domain/models/models_test.dart` | Model parsing — CartItem, Sale, Product, Customer, PaymentMethod |
+| `test/features/auth/friendly_auth_error_test.dart` | Sign-in error classifier (offline / wrong password / rate limit) |
+| `test/features/sales/sales_repository_test.dart` | Inventory enforcement, totals, DB writes, search. Uses `_StubSalesRemote` |
+| `test/features/inventory/inventory_correction_test.dart` | Stock correction (15 tests) |
+| `test/features/inventory/inventory_repository_test.dart` | Stock ops, offline fallback |
+| `test/features/customers/customers_repository_test.dart` | Offline customer create/edit |
+| `test/features/expenses/expenses_repository_test.dart` | Offline expense record |
+
+---
+*Related: [[INDEX]] · [[CURRENT_STATE]] · [[DECISIONS]] · [[COMMANDS_RUN]]*

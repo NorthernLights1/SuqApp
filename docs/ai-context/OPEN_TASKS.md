@@ -1,217 +1,19 @@
 # Open Tasks — Suq ERP
 
-Last updated: 2026-06-17 (session 19, part 3)
+Last updated: 2026-06-20
 
 ---
 
-## Offline-first (branch `offline-first`, in progress)
+## Offline-first — ✅ DONE (merged to main, PR #4, 2026-06-17)
 
-- [x] **Phase 1** — local Drift schema v5 (shop/branches/settings/payment
-  methods/categories/units/profiles/credit_payments) + download/pull sync in
-  SeedService + SyncScheduler push-then-pull on triggers + local-first
-  shop/branch providers. (commits 54f5495, 77f4f46)
-- [x] **Phase 2** — every read screen has an offline path: Today's Summary,
-  Inventory, Customers, Expenses (+categories), Credits (list/per-customer/
-  payment history), Reports (summary + drill-downs, recomputed locally),
-  Settings. (commits 512bde8, 5e69eb9, 6509744)
-  - Remaining polish: Sales tab offline list doesn't yet show customer/cashier
-    names (Reports drill-down does).
-- [x] **Phase 3** — oversell conflict system. Migration 021: `stock_conflicts`
-  table + `detect_stock_conflict` trigger (records a conflict when inventory
-  goes negative) + owner-only resolve RLS. Migration 022: product_id index.
-  cron-notifications v3 adds a STOCK CONFLICTS digest section. App:
-  conflicts_provider (stockConflictsProvider + ResolveConflictNotifier with a
-  conditional-claim guard against concurrent resolves), StockConflictsScreen,
-  owner-only dashboard banner (gated on owner-exclusive `settings.manage`),
-  `/stock-conflicts` route. (commits baa2055, f9d4d09, aa92b11)
-- [ ] **Verify offline end-to-end** on device: build APK from `offline-first`,
-  confirm every screen loads offline, and force a two-device oversell conflict.
-- [ ] Then merge `offline-first` -> `main`.
-- [ ] Verify offline boot + every screen loads offline; keep 15-min pull.
-- [x] Q1 — overdue email = all unpaid credits regardless of age (fn v6).
-
-### Observed offline bugs (motivate the v2 refactor below)
-- [ ] "Could not load payment methods" on sales screen offline (form lookup still
-  reads Supabase, not local).
-- [ ] "Could not load categories" on inventory add-item offline (same cause).
-- [ ] Cannot settle credit offline (write is Supabase-direct).
-- [ ] Credit detail shows no customer / cashier offline (join-derived fields are
-  null in local path — need denormalization).
-- [ ] All operations slower offline (local-fallback waits on network timeout
-  instead of reading local-first).
+Phases 1–3 + v2 engine (A–C) all complete. Two-device oversell conflict
+testing still worth doing before wide rollout but is not blocking the pilot.
 
 ---
 
-## Offline-first v2 — absolute boundary + replica sync engine
-See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
+## Offline-first v2 — Phase D hardening (not blocking pilot)
 
-**Code reality check (read 2026-06-14 — narrows scope; don't rebuild):**
-- Outbox push ALREADY covers customers→sales→expenses→adjustments, FK-ordered,
-  ALREADY idempotent (select-before-insert). `sync_service.dart`.
-- Connectivity auto-trigger ALREADY exists (offline→online edge + 15-min + cold
-  start). `sync_scheduler.dart`. (CURRENT_STATE tech-debt note was stale; fixed.)
-- Observability infra partly exists: `sync_logs` heartbeat, `lastSyncedAt()`,
-  `isSyncOverdue()`. Phase-D debug view just needs a screen.
-- Confirmed broken: `getPaymentMethods` has NO local path (sales_repository.dart
-  :64). `getSale`/`getSalesForBranch` are server-FIRST not local-first (:256-297)
-  — same root cause as missing names (local rows lack customer/cashier/payment).
-  `voidSale` (:248) + `createCustomer` (:80) are remote-first. Inline push in
-  `createSale` (:217-233) duplicates SyncService — remove.
-- Push is row-by-row w/ a SELECT per row (2N round trips) → batch into bulk upsert.
-- Pull is full `seedAll` re-download → make delta.
-
-**Phase A — Schema & boundary foundation (the non-negotiables)**
-- [x] Migration `023_offline_sync_metadata.sql`: adds `updated_at` +
-  `deleted_at` to all 16 replica tables, a server-set `set_updated_at()` trigger
-  (fires on INSERT *and* UPDATE — offline-created rows get server receive-time so
-  delta pull can't miss them), and a per-table `updated_at` index. Admin tables
-  excluded. **APPLIED LIVE 2026-06-14 via Supabase MCP (apply_migration); verified
-  all 16 tables have the columns/trigger/index.**
-- [x] RLS audit done (read all CREATE-TABLE migrations): all 16 replica tables
-  already have shop-scoped RLS via `is_shop_member` / `shop_id_from_branch`. No
-  gaps found in code. System rows (`shop_id IS NULL` units/payment methods/expense
-  cats) and same-shop profile names are intended shared data, not leaks.
-  - [x] Part 1 (coverage) run live via MCP: zero replica tables without RLS. ✅
-  - [ ] **MANUAL STEP (Temesgen): run Part 2 of `supabase/rls_isolation_test.sql`**
-    — cross-shop isolation with two real accounts from different shops (needs a
-    real authenticated session; MCP runs as postgres and bypasses RLS).
-  - Security advisor (post-migration) flagged only PRE-EXISTING items, none from
-    023: `detect_stock_conflict()` (trigger fn, SECURITY DEFINER) is RPC-exposed
-    to anon/authenticated → revoke EXECUTE in Phase D DEFINER audit; leaked-password
-    protection still off (already-tracked manual step); pg_net in public schema.
-    My `set_updated_at()` is NOT security-definer and was not flagged.
-- [x] UUID + idempotency confirmed already satisfied: writes use client-side
-  `Uuid().v4()`; push is idempotent (select-before-insert). Converting to a single
-  `upsert(onConflict:'id')` is folded into Phase B batching (removes the extra
-  round trip) — no separate change needed now.
-- [ ] Local Drift schema migration (DEFERRED into Phase B/C by design) — Phase A's
-  server change does not alter the local schema. The local columns (store server
-  `updated_at`, delta cursor) land when Phase B's pull *consumes* them, and the
-  denormalized-name columns land in Phase C; both bump `schemaVersion` together
-  with their `onUpgrade` steps so pilot devices migrate once, cleanly.
-
-**Phase B — The sync engine (single Supabase boundary)** — see DECISIONS.md
-"Offline-first v2 Phase B". Grounded in: `seed_service.dart`, `sync_service.dart`,
-`sync_scheduler.dart`, `sales_repository.dart`, `app_database.dart`. Do in order.
-
-- [x] **B1 — local schema v6→v7 (migrate once for B+C):** DONE.
-  - `LocalSyncState (tableKey text PK, lastPulledAt datetime)` + `getPullCursor` /
-    `setPullCursor`. (Column is `tableKey` not `tableName` — Drift reserves
-    `tableName`.)
-  - `LocalSales` gained nullable `customerName` / `cashierName` /
-    `paymentMethodName` (populated in B2, consumed in Phase C).
-  - `schemaVersion` 6→7 + `onUpgrade` (createTable + 3 addColumn). `.g.dart`
-    regenerated. 117 tests pass; analyze clean. NOTE for B2: Drift reads
-    DateTime back in local representation — send the cursor to Supabase as
-    `.toUtc().toIso8601String()` so the delta `updated_at > cursor` stays correct.
-- [x] **B2 — delta pull engine (rewrote `SeedService`):** DONE.
-  - Shared `_deltaPull` helper centralizes the per-table cursor: fetch
-    `updated_at >= cursor` (UTC ISO), upsert live rows, hard-remove `deleted_at`
-    rows via generic `AppDatabase.deleteByIds(sqlTable, ids)`, advance cursor to
-    max `updated_at`. The 13 thin `_seedX` methods are the registry entries.
-  - First pull (null cursor) keeps the 366-day/2000-row sales+expenses window;
-    delta pulls filter by `updated_at` only (catches old settlements/voids).
-  - Sales pull fills `customerName/cashierName/paymentMethodName` from the joins
-    (`cashier:profiles!sales_cashier_id_fkey`). Pending-skip preserved for
-    sales/customers/expenses.
-  - Products + payment_methods dropped the `is_active` filter so deactivation
-    propagates (local reads still filter active).
-  - Dropped `InventoryRemote` from the pull path; products/stock now pulled
-    directly. Updated 3 `SeedService(...)` call sites (constructor is now
-    `(_client, _db)`).
-  - analyze clean; 119 tests pass (+ deleteByIds + cursor tests). NOTE: pull is
-    not yet unit-tested end-to-end (needs a mock SupabaseClient) — deferred to B5.
-- [x] **B3 — batched push (`SyncService`), remove inline push:** DONE.
-  - Customers / sales(+items) / expenses now push as one bulk
-    `upsert(onConflict:'id')` each (was select-before-insert, row-by-row). FK
-    order preserved (customers → sales → sale_items → expenses). Bulk is
-    all-or-nothing per batch (retried on failure) — noted as a pilot trade-off.
-  - Stock adjustments kept per-row: `InventoryRemote.applyAdjustment` is
-    delta-aware (server-side quantity composition), so it can't be a blind upsert.
-  - Removed the inline fire-and-forget push from `SalesRepository.createSale`;
-    the sale just stays `isSynced=false` and SyncService is the sole pusher.
-  - Added a non-blocking post-sale sync nudge in `CreateSaleNotifier.submit`
-    (`syncSchedulerProvider.syncNow()`) so removing the inline push doesn't
-    regress online sales to the 15-min backstop. Offline it's a no-op.
-  - Dropped the `CustomersRemote` dep from SyncService. analyze clean; 119 tests.
-- [x] **B4 — license as a question, not synced data:** VERIFIED already-satisfied,
-  no code change needed (read `license_provider.dart` + migration 019).
-  - `shop_controls`/`license_keys` are NOT in the sync registry. ✅
-  - `shop_controls` RLS scopes SELECT to own shop; `license_keys` is deny-all
-    (no client policy); device reads only its own 3-col control row. ✅
-  - Activation is the owner-only `activate_license` SECURITY DEFINER RPC. ✅
-  - Status read fails open offline; entitlement never cached locally. ✅
-  - Added a guardrail comment in `seed_service.dart` so the operator tables can't
-    be added to the registry later. A dedicated `get_my_license_status` RPC is
-    optional polish (RLS already isolates) — skipped to avoid churn + a prod
-    migration for no security gain.
-- [x] **B5 — tests + verify:** DONE. Extracted the delta core into pure
-  `SeedService.partitionDelta` and unit-tested it: cursor advances to max
-  `updated_at` (incl. over soft-deletes / no-removal tables), live/dead split,
-  shared-boundary-timestamp resolution. Plus DB-layer cursor + `deleteByIds`
-  tests (B1/B2) and a guardrail test asserting `SeedService` never pulls
-  `license_keys`/`shop_controls`. analyze clean; 124 tests pass.
-  - Deferred (needs a mock SupabaseClient harness the project lacks): end-to-end
-    push/pull and pending-skip. Bulk-push idempotency is a DB-level
-    `upsert(onConflict:'id')` guarantee, not unit-covered here.
-  - Also addressed CodeRabbit: bounded `sync_logs` retention prune
-    (`syncLogRetentionDays`, 14d) so the heartbeat log can't grow unbounded.
-- [x] Auto-trigger on connectivity restored — already exists (`SyncScheduler`); B
-  just repoints `onPull` at the delta pull. Optional debounced post-write nudge.
-
-**Phase C — Close the observed bugs via the new model**
-- [x] **C1 — form lookups local-first** (bugs #1, #2): `getPaymentMethods`
-  (SalesRepository), `getMeasurementUnits` + `getProductCategories`
-  (InventoryRepository) now read local Drift first; `getCategories`
-  (ExpensesRepository) flipped from server-first to local-first. Pattern:
-  non-empty local is authoritative (system rows always seeded); categories trust
-  local outright (may be legitimately empty); web (`_db==null`) → remote.
-  analyze clean; 125 tests.
-- [x] **C2 — denormalized names in sales reads** (bug #4): `_saleFromRows` now
-  maps the B2-populated `customerName`/`cashierName`/`paymentMethodName`; Sale
-  model already had the fields. `getSale`/`getSalesForBranch` flipped from
-  server-first to local-first (mirror holds the whole shop's sales + names as of
-  last sync) — also removes their offline timeout (bug #5). Web → remote. Note:
-  customerPhone + settlement method/notes aren't mirrored locally (minor offline
-  degradation; name/cashier — the actual bug — now show). analyze clean; 125 tests.
-- [x] **C3a — credit settlement offline** (bug #3): DONE. Local schema v8 adds
-  `isSynced` to `LocalCreditPayments`. `recordCreditPayment` is now local-first
-  (native): records the payment to the local queue, sums `getPaidBySale` (incl.
-  the new row) to decide settlement, `markSaleSettledLocal` stamps
-  `credit_settled_at` + flags the sale unsynced so the sale push re-sends it
-  carrying the settlement; `_pushPendingCreditPayments` bulk-upserts the queue;
-  `_saleJson` now carries `credit_settled_at`. Post-write sync nudge. Web keeps
-  the online flow. DB-level test for the full flow. analyze clean; 126 tests.
-  - Known edge (like stock oversell): two devices settling the same bill offline
-    both record payments → possible overpayment in the ledger, both visible (no
-    loss). Sale-level `credit_settlement_method` not stamped offline (recoverable
-    from `credit_payments`).
-- [x] **C3b — remove inline pushes + central nudge** (boundary consistency): DONE.
-  Removed the fire-and-forget pushes from `InventoryRepository._queueAdjustment`,
-  `ExpensesRepository.record`, `CustomersRepository.save` — SyncService is now the
-  sole pusher for every write. Replaced per-call-site nudges with ONE central
-  mechanism: `AppDatabase.watchHasPendingWork()` (a loop-safe Drift stream — pulled
-  rows are isSynced=1 so syncing never re-arms it) drives a 2s-debounced
-  `syncNow()` in `SyncScheduler`. Covers all offline writes automatically. (The
-  explicit sales/credit nudges from B3/C3a remain — redundant-but-harmless; the
-  watcher is now primary.) analyze clean; 126 tests.
-- [x] **C3c — product writes local-first** — DEFERRED: still remote-first (see
-  Bug 5 below). Recorded as a known offline gap.
-- [x] **C4 — remaining server-first reads → local-first**: DONE (session 19).
-  `getProducts` / `getStockLevels` (inventory), `getCustomers` (customers repo),
-  `customerSalesProvider` / `customerCreditSalesProvider` / `outstandingCreditProvider`
-  / `creditPaymentsProvider` (customers_provider) all flipped to local-first with
-  background refresh. `getExpenses` / reports / stock-conflicts queries bounded with
-  `remoteReadTimeout` so offline fails fast to local cache. 128 tests pass.
-
-**Phase C — known limitation (RESOLVED)**
-- [x] Web/online credit settlement was a non-atomic insert→read→update. FIXED by
-  migration 024's `record_credit_payment` RPC (insert + recompute + settle in one
-  txn under a sale-row lock, idempotent by id); both web and mobile now call it.
-  Migration 026 added `p_created_at` so offline-recorded payments keep their real
-  recording time on replay. (Migrations 024–027 applied to dev.)
-
-**Phase D — Sequenced-in hardening (not blocking)**
+Phases A–C complete. Remaining hardening items:
 - [ ] Indexes on local Drift: `is_synced`, `updated_at`, `shop_id`, FKs.
 - [ ] First-pull pagination + on-device retention policy (don't keep all history).
 - [ ] Offline JWT refresh on reconnect (don't let an expired token silently fail sync).
@@ -221,127 +23,24 @@ See DECISIONS.md "Offline-first v2". Design approved 2026-06-13. Do in order.
 
 ---
 
-## Session 19 — Offline bugs found in manual device testing (2026-06-17)
+## Open bugs
 
-Diagnosed (not yet fixed). Root causes confirmed by reading the code.
-
-- [x] **Bug 1 — Void sale offline crashes**: FIXED (commit `9a55b7f`). `voidSale()`
-  now catches network/timeout exceptions and shows "Voiding a sale requires an
-  internet connection." Server rejections propagate as-is.
-- [x] **Bug 2 / 3 — Void does not refresh inventory immediately**: ALREADY FIXED.
-  `VoidSaleNotifier` awaits `inventoryRepository.refreshStock(branchId)` before
-  invalidating `stockLevelsProvider` — local mirror is updated before the UI
-  re-reads it. (`sales_provider.dart:333`)
-- [x] **Bug 4 — New category fails offline**: FIXED (commit `9a55b7f`).
-  `createProductCategory()` now writes locally first (UUID client-generated,
-  `isSynced=false`). SyncService pushes when online. Web path remote-only.
-- [x] **Bug 5 — Adding new product fails offline**: FIXED (commit `9a55b7f`).
-  `createProduct()` now writes locally first. Unit abbreviation looked up from
-  local cache. SyncService pushes categories then products (FK order). Schema
-  v11 adds `isSynced` to both `LocalProducts` and `LocalProductCategories`.
-- [x] **Bug 6 — Add Stock with changed price/threshold fails offline**: ALREADY
-  FIXED in a prior CodeRabbit round. Screen shows a snackbar on price-update
-  failure but does NOT return; stock adjustment always proceeds. Confirmed by
-  reading `inventory_screen.dart:401`.
-- [ ] **Bug 7 — Report "Today" shows all zeros offline**: `reportSummaryProvider`
-  and `reportSalesProvider` try server first; offline, they fall to the local DB.
-  The "Today" range is computed in local time (`DateTime.now()`), but the local
-  DB stores sales with UTC timestamps — for EAT (UTC+3) a sale made at 10 AM
-  local is stored as 07:00 UTC, and the local-time midnight boundary may not
-  align. Week/Month/Year ranges are wide enough to absorb the offset; Today's
-  narrow window misses it. **ROOT CAUSE FIXED** (`sync_service.dart` was pushing
-  local DateTimes without `.toUtc()` → Supabase stored wrong timestamps → delta
-  pull brought back wrong epoch millis → today-range excluded the sale). Commit
-  `d05ee82`. Retest: make offline sale, sync, confirm sale still in Today report.
-
-## Session 19 — Additional device testing bugs (2026-06-17)
-
-Reported by Temesgen. Not yet diagnosed or fixed.
-
-- [x] **Bug 8 — Login fails when offline (auth exception)**: FIXED (commit
-  `16e5bb5`). Two parts: (1) `friendlyAuthError()` in `auth_provider.dart`
-  classifies the sign-in failure and the login screen shows a clear "No internet
-  connection…" message instead of a raw exception. (2) The router skips the
-  owner/staff network lookup and routes straight to the dashboard when offline
-  with a restored session — Supabase persists the session locally, so a cached
-  login is usable offline with no 5s cold-start wait.
-- [x] **Bug 9 — Wrong password shows raw exception**: FIXED (commit `16e5bb5`,
-  same classifier). `friendlyAuthError()` maps 400 → "Incorrect email or
-  password." and 429 → "Too many attempts — wait a minute, then try again."
-- [x] **Bug 10 + Bug 12 — Reports remote-first. FIXED (commit `9a55b7f`).**
-  `reportSummaryProvider` and `reportSalesProvider` are now local-first on native:
-  they read from local Drift immediately (instant, offline-capable). Locally-recorded
-  expenses appear in reports at once instead of waiting for a Supabase round-trip.
-  Web retains remote-only path.
-- [x] **Bug 11 — NOT A BUG (working as designed)**: Reports exclude voided sales
-  everywhere — `status == 'completed'` filter in all four paths
-  (`reportSalesProvider` remote line 131 + local line 171; `reportSummaryProvider`
-  remote line 290 + local line 426). Temesgen's pre-update sales were voided during
-  void-feature testing, so they correctly don't appear in Reports. They DO show in
-  the sales list (operational log, badged "Voided") and the summary number is
-  correct (excludes them) — which also proves the download/sync worked and there is
-  no missing-history problem. Confirm by checking one OLD non-voided sale appears in
-  Reports for its date.
+- [ ] **Bug 2/3 — Void does not refresh inventory immediately (even online):**
+  After a successful online void, `ref.invalidate(stockLevelsProvider)` re-reads
+  the local Drift mirror before `_refreshStock` has run. User sees stale stock
+  until restart. Fix: wait for the background refresh before invalidating, or
+  update the local mirror synchronously on void. (`sales_provider.dart:334`)
 
 ---
 
-## Session 17 follow-ups
+## Unverified on-device
 
-- [ ] **`security` branch — merge when ready.** Published, NOT merged. Trial
-  (14 days) + 10-digit serial activation (per-key duration, no stacking, 7-day
-  countdown banner) + remote per-shop block. Migrations 019/020 already applied
-  live. Operator SQL for generating keys / blocking is in the session notes.
 - [ ] **Verify on device:** partial-settlement shows all payment logs; voided
   credit drops out of all credit views (fixes are in but unverified on-device).
-- [ ] **Local Drift cache encryption (SQLCipher)** — Supabase is encrypted in
-  transit + at rest; on-device cache is plaintext. Defer past the pilot.
-- [x] Email overdue/low-stock reminders to ALL configured `notification_email`
-  rows — done (dispatch-notifications v5).
-
----
-
-## Immediate / Next Session
-
-- [x] Remove inventory mode toggle from Settings — done (session 7)
-- [x] Watch `seedNotifierProvider` in `dashboard_screen.dart` — done (session 7)
-- [x] Credits tab with per-bill settlement — done (session 11)
-- [x] Sales list color-coding (cash / unsettled credit / settled credit / voided) — done (session 11)
-- [x] SaleDetailScreen: transaction ref, customer info, settlement notes — done (session 11)
-- [x] Post-sale stale lists bug (Sales tab + Credits tab not refreshing) — done (session 11)
-- [x] Fix `ListTile` ink splash invisible warnings — done (session 12)
-- [x] Fix `RenderFlex` overflow by 13px in cart item row — done (session 12)
-- [x] Staff invite 403 + duplicate email — done (session 12, Edge Function v4)
-- [ ] "Gaps" view — surface products sold as `untracked` to prompt owner to add them to inventory
-
----
-
-## Notifications Phase (branch: `feat/notifications`)
-
-- [x] Email notifications for low stock — done (session 13, dispatch-notifications Edge Function)
-- [x] Email notifications for overdue credits — done (session 13, manual trigger in Settings)
-- [x] Settings screen: notification config (email, overdue days) — done (session 13)
-- [x] `RESEND_API_KEY` set as Supabase secret (verified present, 36 chars) — done
-- [x] Resend custom domain `massivedynamic.dev` wired into dispatch-notifications `from` — done
-- [ ] Telegram notifications — deferred (revisit later)
-
-### Scheduled low-stock notifications — DONE (server-side cron, replaces per-sale)
-- [x] Enabled `pg_cron` + `pg_net` (migration 016).
-- [x] Edge Function `cron-notifications` (verify_jwt:false; gated by Vault `cron_secret`
-  via `public.verify_cron_secret` RPC). Loops ALL shops; recipients = owner auth email
-  (DEFAULT) + optional `notification_email` shop_setting; sends via Resend from
-  `notifications@massivedynamic.dev`. Verified end-to-end (200, email sent).
-  - v2: sends ONE combined daily digest per shop — LOW STOCK section
-    (inventory JOIN products where quantity <= low_stock_threshold) + OVERDUE CREDITS
-    section (sales is_credit, not settled, completed, older than `overdue_credit_days`
-    setting, default 7). Each section appears only if non-empty; no email if both empty.
-- [x] Two pg_cron jobs: `low-stock-am` (`0 6 * * *`) and `low-stock-pm` (`0 18 * * *`)
-  UTC = 9 AM & 9 PM EAT. They call the function via `net.http_post`, reading the
-  `cron_secret` from Vault at run time.
-- [x] App: removed per-sale `_checkLowStock` from `sales_provider.dart`; relabeled the
-  Settings email field to "Additional notification email (optional)" (owner always notified).
-- Owner email as default recipient also removed the old "no notification email" 400.
-- Note: the old per-sale path (`dispatch-notifications` low_stock) is now unused but
-  still deployed; the manual "Send overdue reminders" button still uses it.
+- [ ] **Bug 7 retest:** make a sale offline → go online → confirm Today's report
+  shows the sale. Fix committed (`d05ee82`) but never retested on device.
+- [ ] **RLS Part 2:** run `supabase/rls_isolation_test.sql` Part 2 with two real
+  accounts from different shops (cross-shop isolation; MCP bypasses RLS).
 
 ---
 
@@ -351,11 +50,9 @@ Reported by Temesgen. Not yet diagnosed or fixed.
 
 ---
 
-## Phase 5 — Remaining
+## Remaining offline gaps
 
-- [ ] Inventory writes write-through to Drift (product create/edit, stock add/correct)
-- [ ] Expense writes offline (record expense when offline)
-- [ ] Auto-trigger `SyncService.sync()` on connectivity restored
+- [ ] Product/category **edit** (`updateProduct`) still remote-only — create is offline-first but edit is not
 - [ ] Widget tests for key screens (NewSaleScreen, SalesScreen)
 
 ---
@@ -363,12 +60,7 @@ Reported by Temesgen. Not yet diagnosed or fixed.
 ## Deferred / Manual Steps
 
 - [ ] Supabase Dashboard: enable Leaked Password Protection (Auth → Settings → Password Security — cannot do via SQL)
-- [ ] Android Setup (one-time, do before device testing):
-  1. Android Studio → Settings → Android SDK → SDK Tools → check **"Android SDK Command-line Tools (latest)"** → Apply
-  2. `flutter doctor --android-licenses` (type y to each)
-  3. `flutter doctor` — should show [√] Android toolchain
-  4. Enable USB debugging on Android 10 phone → plug in → `flutter devices` → `flutter run --dart-define-from-file=config/env.json`
-  5. Add `C:\Users\Hp\AppData\Local\Android\Sdk`, `C:\Users\Hp\.gradle`, `C:\Projects\SuqApp` to Windows Defender exclusions
+- [ ] Supabase: Magic Link email template must include `{{ .Token }}` (required for staff OTP invite to work)
 
 ---
 
@@ -391,7 +83,7 @@ Reported by Temesgen. Not yet diagnosed or fixed.
 - No error boundaries — raw Supabase exceptions reach snackbars
 - Permission cache TTL not implemented (role changes need app restart)
 - `Decimal.parse()` without try-catch in models — can throw on malformed DB data
-- Inventory writes (create/edit product, stock adjust) not yet write-through to Drift
+- Product/category edit still remote-only (tracked in "Remaining offline gaps" above)
 - Expenses & customers still push as one bulk upsert — a single invalid row blocks
   that batch. Sales / adjustments / credit payments already push per-row
   (failure-isolated); give expenses & customers the same treatment.
@@ -439,24 +131,6 @@ Reported by Temesgen. Not yet diagnosed or fixed.
   partial) is a distinct transaction type and deserves separate handling IF pilot
   shops actually process returns. Deferred for now. When built, must be
   offline-first from day one (do not repeat Bug 1).
-- **Receipt printer support — DEFERRED post-pilot**. Bluetooth thermal printers
-  (80mm ESC/POS, common in Ethiopian shops) via `bluetooth_print` or `esc_pos_utils`
-  packages. USB wired printers also possible but harder on Android. No architectural
-  changes needed — add when pilot shops ask "can I print receipts?"
-- **Web app / PC support — DEFERRED post-pilot**. Flutter web build already works
-  (`flutter build web`) and the offline layer already falls back to Supabase-direct
-  on web (`_db == null` guards in place). Main gap is responsive layouts for wider
-  screens — a design pass, not a rewrite. Add when shops ask "can my accountant
-  check reports from a laptop?"
-- **EOD cash reconciliation — DEFERRED post-pilot** (decided 2026-06-19). Schema
-  table `cash_reconciliations` already exists. Only useful if shop has staff handling
-  cash. Revisit after pilot feedback. Plan reviewed and set aside — build after v1.
-- **Weekly auth cleanup — DEFERRED post-pilot** (decided 2026-06-19). Two pg_cron
-  jobs running weekly via the existing `pg_net` + `cron_secret` pattern:
-  (1) Delete Supabase auth users who signed up but never verified their email
-  (unverified after 7 days → `auth.admin.deleteUser`).
-  (2) Delete `shop_users` rows with status='invited' older than 7 days + their
-  corresponding auth user if they were created by the invite flow and never
-  activated. Keeps the auth table clean and prevents ghost accounts.
-  Implementation: Edge Function called by pg_cron (same pattern as cron-notifications)
-  using service_role key to call `auth.admin` API.
+
+---
+*Related: [[INDEX]] · [[CURRENT_STATE]] · [[DECISIONS]] · [[BUGS_AND_FIXES]] · [[OFFLINE_QA_CHECKLIST]]*

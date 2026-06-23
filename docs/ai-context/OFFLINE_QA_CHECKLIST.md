@@ -117,3 +117,6 @@ Do offline, confirm local, then reconnect and verify on device 2 after a sync:
 
 ## Notes / failures found
 (Record here as you go: item #, device, what happened.)
+
+---
+*Related: [[INDEX]] · [[OPEN_TASKS]] · [[CURRENT_STATE]] · [[BUGS_AND_FIXES]]*

@@ -191,12 +191,20 @@ class _RecordExpenseScreenState extends ConsumerState<RecordExpenseScreen> {
           date: _date,
         );
 
-    if (mounted && ok) Navigator.pop(context);
-    if (mounted && !ok) {
+    if (!mounted) return;
+    if (ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Expense recorded'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+      Navigator.pop(context);
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(ref.read(recordExpenseProvider).error?.toString() ??
-              'Failed to record'),
+              'Failed to record expense'),
           backgroundColor: AppColors.error,
         ),
       );

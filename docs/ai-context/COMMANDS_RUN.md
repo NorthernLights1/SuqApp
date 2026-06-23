@@ -23,7 +23,7 @@ Primary dev target. Drift/SQLite not available on web — all DB falls back to S
 ```powershell
 flutter analyze
 ```
-Result: 0 issues (last run 2026-06-17, session 19). Run before every commit.
+Result: 0 issues (last run 2026-06-19). Run before every commit.
 
 ---
 
@@ -50,7 +50,7 @@ Run after editing `lib/l10n/app_en.arb`.
 dart run build_runner build --delete-conflicting-outputs
 ```
 Run after changing Drift table definitions in `app_database.dart` or adding `@riverpod` annotations.
-Current schema version: **v11** (added `isSynced` to LocalProducts + LocalProductCategories, session 19).
+Current schema version: **v11** (added `isSynced` to LocalProducts + LocalProductCategories).
 
 ---
 
@@ -58,7 +58,7 @@ Current schema version: **v11** (added `isSynced` to LocalProducts + LocalProduc
 ```powershell
 flutter test
 ```
-Result: 134 tests passing (last run 2026-06-17, session 19).
+Result: 134 tests passing (last run 2026-06-19).
 Test files:
 - `test/features/auth/friendly_auth_error_test.dart` — sign-in error classification (Bug 8/9) + unknown exception fallback
 - `test/data/local/app_database_test.dart` — Drift DB ops + edge cases
@@ -81,7 +81,7 @@ Add in Windows Security → Virus & threat protection → Exclusions:
 
 ## Apply Supabase changes (manual — no CLI)
 Open Supabase Dashboard → SQL Editor and run SQL directly.
-Migrations in `supabase/migrations/001` through `009` — all applied to live project.
+Migrations in `supabase/migrations/001` through `027` — all applied to live project.
 
 ### Useful diagnostic queries
 ```sql
@@ -112,4 +112,7 @@ UPDATE shop_settings SET value = '"strict"' WHERE key = 'inventory_mode';
 git push origin <branch>
 ```
 Repo: `https://github.com/NorthernLights1/SuqApp`
-Active branch: `feat/phase-4`
+Active branch: `feat/action-feedback`
+
+---
+*Related: [[INDEX]] · [[CURRENT_STATE]] · [[FILE_MAP]]*

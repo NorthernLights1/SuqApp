@@ -2,6 +2,28 @@
 
 ---
 
+## Session 20 (2026-06-19) — action feedback (branch `feat/action-feedback`)
+
+**Pre-existing bug — Credit settle sheet closed on failure.**
+`_SettleSheetState._confirm()` called `Navigator.pop(context)` unconditionally before the
+`if (!ok)` check — sheet always closed even when payment recording failed, giving user no
+chance to retry. Fix: restructured into `if (ok) { snackbar + pop } else { error snackbar }`.
+`credits_screen.dart`.
+
+**Pre-existing silent failure — Product deactivation showed nothing on error.**
+`_ProductFormScreenState._deactivate()` only called `Navigator.pop` on success; failure path
+was empty — user had no idea the removal failed. Fix: added error snackbar on failure.
+`inventory_screen.dart`.
+
+**Missing success feedback on 4 write operations.**
+- Expenses: "Expense recorded" green snackbar before pop (`expenses_screen.dart`).
+- Add Stock: "Stock added" green snackbar before pop (`inventory_screen.dart`).
+- Correct Stock: "Stock corrected" green snackbar before pop (`inventory_screen.dart`).
+- Product save: context-aware "Product updated" / "Product added" snackbar + error with
+  provider error message (`inventory_screen.dart`).
+
+---
+
 ## Session 19 (2026-06-17) — offline-first device testing (branch `offline-first_v2`)
 
 **Bug 7 — Today report zeros after sync (UTC timestamp mismatch). FIXED (commit `d05ee82`).**
@@ -521,3 +543,6 @@ Status: All fixed (2026-06-06)
 9. Raw `${state.error}` interpolated in user-facing snackbar for reminder send failures. Replaced with generic message.
 
 Files: `settings_provider.dart`, `settings_screen.dart`, `sales_provider.dart`, `auth_provider.dart`, `notification_service.dart`, `notification_service_interface.dart`, `012_notifications.sql`
+
+---
+*Related: [[INDEX]] · [[CURRENT_STATE]] · [[OPEN_TASKS]] · [[DECISIONS]] · [[FILE_MAP]]*
