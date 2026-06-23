@@ -85,7 +85,7 @@ Do not edit files unless explicitly asked."
 
 run_checks() {
   # $1 = output file
-  { dart run build_runner build --delete-conflicting-outputs \
+  { flutter pub run build_runner build --delete-conflicting-outputs \
       && flutter analyze \
       && flutter test ; } > "$1" 2>&1
 }

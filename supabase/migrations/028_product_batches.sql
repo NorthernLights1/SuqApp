@@ -103,24 +103,28 @@ alter table product_batches   enable row level security;
 alter table sale_item_batches enable row level security;
 
 create policy "product_batches_select" on product_batches for select
+  to authenticated
   using (private.is_shop_member(private.shop_id_from_branch(branch_id)));
 create policy "product_batches_write" on product_batches for all
-  using (private.is_shop_member(private.shop_id_from_branch(branch_id)));
+  to authenticated
+  using (private.has_permission(
+    private.shop_id_from_branch(branch_id), 'inventory.adjust'
+  ))
+  with check (private.has_permission(
+    private.shop_id_from_branch(branch_id), 'inventory.adjust'
+  ));
 
 create policy "sale_item_batches_select" on sale_item_batches for select
+  to authenticated
   using (exists (
-    select 1 from sale_items si join sales s on s.id = si.sale_id
-    where si.id = sale_item_id
-      and private.is_shop_member(private.shop_id_from_branch(s.branch_id))));
-create policy "sale_item_batches_insert" on sale_item_batches for insert
-  with check (exists (
     select 1 from sale_items si join sales s on s.id = si.sale_id
     where si.id = sale_item_id
       and private.is_shop_member(private.shop_id_from_branch(s.branch_id))));
 
 grant select, insert, update, delete on product_batches   to authenticated;
 grant select, insert, update, delete on product_batches   to service_role;
-grant select, insert, update, delete on sale_item_batches to authenticated;
+revoke insert, update, delete on sale_item_batches from authenticated;
+grant select on sale_item_batches to authenticated;
 grant select, insert, update, delete on sale_item_batches to service_role;
 
 -- ── Backfill (WHOLESALE shops only) ──────────────────────────────────────────

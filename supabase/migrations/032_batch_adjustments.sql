@@ -156,9 +156,16 @@ create trigger trg_batch_adjustments_rollup
 -- ── RLS ──────────────────────────────────────────────────────────────────────
 alter table batch_adjustments enable row level security;
 create policy "batch_adjustments_select" on batch_adjustments for select
+  to authenticated
   using (private.is_shop_member(private.shop_id_from_branch(branch_id)));
 create policy "batch_adjustments_write" on batch_adjustments for all
-  using (private.is_shop_member(private.shop_id_from_branch(branch_id)));
+  to authenticated
+  using (private.has_permission(
+    private.shop_id_from_branch(branch_id), 'inventory.adjust'
+  ))
+  with check (private.has_permission(
+    private.shop_id_from_branch(branch_id), 'inventory.adjust'
+  ));
 
 grant select, insert, update, delete on batch_adjustments to authenticated;
 grant select, insert, update, delete on batch_adjustments to service_role;
