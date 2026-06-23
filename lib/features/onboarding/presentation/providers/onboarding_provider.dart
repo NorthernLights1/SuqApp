@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../core/constants/setting_keys.dart';
@@ -57,17 +56,13 @@ class OnboardingNotifier extends Notifier<OnboardingState> {
   Future<bool> createShop(String name) async {
     state = state.copyWith(loading: true, error: null);
     try {
-      final shopId = await _client.rpc(
-        'create_shop_with_owner',
-        params: {'p_name': name.trim()},
-      ) as String;
+      final selectedShopType = state.shopType;
+      final shopId = state.shopId ??
+          await _client.rpc(
+            'create_shop_with_owner',
+            params: {'p_name': name.trim()},
+          ) as String;
 
-      // The shop now exists. Persist shop_type as a SEPARATE step that must not
-      // trap the user on a shop that's already created: if it fails (e.g. a
-      // transient network blip right after the RPC), log and advance anyway —
-      // re-running createShop would hit "name taken". shop_type then defaults to
-      // retail until set. (Atomic alternative: fold shop_type into the
-      // create_shop_with_owner RPC; deferred — keeps onboarding migration-free.)
       final userId = ref.read(currentUserIdProvider);
       try {
         await _client.from('shop_settings').upsert(
@@ -75,13 +70,20 @@ class OnboardingNotifier extends Notifier<OnboardingState> {
             'shop_id': shopId,
             'branch_id': null,
             'key': SettingKeys.shopType,
-            'value': '"${state.shopType}"',
+            'value': '"$selectedShopType"',
             'updated_by': userId,
           },
           onConflict: 'shop_id,branch_id,key',
         );
       } catch (e) {
-        debugPrint('shop_type persist failed (defaulting retail): $e');
+        state = state.copyWith(
+          loading: false,
+          shopId: shopId,
+          step: OnboardingStep.createShop,
+          error:
+              "We created your shop, but couldn't save your business type. Please try again.",
+        );
+        return false;
       }
 
       state = state.copyWith(
