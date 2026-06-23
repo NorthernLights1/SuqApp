@@ -92,6 +92,7 @@ Future<void> _seedSale(
   String saleId = 's-1',
   String saleItemId = 'si-1',
   String productId = 'p-1',
+  bool isSynced = true,
 }) async {
   await db.insertSaleWithItems(
     LocalSalesCompanion(
@@ -105,7 +106,7 @@ Future<void> _seedSale(
       status: const Value('completed'),
       isCredit: const Value(false),
       createdAt: Value(DateTime.now()),
-      isSynced: const Value(true),
+      isSynced: Value(isSynced),
     ),
     [
       LocalSaleItemsCompanion(
@@ -221,6 +222,42 @@ void main() {
   });
 
   group('refreshStock pending refund restocks', () {
+    test('keeps pending sale stock over a stale remote snapshot', () async {
+      await _seedProduct(db);
+      await _seedSale(db, isSynced: false);
+      await _seedStock(db, Decimal.parse('9'));
+      remote.stockEntries = [_stockEntry(quantity: Decimal.parse('10'))];
+
+      await repo.refreshStock(branchId);
+
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('9'));
+    });
+
+    test('keeps pending batch correction stock over a stale remote snapshot',
+        () async {
+      await _seedProduct(db);
+      await _seedStock(db, Decimal.parse('9'));
+      await db.upsertBatchAdjustments([
+        LocalBatchAdjustmentsCompanion(
+          id: const Value('ba-1'),
+          batchId: const Value('batch-1'),
+          branchId: const Value(branchId),
+          productId: const Value('p-1'),
+          quantityDelta: Value(Decimal.one),
+          reason: const Value('Miscount'),
+          createdBy: const Value('u-1'),
+          createdAt: Value(DateTime.now()),
+          syncedAt: Value(DateTime.now()),
+          isSynced: const Value(false),
+        ),
+      ]);
+      remote.stockEntries = [_stockEntry(quantity: Decimal.parse('10'))];
+
+      await repo.refreshStock(branchId);
+
+      expect(await db.getStockLevel(branchId, 'p-1'), Decimal.parse('9'));
+    });
+
     test(
       'keeps a pending retail refund restock over a stale remote snapshot',
       () async {

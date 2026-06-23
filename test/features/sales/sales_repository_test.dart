@@ -54,6 +54,7 @@ class _StubSalesRemote implements SalesRemote {
     bool isCredit = false,
     String? notes,
     String? discountReason,
+    bool useBatches = false,
   }) async =>
       throw Exception('stub: remote not available');
 
@@ -95,6 +96,7 @@ class _SuccessStubRemote extends _StubSalesRemote {
     bool isCredit = false,
     String? notes,
     String? discountReason,
+    bool useBatches = false,
   }) async =>
       _stubSale(id, branchId: branchId, cashierId: cashierId,
           paymentMethodId: paymentMethodId, isCredit: isCredit);
@@ -719,21 +721,20 @@ void main() {
           )
         ]);
 
-    test('blocks wholesale checkout on web when batch allocation is unavailable',
+    test('delegates wholesale checkout to remote on web',
         () async {
       final repoNoDb = SalesRepository(_SuccessStubRemote(), null);
 
-      await expectLater(
-        repoNoDb.createSale(
-          branchId: branchId,
-          shopId: shopId,
-          cashierId: cashierId,
-          paymentMethodId: pmId,
-          items: [_item(quantity: Decimal.parse('5'))],
-          useBatches: true,
-        ),
-        throwsA(isA<StateError>()),
+      final sale = await repoNoDb.createSale(
+        branchId: branchId,
+        shopId: shopId,
+        cashierId: cashierId,
+        paymentMethodId: pmId,
+        items: [_item(quantity: Decimal.parse('5'))],
+        useBatches: true,
       );
+
+      expect(sale.status, SaleStatus.completed);
     });
 
     test('depletes the soonest-expiry lot first and records the ledger',

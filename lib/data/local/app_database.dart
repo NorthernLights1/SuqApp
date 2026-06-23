@@ -924,6 +924,40 @@ class AppDatabase extends _$AppDatabase {
     return rows.fold<Decimal>(Decimal.zero, (sum, r) => sum + r.totalAmount);
   }
 
+  Future<Decimal> getRefundTotalByBranchRangeAndProductCategory(
+    String branchId,
+    DateTime from,
+    DateTime to,
+    String categoryId,
+  ) async {
+    final rows = await customSelect(
+      '''
+      SELECT ri.amount AS amount
+      FROM local_refund_items ri
+      INNER JOIN local_refunds r ON r.id = ri.refund_id
+      INNER JOIN local_sale_items si ON si.id = ri.sale_item_id
+      INNER JOIN local_products p ON p.id = si.product_id
+      WHERE r.branch_id = ?
+        AND r.deleted_at IS NULL
+        AND ri.deleted_at IS NULL
+        AND r.created_at >= ?
+        AND r.created_at < ?
+        AND p.category_id = ?
+      ''',
+      variables: [
+        Variable.withString(branchId),
+        Variable.withDateTime(from),
+        Variable.withDateTime(to),
+        Variable.withString(categoryId),
+      ],
+      readsFrom: {localRefunds, localRefundItems, localSaleItems, localProducts},
+    ).get();
+    return rows.fold<Decimal>(
+      Decimal.zero,
+      (sum, row) => sum + Decimal.parse(row.read<String>('amount')),
+    );
+  }
+
   /// Recompute the local stock rollup for a wholesale product from its batches:
   /// `LocalStock.quantity = Σ(received) − Σ(depletions) − Σ(corrections)` — the
   /// same derivation as the server rollup trigger (032). The stock row's expiry

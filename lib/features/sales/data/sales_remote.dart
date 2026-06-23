@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/constants/setting_keys.dart';
 import '../../../domain/models/product.dart';
 import '../../../domain/models/sale.dart';
+import '../../inventory/domain/batch_allocation.dart';
 
 class SalesRemote {
   SalesRemote(this._client);
@@ -101,6 +102,7 @@ class SalesRemote {
     bool isCredit = false,
     String? notes,
     String? discountReason,
+    bool useBatches = false,
   }) async {
     await _createSaleAtomically(
       id: id,
@@ -112,6 +114,7 @@ class SalesRemote {
       isCredit: isCredit,
       notes: notes,
       discountReason: discountReason,
+      useBatches: useBatches,
     );
     return getSale(id);
   }
@@ -123,10 +126,37 @@ class SalesRemote {
     required String paymentMethodId,
     required List<CartItem> items,
     required bool isCredit,
+    required bool useBatches,
     String? customerId,
     String? notes,
     String? discountReason,
   }) async {
+    final itemIds = [for (var i = 0; i < items.length; i++) const Uuid().v4()];
+    final rpcItems = [
+      for (var i = 0; i < items.length; i++)
+        {
+          'id': itemIds[i],
+          'product_id': items[i].productId,
+          'product_name_snapshot': items[i].productName,
+          'measurement_unit_id': items[i].measurementUnitId,
+          'quantity': items[i].quantity.toString(),
+          'unit_price': items[i].unitPrice.toString(),
+          'discount_amount': items[i].discountAmount.toString(),
+          'inventory_status': (items[i].productId == null
+                  ? InventoryStatus.untracked
+                  : InventoryStatus.tracked)
+              .name,
+          'cost_price_snapshot': items[i].costPrice?.toString(),
+        },
+    ];
+    final itemBatches = useBatches
+        ? await _allocateRemoteBatches(
+            branchId: branchId,
+            items: items,
+            saleItemIds: itemIds,
+          )
+        : null;
+
     await _syncSale(
       sale: {
         'id': id,
@@ -138,25 +168,10 @@ class SalesRemote {
         'notes': notes,
         'created_at': DateTime.now().toUtc().toIso8601String(),
       },
-      items: [
-        for (final item in items)
-          {
-            'id': const Uuid().v4(),
-            'product_id': item.productId,
-            'product_name_snapshot': item.productName,
-            'measurement_unit_id': item.measurementUnitId,
-            'quantity': item.quantity.toString(),
-            'unit_price': item.unitPrice.toString(),
-            'discount_amount': item.discountAmount.toString(),
-            'inventory_status': (item.productId == null
-                    ? InventoryStatus.untracked
-                    : InventoryStatus.tracked)
-                .name,
-            'cost_price_snapshot': item.costPrice?.toString(),
-          },
-      ],
+      items: rpcItems,
       allowOversell: false,
       discountReason: discountReason,
+      itemBatches: itemBatches,
     );
   }
 
@@ -165,14 +180,115 @@ class SalesRemote {
     required List<Map<String, dynamic>> items,
     required bool allowOversell,
     String? discountReason,
+    List<Map<String, dynamic>>? itemBatches,
   }) async {
     await _client.rpc('upsert_sale_with_inventory', params: {
       'p_sale': sale,
       'p_items': items,
       'p_allow_oversell': allowOversell,
       'p_discount_reason': discountReason,
-      'p_item_batches': null,
+      'p_item_batches': itemBatches,
     });
+  }
+
+  Future<List<Map<String, dynamic>>?> _allocateRemoteBatches({
+    required String branchId,
+    required List<CartItem> items,
+    required List<String> saleItemIds,
+  }) async {
+    final allocations = <Map<String, dynamic>>[];
+    final remainingByBatch = <String, Decimal>{};
+    final expiryByBatch = <String, DateTime?>{};
+    final batchesByProduct = <String, List<String>>{};
+    final now = DateTime.now();
+
+    for (var i = 0; i < items.length; i++) {
+      final item = items[i];
+      if (item.productId == null) continue;
+      final productId = item.productId!;
+      if (!batchesByProduct.containsKey(productId)) {
+        final batchRows = (await _client
+            .from('product_batches')
+            .select('id, expiry_date, quantity')
+            .eq('branch_id', branchId)
+            .eq('product_id', productId)
+            .isFilter('deleted_at', null)) as List;
+        final batchIds = [for (final b in batchRows) b['id'] as String];
+        final depleted = await _remoteQuantityByBatch(
+          table: 'sale_item_batches',
+          batchIds: batchIds,
+          quantityColumn: 'quantity',
+        );
+        final adjusted = await _remoteQuantityByBatch(
+          table: 'batch_adjustments',
+          batchIds: batchIds,
+          quantityColumn: 'quantity_delta',
+        );
+
+        batchesByProduct[productId] = batchIds;
+        for (final b in batchRows) {
+          final id = b['id'] as String;
+          final received =
+              Decimal.tryParse(b['quantity'].toString()) ?? Decimal.zero;
+          remainingByBatch[id] = received -
+              (depleted[id] ?? Decimal.zero) -
+              (adjusted[id] ?? Decimal.zero);
+          expiryByBatch[id] = b['expiry_date'] == null
+              ? null
+              : DateTime.tryParse(b['expiry_date'] as String);
+        }
+      }
+
+      final result = allocateFefo(
+        [
+          for (final id in batchesByProduct[productId]!)
+            BatchAvailability(id, remainingByBatch[id] ?? Decimal.zero,
+                expiryByBatch[id]),
+        ],
+        item.quantity,
+        now,
+      );
+      final allocated =
+          result.allocations.fold(Decimal.zero, (sum, a) => sum + a.quantity);
+      if (allocated < item.quantity) {
+        throw StateError(
+          'No stock lots available for ${item.productName}. '
+          'Add stock before selling.',
+        );
+      }
+      for (final a in result.allocations) {
+        remainingByBatch[a.batchId] =
+            (remainingByBatch[a.batchId] ?? Decimal.zero) - a.quantity;
+        allocations.add({
+          'id': const Uuid().v4(),
+          'sale_item_id': saleItemIds[i],
+          'batch_id': a.batchId,
+          'quantity': a.quantity.toString(),
+        });
+      }
+    }
+
+    return allocations.isEmpty ? null : allocations;
+  }
+
+  Future<Map<String, Decimal>> _remoteQuantityByBatch({
+    required String table,
+    required List<String> batchIds,
+    required String quantityColumn,
+  }) async {
+    if (batchIds.isEmpty) return {};
+    final rows = (await _client
+        .from(table)
+        .select('batch_id, $quantityColumn')
+        .inFilter('batch_id', batchIds)
+        .isFilter('deleted_at', null)) as List;
+    final totals = <String, Decimal>{};
+    for (final row in rows) {
+      final batchId = row['batch_id'] as String;
+      totals[batchId] = (totals[batchId] ?? Decimal.zero) +
+          (Decimal.tryParse(row[quantityColumn].toString()) ?? Decimal.zero);
+    }
+    return totals;
   }
 
   // ─── Void sale ─────────────────────────────────────────────────────────────

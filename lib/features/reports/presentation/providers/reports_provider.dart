@@ -385,18 +385,35 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
     expByCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
   );
 
-  // Refunds in the period (money returned) — nets out of revenue.
-  final refundData = await client
-      .from('refunds')
-      .select('total_amount')
-      .eq('branch_id', branch.id)
-      .isFilter('deleted_at', null)
-      .gte('created_at', range.start.toUtc().toIso8601String())
-      .lt('created_at', range.end.toUtc().toIso8601String())
-      .timeout(AppConstants.remoteReadTimeout);
   Decimal refundTotal = Decimal.zero;
-  for (final row in refundData as List) {
-    refundTotal += Decimal.parse(row['total_amount'].toString());
+  if (categoryFilter != null) {
+    final refundData = await client
+        .from('refund_items')
+        .select(
+            'amount, refunds!inner(branch_id, created_at, deleted_at), sale_items!inner(products!inner(category_id))')
+        .eq('refunds.branch_id', branch.id)
+        .isFilter('refunds.deleted_at', null)
+        .isFilter('deleted_at', null)
+        .eq('sale_items.products.category_id', categoryFilter)
+        .gte('refunds.created_at', range.start.toUtc().toIso8601String())
+        .lt('refunds.created_at', range.end.toUtc().toIso8601String())
+        .timeout(AppConstants.remoteReadTimeout);
+    for (final row in refundData as List) {
+      refundTotal += Decimal.parse(row['amount'].toString());
+    }
+  } else {
+    // Refunds in the period (money returned) — nets out of revenue.
+    final refundData = await client
+        .from('refunds')
+        .select('total_amount')
+        .eq('branch_id', branch.id)
+        .isFilter('deleted_at', null)
+        .gte('created_at', range.start.toUtc().toIso8601String())
+        .lt('created_at', range.end.toUtc().toIso8601String())
+        .timeout(AppConstants.remoteReadTimeout);
+    for (final row in refundData as List) {
+      refundTotal += Decimal.parse(row['total_amount'].toString());
+    }
   }
 
   return ReportSummary(
@@ -503,8 +520,14 @@ Future<ReportSummary> _localReportSummary(
     expByCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
   );
 
-  final refundTotal =
-      await db.getRefundTotalByBranchRange(branchId, range.start, range.end);
+  final refundTotal = categoryFilter == null
+      ? await db.getRefundTotalByBranchRange(branchId, range.start, range.end)
+      : await db.getRefundTotalByBranchRangeAndProductCategory(
+          branchId,
+          range.start,
+          range.end,
+          categoryFilter,
+        );
 
   return ReportSummary(
     salesTotal: salesTotal,
