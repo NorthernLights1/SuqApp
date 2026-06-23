@@ -950,7 +950,12 @@ class AppDatabase extends _$AppDatabase {
         Variable.withDateTime(to),
         Variable.withString(categoryId),
       ],
-      readsFrom: {localRefunds, localRefundItems, localSaleItems, localProducts},
+      readsFrom: {
+        localRefunds,
+        localRefundItems,
+        localSaleItems,
+        localProducts,
+      },
     ).get();
     return rows.fold<Decimal>(
       Decimal.zero,
@@ -1408,6 +1413,35 @@ class AppDatabase extends _$AppDatabase {
     final map = <String, Decimal>{};
     for (final r in rows) {
       map[r.saleId] = (map[r.saleId] ?? Decimal.zero) + r.amount;
+    }
+    return map;
+  }
+
+  /// Sum of non-deleted refund item amounts per sale. Credit balance views use
+  /// this to reduce the outstanding amount when unpaid goods are returned.
+  Future<Map<String, Decimal>> getRefundedAmountBySale(
+    List<String> saleIds,
+  ) async {
+    if (saleIds.isEmpty) return {};
+    final placeholders = List.filled(saleIds.length, '?').join(', ');
+    final rows = await customSelect(
+      '''
+      SELECT r.original_sale_id AS sale_id, ri.amount AS amount
+      FROM local_refund_items ri
+      INNER JOIN local_refunds r ON r.id = ri.refund_id
+      WHERE r.original_sale_id IN ($placeholders)
+        AND r.deleted_at IS NULL
+        AND ri.deleted_at IS NULL
+      ''',
+      variables: [for (final id in saleIds) Variable.withString(id)],
+      readsFrom: {localRefunds, localRefundItems},
+    ).get();
+    final map = <String, Decimal>{};
+    for (final row in rows) {
+      final saleId = row.read<String>('sale_id');
+      map[saleId] =
+          (map[saleId] ?? Decimal.zero) +
+          Decimal.parse(row.read<String>('amount'));
     }
     return map;
   }

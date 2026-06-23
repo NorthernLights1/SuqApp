@@ -39,6 +39,7 @@ declare
   v_shop_id       uuid;
   v_sale_branch   uuid;
   v_sale_cashier  uuid;
+  v_sale_status   text;
   v_item          jsonb;
   v_sale_item_id  uuid;
   v_qty           numeric(15,4);
@@ -58,17 +59,21 @@ begin
   end if;
 
   -- Resolve sale → shop, branch, cashier.
-  select s.branch_id, s.cashier_id, b.shop_id
-    into v_sale_branch, v_sale_cashier, v_shop_id
+  select s.branch_id, s.cashier_id, s.status, b.shop_id
+    into v_sale_branch, v_sale_cashier, v_sale_status, v_shop_id
   from public.sales s
   join public.branches b on b.id = s.branch_id
-  where s.id = v_sale_id;
+  where s.id = v_sale_id
+  for update of s;
 
   if v_shop_id is null then
     raise exception 'Original sale not found';
   end if;
   if v_branch_id is distinct from v_sale_branch then
     raise exception 'Refund branch does not match the sale';
+  end if;
+  if v_sale_status <> 'completed' then
+    raise exception 'Only completed sales can be refunded';
   end if;
 
   if not (private.has_permission(v_shop_id, 'sales.refund_any')

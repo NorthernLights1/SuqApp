@@ -1,8 +1,13 @@
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:suq/data/local/database_provider.dart';
 import 'package:suq/data/local/app_database.dart';
+import 'package:suq/domain/models/shop.dart';
+import 'package:suq/features/auth/presentation/providers/shop_provider.dart';
+import 'package:suq/features/customers/presentation/providers/customers_provider.dart';
 import 'package:suq/features/refunds/data/refunds_remote.dart';
 import 'package:suq/features/refunds/domain/refunds_repository.dart';
 
@@ -38,6 +43,9 @@ Future<void> _seedSale(
   required String itemId,
   required Decimal qty,
   required Decimal total,
+  String status = 'completed',
+  bool isCredit = false,
+  String? customerId,
 }) async {
   await db.insertSaleWithItems(
     LocalSalesCompanion(
@@ -48,8 +56,9 @@ Future<void> _seedSale(
       subtotal: Value(total),
       discountAmount: Value(Decimal.zero),
       total: Value(total),
-      status: const Value('completed'),
-      isCredit: const Value(false),
+      status: Value(status),
+      isCredit: Value(isCredit),
+      customerId: Value(customerId),
       createdAt: Value(DateTime.now()),
       isSynced: const Value(true),
     ),
@@ -194,6 +203,45 @@ void main() {
       );
 
       expect(await db.getPendingRefunds(), isEmpty);
+    },
+  );
+
+  test(
+    'rejects a locally voided sale before writing refund or restock rows',
+    () async {
+      await db.setStockLevel(branchId, 'p-1', d('10'));
+      await _seedSale(
+        db,
+        saleId: 's-1',
+        itemId: 'si-1',
+        qty: d('4'),
+        total: d('20'),
+        status: 'voided',
+      );
+
+      await expectLater(
+        () => repo.createRefund(
+          originalSaleId: 's-1',
+          branchId: branchId,
+          refundedBy: userId,
+          reason: 'returned',
+          restock: true,
+          lines: [
+            (
+              saleItemId: 'si-1',
+              productId: 'p-1',
+              quantity: d('2'),
+              amount: d('10'),
+              soldQuantity: d('4'),
+            ),
+          ],
+          useBatches: false,
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(await db.getPendingRefunds(), isEmpty);
+      expect(await db.getStockLevel(branchId, 'p-1'), d('10'));
     },
   );
 
@@ -624,6 +672,116 @@ void main() {
         2,
         reason: 'each restock row must have a unique client id',
       );
+    },
+  );
+
+  test(
+    'credit providers subtract partial refunds from local outstanding balances',
+    () async {
+      await db.upsertShop(
+        LocalShopsCompanion(
+          id: const Value('shop-1'),
+          name: const Value('Shop'),
+          config: const Value('{}'),
+          createdAt: Value(DateTime.now()),
+          syncedAt: Value(DateTime.now()),
+        ),
+      );
+      await db.upsertCustomer(
+        LocalCustomersCompanion(
+          id: const Value('cust-1'),
+          shopId: const Value('shop-1'),
+          name: const Value('Customer'),
+          creditBalance: Value(Decimal.zero),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+      await _seedSale(
+        db,
+        saleId: 's-credit',
+        itemId: 'si-credit',
+        qty: d('4'),
+        total: d('100'),
+        isCredit: true,
+        customerId: 'cust-1',
+      );
+      await repo.createRefund(
+        originalSaleId: 's-credit',
+        branchId: branchId,
+        refundedBy: userId,
+        reason: 'partial return',
+        restock: false,
+        lines: [
+          (
+            saleItemId: 'si-credit',
+            productId: 'p-1',
+            quantity: d('1'),
+            amount: d('25'),
+            soldQuantity: d('4'),
+          ),
+        ],
+        useBatches: false,
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          appDatabaseProvider.overrideWithValue(db),
+          currentShopProvider.overrideWith(
+            (ref) async => Shop(
+              id: 'shop-1',
+              name: 'Shop',
+              config: const {},
+              createdAt: DateTime.now(),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final customerSales = await container.read(
+        customerCreditSalesProvider('cust-1').future,
+      );
+      final outstanding = await container.read(
+        outstandingCreditProvider.future,
+      );
+
+      expect(customerSales.single.remaining, d('75'));
+      expect(outstanding.single.remaining, d('75'));
+    },
+  );
+
+  test(
+    'credit sale json parser subtracts embedded refund items for remote balances',
+    () {
+      final row = {
+        'id': 's-credit',
+        'total': '100',
+        'created_at': '2026-06-23T12:00:00Z',
+        'customer_id': 'cust-1',
+        'customers': {'id': 'cust-1', 'name': 'Customer'},
+        'credit_payments': [
+          {'amount': '10'},
+        ],
+        'sale_items': [
+          {
+            'refund_items': [
+              {
+                'amount': '25',
+                'deleted_at': null,
+                'refunds': {'deleted_at': null},
+              },
+              {
+                'amount': '5',
+                'deleted_at': '2026-06-23T12:00:00Z',
+                'refunds': {'deleted_at': null},
+              },
+            ],
+          },
+        ],
+      };
+
+      expect(CreditSale.fromJson(row).remaining, d('65'));
+      expect(CreditSaleWithCustomer.fromJson(row).remaining, d('65'));
     },
   );
 

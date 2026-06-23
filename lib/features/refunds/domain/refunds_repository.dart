@@ -94,6 +94,11 @@ class RefundsRepository implements IRefundsRepository {
     // restock ledger entries. isSynced=false on the refund (and on the restock
     // adjustments) so SyncService is the sole pusher. The caller nudges a sync.
     await db.transaction(() async {
+      final sale = await db.getSale(originalSaleId);
+      if (sale == null || sale.status != 'completed') {
+        throw StateError('Only completed sales can be refunded.');
+      }
+
       await db.insertRefundWithItems(
         LocalRefundsCompanion(
           id: Value(refundId),

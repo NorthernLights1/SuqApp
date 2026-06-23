@@ -173,6 +173,57 @@ declare
     'total_amount', '9999'
   );
 begin
+  update public.sales
+  set status = 'voided'
+  where id = 'bbbbbbbb-0000-0000-0000-000000000050';
+
+  begin
+    perform public.upsert_refund_with_inventory(
+      v_refund_base || jsonb_build_object('id', 'bbbbbbbb-0000-0000-0000-000000000106'),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'bbbbbbbb-0000-0000-0000-000000000119',
+        'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000060',
+        'quantity', '1'
+      )),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'bbbbbbbb-0000-0000-0000-000000000126',
+        'batch_id', 'bbbbbbbb-0000-0000-0000-000000000040',
+        'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000060',
+        'quantity', '1'
+      ))
+    );
+    raise exception 'FAIL: voided sale refund was accepted';
+  exception when others then
+    if sqlerrm not like 'Only completed sales can be refunded%' then
+      raise;
+    end if;
+  end;
+
+  if exists (
+    select 1 from public.refunds
+    where id = 'bbbbbbbb-0000-0000-0000-000000000106'
+  ) then
+    raise exception 'FAIL: voided sale refund inserted refund row';
+  end if;
+
+  if exists (
+    select 1 from public.refund_items
+    where refund_id = 'bbbbbbbb-0000-0000-0000-000000000106'
+  ) then
+    raise exception 'FAIL: voided sale refund inserted refund item rows';
+  end if;
+
+  if exists (
+    select 1 from public.batch_adjustments
+    where id = 'bbbbbbbb-0000-0000-0000-000000000126'
+  ) then
+    raise exception 'FAIL: voided sale refund restocked a batch';
+  end if;
+
+  update public.sales
+  set status = 'completed'
+  where id = 'bbbbbbbb-0000-0000-0000-000000000050';
+
   begin
     perform public.upsert_refund_with_inventory(
       v_refund_base || jsonb_build_object('id', 'bbbbbbbb-0000-0000-0000-000000000100'),
