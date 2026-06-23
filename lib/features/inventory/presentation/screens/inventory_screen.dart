@@ -240,7 +240,12 @@ class _ProductStockTile extends ConsumerWidget {
       ),
       isThreeLine: true,
       trailing: const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-      onTap: () => _showStockSheet(context, ref, product, stockEntry),
+      onTap: () async {
+        final isWholesale =
+            await ref.read(shopTypeProvider.future) == ShopType.wholesale;
+        if (!context.mounted) return;
+        _showStockSheet(context, ref, product, stockEntry, isWholesale);
+      },
     );
   }
 }
@@ -248,13 +253,16 @@ class _ProductStockTile extends ConsumerWidget {
 // ─── Stock action sheet ───────────────────────────────────────────────────────
 
 void _showStockSheet(
-    BuildContext context, WidgetRef ref, Product product, StockEntry? entry) {
+    BuildContext context,
+    WidgetRef ref,
+    Product product,
+    StockEntry? entry,
+    bool isWholesale) {
   final canAdjust = hasPermissionSync(ref, 'inventory.adjust');
   final canCorrect = hasPermissionSync(ref, 'settings.manage');
   final canEdit = hasPermissionSync(ref, 'inventory.edit');
   // Correct Stock writes inventory.quantity directly — for wholesale that fights
   // the batch rollup, so it's hidden until batch-level correction lands (2.5).
-  final isWholesale = ref.read(shopTypeProvider).isWholesale;
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -1077,9 +1085,12 @@ class _ProductFormScreenState extends ConsumerState<ProductFormScreen> {
 
     // Wholesale: the opening quantity becomes the first lot, so it must carry a
     // batch/lot number for traceability (matches the Add Stock flow).
+    final isWholesale =
+        await ref.read(shopTypeProvider.future) == ShopType.wholesale;
+    if (!mounted) return;
     if (!_isEdit &&
         initialQty != null &&
-        ref.read(shopTypeProvider).isWholesale &&
+        isWholesale &&
         _batchNumberCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

@@ -117,19 +117,24 @@ class ProductFormNotifier extends AsyncNotifier<void> {
           final branch = ref.read(activeBranchProvider) ??
               (branches.isNotEmpty ? branches.first : null);
           if (userId != null && branch != null) {
-            // Wholesale opening stock must be a BATCH (with null batch number) —
-            // not a direct inventory write, which the rollup trigger would
-            // overwrite on the first restock, losing the opening quantity.
+            // Wholesale opening stock must be a BATCH, not a direct inventory
+            // write, which the rollup trigger would overwrite on restock.
             final isWholesale =
                 await ref.read(shopTypeProvider.future) == ShopType.wholesale;
             if (isWholesale) {
+              final normalizedBatchNumber = batchNumber?.trim();
+              if (normalizedBatchNumber == null ||
+                  normalizedBatchNumber.isEmpty) {
+                throw StateError(
+                    'Batch / lot number is required for wholesale opening stock');
+              }
               await repo.addStockBatch(
                 branchId: branch.id,
                 productId: product.id,
                 quantity: initialQuantity,
                 adjustedBy: userId,
                 expiryDate: expiryDate,
-                batchNumber: batchNumber,
+                batchNumber: normalizedBatchNumber,
               );
             } else {
               await repo.setOpeningStock(
