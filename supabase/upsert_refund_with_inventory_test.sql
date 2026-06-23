@@ -119,6 +119,17 @@ insert into public.sale_items (
     20,
     0,
     80
+  ),
+  (
+    'bbbbbbbb-0000-0000-0000-000000000062',
+    'bbbbbbbb-0000-0000-0000-000000000050',
+    'bbbbbbbb-0000-0000-0000-000000000030',
+    'Refund Product A',
+    '10000000-0000-0000-0000-000000000001',
+    2,
+    10,
+    0,
+    20
   );
 
 insert into public.sale_item_batches (id, sale_item_id, batch_id, quantity)
@@ -140,6 +151,12 @@ values
     'bbbbbbbb-0000-0000-0000-000000000061',
     'bbbbbbbb-0000-0000-0000-000000000041',
     4
+  ),
+  (
+    'bbbbbbbb-0000-0000-0000-000000000073',
+    'bbbbbbbb-0000-0000-0000-000000000062',
+    'bbbbbbbb-0000-0000-0000-000000000042',
+    2
   );
 
 set local role authenticated;
@@ -198,7 +215,36 @@ begin
     );
     raise exception 'FAIL: per-product batch restock mismatch was accepted';
   exception when others then
-    if sqlerrm not like 'Batch restock quantity must equal refunded quantity per product%' then
+    if sqlerrm not like 'Batch restock quantity must equal refunded quantity per sale item and product%' then
+      raise;
+    end if;
+  end;
+
+  begin
+    perform public.upsert_refund_with_inventory(
+      v_refund_base || jsonb_build_object('id', 'bbbbbbbb-0000-0000-0000-000000000105'),
+      jsonb_build_array(
+        jsonb_build_object(
+          'id', 'bbbbbbbb-0000-0000-0000-000000000117',
+          'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000060',
+          'quantity', '1'
+        ),
+        jsonb_build_object(
+          'id', 'bbbbbbbb-0000-0000-0000-000000000118',
+          'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000062',
+          'quantity', '1'
+        )
+      ),
+      jsonb_build_array(jsonb_build_object(
+        'id', 'bbbbbbbb-0000-0000-0000-000000000125',
+        'batch_id', 'bbbbbbbb-0000-0000-0000-000000000040',
+        'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000060',
+        'quantity', '2'
+      ))
+    );
+    raise exception 'FAIL: same-product sale-item batch restock mismatch was accepted';
+  exception when others then
+    if sqlerrm not like 'Batch restock quantity must equal refunded quantity per sale item and product%' then
       raise;
     end if;
   end;

@@ -184,29 +184,36 @@ begin
       raise exception 'Invalid restock quantity';
     end if;
 
-    -- B2 (this migration): assert restock qty by product equals refunded qty by
-    -- product. Guards against a caller refunding N units while restocking M>N by
-    -- targeting a batch with a large drawn qty.
+    -- B2 (this migration): assert restock qty by sale item + product equals
+    -- refunded qty by sale item + product. Guards against a caller refunding N
+    -- units while restocking M>N by targeting a batch with a large drawn qty, or
+    -- moving restock quantity between two refunded lines for the same product.
     if exists (
-      with restock_by_product as (
-        select pb.product_id, sum((adj->>'quantity')::numeric) as qty
+      with restock_by_item as (
+        select (adj->>'sale_item_id')::uuid as sale_item_id,
+               pb.product_id,
+               sum((adj->>'quantity')::numeric) as qty
         from jsonb_array_elements(p_batch_adjustments) adj
         join public.product_batches pb on pb.id = (adj->>'batch_id')::uuid
-        group by pb.product_id
+        group by (adj->>'sale_item_id')::uuid, pb.product_id
       ),
-      refund_by_product as (
-        select si.product_id, sum((it->>'quantity')::numeric) as qty
+      refund_by_item as (
+        select si.id as sale_item_id,
+               si.product_id,
+               sum((it->>'quantity')::numeric) as qty
         from jsonb_array_elements(p_items) it
         join public.sale_items si on si.id = (it->>'sale_item_id')::uuid
         where si.product_id is not null
-        group by si.product_id
+        group by si.id, si.product_id
       )
       select 1
-      from restock_by_product r
-      full outer join refund_by_product f on f.product_id = r.product_id
+      from restock_by_item r
+      full outer join refund_by_item f
+        on f.sale_item_id = r.sale_item_id
+       and f.product_id = r.product_id
       where coalesce(r.qty, 0) <> coalesce(f.qty, 0)
     ) then
-      raise exception 'Batch restock quantity must equal refunded quantity per product';
+      raise exception 'Batch restock quantity must equal refunded quantity per sale item and product';
     end if;
 
     -- Validation pass: aggregate by sale_item_id + batch_id to check drawn-qty cap.
