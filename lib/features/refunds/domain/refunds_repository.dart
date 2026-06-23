@@ -98,6 +98,12 @@ class RefundsRepository implements IRefundsRepository {
       if (sale == null || sale.status != 'completed') {
         throw StateError('Only completed sales can be refunded.');
       }
+      if (restock && useBatches && lines.every((l) => l.productId == null)) {
+        throw StateError(
+          'Cannot restock untracked wholesale refund lines. '
+          'Refund without restock.',
+        );
+      }
 
       await db.insertRefundWithItems(
         LocalRefundsCompanion(

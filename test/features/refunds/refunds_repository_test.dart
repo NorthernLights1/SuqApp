@@ -46,6 +46,8 @@ Future<void> _seedSale(
   String status = 'completed',
   bool isCredit = false,
   String? customerId,
+  String? productId = 'p-1',
+  String inventoryStatus = 'tracked',
 }) async {
   await db.insertSaleWithItems(
     LocalSalesCompanion(
@@ -66,13 +68,13 @@ Future<void> _seedSale(
       LocalSaleItemsCompanion(
         id: Value(itemId),
         saleId: Value(saleId),
-        productId: const Value('p-1'),
+        productId: Value(productId),
         productNameSnapshot: const Value('Widget'),
         quantity: Value(qty),
         unitPrice: Value(Decimal.zero), // unused by these tests
         discountAmount: Value(Decimal.zero),
         total: Value(total),
-        inventoryStatus: const Value('tracked'),
+        inventoryStatus: Value(inventoryStatus),
       ),
     ],
   );
@@ -558,6 +560,45 @@ void main() {
       );
       // Transaction rolled back: no refund recorded.
       expect(await db.getPendingRefunds(), isEmpty);
+    },
+  );
+
+  test(
+    'wholesale restock rejects untracked lines before recording the refund',
+    () async {
+      await _seedSale(
+        db,
+        saleId: 's-1',
+        itemId: 'si-1',
+        qty: d('4'),
+        total: d('20'),
+        productId: null,
+        inventoryStatus: 'untracked',
+      );
+
+      await expectLater(
+        () => repo.createRefund(
+          originalSaleId: 's-1',
+          branchId: branchId,
+          refundedBy: userId,
+          reason: 'returned',
+          restock: true,
+          lines: [
+            (
+              saleItemId: 'si-1',
+              productId: null,
+              quantity: d('2'),
+              amount: d('10'),
+              soldQuantity: d('4'),
+            ),
+          ],
+          useBatches: true,
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(await db.getPendingRefunds(), isEmpty);
+      expect(await db.getPendingBatchAdjustments(), isEmpty);
     },
   );
 
