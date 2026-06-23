@@ -10,6 +10,7 @@ import 'package:suq/features/auth/presentation/providers/shop_provider.dart';
 import 'package:suq/features/customers/presentation/providers/customers_provider.dart';
 import 'package:suq/features/refunds/data/refunds_remote.dart';
 import 'package:suq/features/refunds/domain/refunds_repository.dart';
+import 'package:suq/features/reports/presentation/providers/reports_provider.dart';
 
 // Native repo tests never touch the remote (db != null), so a no-op stub is
 // enough. Implements the concrete RefundsRemote as an interface.
@@ -788,6 +789,103 @@ void main() {
 
       expect(customerSales.single.remaining, d('75'));
       expect(outstanding.single.remaining, d('75'));
+    },
+  );
+
+  test(
+    'report summary subtracts partial and full credit-sale refunds locally',
+    () async {
+      await _seedSale(
+        db,
+        saleId: 's-partial-credit',
+        itemId: 'si-partial-credit',
+        qty: d('4'),
+        total: d('100'),
+        isCredit: true,
+      );
+      await _seedSale(
+        db,
+        saleId: 's-full-credit',
+        itemId: 'si-full-credit',
+        qty: d('4'),
+        total: d('100'),
+        isCredit: true,
+      );
+
+      await repo.createRefund(
+        originalSaleId: 's-partial-credit',
+        branchId: branchId,
+        refundedBy: userId,
+        reason: 'partial return',
+        restock: false,
+        lines: [
+          (
+            saleItemId: 'si-partial-credit',
+            productId: 'p-1',
+            quantity: d('1'),
+            amount: d('25'),
+            soldQuantity: d('4'),
+          ),
+        ],
+        useBatches: false,
+      );
+      await repo.createRefund(
+        originalSaleId: 's-full-credit',
+        branchId: branchId,
+        refundedBy: userId,
+        reason: 'full return',
+        restock: false,
+        lines: [
+          (
+            saleItemId: 'si-full-credit',
+            productId: 'p-1',
+            quantity: d('4'),
+            amount: d('100'),
+            soldQuantity: d('4'),
+          ),
+        ],
+        useBatches: false,
+      );
+
+      final container = ProviderContainer(
+        overrides: [
+          appDatabaseProvider.overrideWithValue(db),
+          currentShopProvider.overrideWith(
+            (ref) async => Shop(
+              id: 'shop-1',
+              name: 'Shop',
+              config: const {},
+              createdAt: DateTime.now(),
+            ),
+          ),
+          currentShopBranchesProvider.overrideWith(
+            (ref) async => [
+              Branch(
+                id: branchId,
+                shopId: 'shop-1',
+                name: 'Main',
+                isActive: true,
+                createdAt: DateTime.now(),
+              ),
+            ],
+          ),
+          activeBranchProvider.overrideWithBuild(
+            (ref, notifier) => Branch(
+              id: branchId,
+              shopId: 'shop-1',
+              name: 'Main',
+              isActive: true,
+              createdAt: DateTime.now(),
+            ),
+          ),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final summary = await container.read(reportSummaryProvider.future);
+
+      expect(summary.creditCount, 1);
+      expect(summary.creditTotal, d('75'));
     },
   );
 

@@ -110,6 +110,22 @@ class _ReportCategoryNotifier extends Notifier<String?> {
 final reportCategoryFilterProvider =
     NotifierProvider<_ReportCategoryNotifier, String?>(_ReportCategoryNotifier.new);
 
+Decimal _refundedFromSaleItems(List items) {
+  var total = Decimal.zero;
+  for (final item in items) {
+    final refunds =
+        (item as Map<String, dynamic>)['refund_items'] as List? ?? const [];
+    for (final refundItem in refunds) {
+      final ri = refundItem as Map<String, dynamic>;
+      final refund = ri['refunds'] as Map<String, dynamic>?;
+      if (ri['deleted_at'] == null && refund?['deleted_at'] == null) {
+        total += Decimal.parse((ri['amount'] ?? '0').toString());
+      }
+    }
+  }
+  return total;
+}
+
 /// The individual completed sales behind the report summary, honouring the
 /// same period + category filters. Drives the tappable Transactions/Credits
 /// drill-downs. Each row maps to a full [Sale] (with customer/cashier joins),
@@ -248,7 +264,8 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   final categoryFilter = ref.watch(reportCategoryFilterProvider);
   final branches = await ref.watch(currentShopBranchesProvider.future);
   final branch =
-      ref.watch(activeBranchProvider) ?? (branches.isNotEmpty ? branches.first : null);
+      ref.watch(activeBranchProvider) ??
+      (branches.isNotEmpty ? branches.first : null);
 
   if (branch == null) {
     return ReportSummary(
@@ -278,155 +295,167 @@ final reportSummaryProvider = FutureProvider<ReportSummary>((ref) async {
   // Web: remote-only.
   final client = ref.read(supabaseClientProvider);
   try {
-  // Sales — include product category info for optional category filter
-  final salesData = await client
-      .from('sales')
-      .select(
-          'total, status, is_credit, credit_settled_at, credit_payments(amount), sale_items(quantity, unit_price, discount_amount, cost_price_snapshot, products(category_id))')
-      .eq('branch_id', branch.id)
-      .gte('created_at', range.start.toUtc().toIso8601String())
-      .lt('created_at', range.end.toUtc().toIso8601String())
-      .timeout(AppConstants.remoteReadTimeout);
-
-  Decimal salesTotal = Decimal.zero;
-  Decimal creditTotal = Decimal.zero;
-  Decimal grossProfit = Decimal.zero;
-  int salesCount = 0;
-  int creditCount = 0;
-  int profitItemCount = 0;
-
-  for (final row in salesData as List) {
-    if (row['status'] != 'completed') continue;
-    final items = (row['sale_items'] as List? ?? []);
-    // "On credit" means still outstanding — exclude settled credit sales so
-    // the figure matches the credits screen once debts are paid.
-    final saleAmount = Decimal.parse(row['total'].toString());
-    final paid = (row['credit_payments'] as List? ?? []).fold<Decimal>(
-      Decimal.zero,
-      (sum, payment) =>
-          sum + Decimal.parse(payment['amount'].toString()),
-    );
-    final remainingCredit = saleAmount > paid ? saleAmount - paid : Decimal.zero;
-    final isOutstandingCredit =
-        row['is_credit'] == true && remainingCredit > Decimal.zero;
-
-    if (categoryFilter != null) {
-      // Category mode: sum only items from the selected category.
-      Decimal catRevenue = Decimal.zero;
-      bool hasCatItem = false;
-      for (final item in items) {
-        final catId = (item['products'] as Map<String, dynamic>?)?['category_id'];
-        if (catId != categoryFilter) continue;
-        hasCatItem = true;
-        final qty = Decimal.parse(item['quantity'].toString());
-        final unitPrice = Decimal.parse(item['unit_price'].toString());
-        final disc = Decimal.parse((item['discount_amount'] ?? '0').toString());
-        catRevenue += (unitPrice * qty) - disc;
-        if (item['cost_price_snapshot'] != null) {
-          final costPrice =
-              Decimal.parse(item['cost_price_snapshot'].toString());
-          grossProfit +=
-              ((unitPrice * qty) - disc) - (costPrice * qty);
-          profitItemCount++;
-        }
-      }
-      if (!hasCatItem) continue;
-      salesTotal += catRevenue;
-      salesCount++;
-      if (isOutstandingCredit) {
-        creditTotal +=
-            catRevenue < remainingCredit ? catRevenue : remainingCredit;
-        creditCount++;
-      }
-    } else {
-      // All categories: use the stored sale total.
-      final amount = saleAmount;
-      salesTotal += amount;
-      salesCount++;
-      if (isOutstandingCredit) {
-        creditTotal += remainingCredit;
-        creditCount++;
-      }
-      for (final item in items) {
-        if (item['cost_price_snapshot'] == null) continue;
-        final qty = Decimal.parse(item['quantity'].toString());
-        final unitPrice = Decimal.parse(item['unit_price'].toString());
-        final disc =
-            Decimal.parse((item['discount_amount'] ?? '0').toString());
-        final costPrice = Decimal.parse(item['cost_price_snapshot'].toString());
-        grossProfit += ((unitPrice * qty) - disc) - (costPrice * qty);
-        profitItemCount++;
-      }
-    }
-  }
-
-  // Expenses (not category-filtered — expense categories are separate from product categories)
-  final expData = await client
-      .from('expenses')
-      .select('amount, expense_categories(name)')
-      .eq('branch_id', branch.id)
-      .gte('date', range.start.toIso8601String().substring(0, 10))
-      .lt('date', range.end.toIso8601String().substring(0, 10))
-      .timeout(AppConstants.remoteReadTimeout);
-
-  Decimal expenseTotal = Decimal.zero;
-  final expByCategory = <String, Decimal>{};
-  for (final row in expData as List) {
-    final amount = Decimal.parse(row['amount'].toString());
-    final catName =
-        (row['expense_categories'] as Map<String, dynamic>?)?['name'] as String? ??
-            'Other';
-    expenseTotal += amount;
-    expByCategory[catName] =
-        (expByCategory[catName] ?? Decimal.zero) + amount;
-  }
-
-  final sortedCategories = Map.fromEntries(
-    expByCategory.entries.toList()..sort((a, b) => b.value.compareTo(a.value)),
-  );
-
-  Decimal refundTotal = Decimal.zero;
-  if (categoryFilter != null) {
-    final refundData = await client
-        .from('refund_items')
+    // Sales — include product category info for optional category filter
+    final salesData = await client
+        .from('sales')
         .select(
-            'amount, refunds!inner(branch_id, created_at, deleted_at), sale_items!inner(products!inner(category_id))')
-        .eq('refunds.branch_id', branch.id)
-        .isFilter('refunds.deleted_at', null)
-        .isFilter('deleted_at', null)
-        .eq('sale_items.products.category_id', categoryFilter)
-        .gte('refunds.created_at', range.start.toUtc().toIso8601String())
-        .lt('refunds.created_at', range.end.toUtc().toIso8601String())
-        .timeout(AppConstants.remoteReadTimeout);
-    for (final row in refundData as List) {
-      refundTotal += Decimal.parse(row['amount'].toString());
-    }
-  } else {
-    // Refunds in the period (money returned) — nets out of revenue.
-    final refundData = await client
-        .from('refunds')
-        .select('total_amount')
+          'total, status, is_credit, credit_settled_at, credit_payments(amount), sale_items(quantity, unit_price, discount_amount, cost_price_snapshot, products(category_id), refund_items(amount, deleted_at, refunds(deleted_at)))',
+        )
         .eq('branch_id', branch.id)
-        .isFilter('deleted_at', null)
         .gte('created_at', range.start.toUtc().toIso8601String())
         .lt('created_at', range.end.toUtc().toIso8601String())
         .timeout(AppConstants.remoteReadTimeout);
-    for (final row in refundData as List) {
-      refundTotal += Decimal.parse(row['total_amount'].toString());
-    }
-  }
 
-  return ReportSummary(
-    salesTotal: salesTotal,
-    salesCount: salesCount,
-    creditTotal: creditTotal,
-    creditCount: creditCount,
-    expenseTotal: expenseTotal,
-    expenseByCategory: sortedCategories,
-    grossProfit: grossProfit,
-    profitItemCount: profitItemCount,
-    refundTotal: refundTotal,
-  );
+    Decimal salesTotal = Decimal.zero;
+    Decimal creditTotal = Decimal.zero;
+    Decimal grossProfit = Decimal.zero;
+    int salesCount = 0;
+    int creditCount = 0;
+    int profitItemCount = 0;
+
+    for (final row in salesData as List) {
+      if (row['status'] != 'completed') continue;
+      final items = (row['sale_items'] as List? ?? []);
+      // "On credit" means still outstanding — exclude settled credit sales so
+      // the figure matches the credits screen once debts are paid.
+      final saleAmount = Decimal.parse(row['total'].toString());
+      final paid = (row['credit_payments'] as List? ?? []).fold<Decimal>(
+        Decimal.zero,
+        (sum, payment) => sum + Decimal.parse(payment['amount'].toString()),
+      );
+      final refunded = _refundedFromSaleItems(items);
+      final due = saleAmount - paid - refunded;
+      final remainingCredit = due > Decimal.zero ? due : Decimal.zero;
+      final isOutstandingCredit =
+          row['is_credit'] == true && remainingCredit > Decimal.zero;
+
+      if (categoryFilter != null) {
+        // Category mode: sum only items from the selected category.
+        Decimal catRevenue = Decimal.zero;
+        bool hasCatItem = false;
+        for (final item in items) {
+          final catId =
+              (item['products'] as Map<String, dynamic>?)?['category_id'];
+          if (catId != categoryFilter) continue;
+          hasCatItem = true;
+          final qty = Decimal.parse(item['quantity'].toString());
+          final unitPrice = Decimal.parse(item['unit_price'].toString());
+          final disc = Decimal.parse(
+            (item['discount_amount'] ?? '0').toString(),
+          );
+          catRevenue += (unitPrice * qty) - disc;
+          if (item['cost_price_snapshot'] != null) {
+            final costPrice = Decimal.parse(
+              item['cost_price_snapshot'].toString(),
+            );
+            grossProfit += ((unitPrice * qty) - disc) - (costPrice * qty);
+            profitItemCount++;
+          }
+        }
+        if (!hasCatItem) continue;
+        salesTotal += catRevenue;
+        salesCount++;
+        if (isOutstandingCredit) {
+          creditTotal += catRevenue < remainingCredit
+              ? catRevenue
+              : remainingCredit;
+          creditCount++;
+        }
+      } else {
+        // All categories: use the stored sale total.
+        final amount = saleAmount;
+        salesTotal += amount;
+        salesCount++;
+        if (isOutstandingCredit) {
+          creditTotal += remainingCredit;
+          creditCount++;
+        }
+        for (final item in items) {
+          if (item['cost_price_snapshot'] == null) continue;
+          final qty = Decimal.parse(item['quantity'].toString());
+          final unitPrice = Decimal.parse(item['unit_price'].toString());
+          final disc = Decimal.parse(
+            (item['discount_amount'] ?? '0').toString(),
+          );
+          final costPrice = Decimal.parse(
+            item['cost_price_snapshot'].toString(),
+          );
+          grossProfit += ((unitPrice * qty) - disc) - (costPrice * qty);
+          profitItemCount++;
+        }
+      }
+    }
+
+    // Expenses (not category-filtered — expense categories are separate from product categories)
+    final expData = await client
+        .from('expenses')
+        .select('amount, expense_categories(name)')
+        .eq('branch_id', branch.id)
+        .gte('date', range.start.toIso8601String().substring(0, 10))
+        .lt('date', range.end.toIso8601String().substring(0, 10))
+        .timeout(AppConstants.remoteReadTimeout);
+
+    Decimal expenseTotal = Decimal.zero;
+    final expByCategory = <String, Decimal>{};
+    for (final row in expData as List) {
+      final amount = Decimal.parse(row['amount'].toString());
+      final catName =
+          (row['expense_categories'] as Map<String, dynamic>?)?['name']
+              as String? ??
+          'Other';
+      expenseTotal += amount;
+      expByCategory[catName] =
+          (expByCategory[catName] ?? Decimal.zero) + amount;
+    }
+
+    final sortedCategories = Map.fromEntries(
+      expByCategory.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value)),
+    );
+
+    Decimal refundTotal = Decimal.zero;
+    if (categoryFilter != null) {
+      final refundData = await client
+          .from('refund_items')
+          .select(
+            'amount, refunds!inner(branch_id, created_at, deleted_at), sale_items!inner(products!inner(category_id))',
+          )
+          .eq('refunds.branch_id', branch.id)
+          .isFilter('refunds.deleted_at', null)
+          .isFilter('deleted_at', null)
+          .eq('sale_items.products.category_id', categoryFilter)
+          .gte('refunds.created_at', range.start.toUtc().toIso8601String())
+          .lt('refunds.created_at', range.end.toUtc().toIso8601String())
+          .timeout(AppConstants.remoteReadTimeout);
+      for (final row in refundData as List) {
+        refundTotal += Decimal.parse(row['amount'].toString());
+      }
+    } else {
+      // Refunds in the period (money returned) — nets out of revenue.
+      final refundData = await client
+          .from('refunds')
+          .select('total_amount')
+          .eq('branch_id', branch.id)
+          .isFilter('deleted_at', null)
+          .gte('created_at', range.start.toUtc().toIso8601String())
+          .lt('created_at', range.end.toUtc().toIso8601String())
+          .timeout(AppConstants.remoteReadTimeout);
+      for (final row in refundData as List) {
+        refundTotal += Decimal.parse(row['total_amount'].toString());
+      }
+    }
+
+    return ReportSummary(
+      salesTotal: salesTotal,
+      salesCount: salesCount,
+      creditTotal: creditTotal,
+      creditCount: creditCount,
+      expenseTotal: expenseTotal,
+      expenseByCategory: sortedCategories,
+      grossProfit: grossProfit,
+      profitItemCount: profitItemCount,
+      refundTotal: refundTotal,
+    );
   } catch (e) {
     // Web-only path: no local DB to fall back to.
     debugPrint('Report summary remote fetch failed: $e');
@@ -449,10 +478,13 @@ Future<ReportSummary> _localReportSummary(
       for (final p in await db.getProductsByShop(shopId)) p.id: p.categoryId,
   };
   // Batch items + payments for all completed sales (avoids two N+1 loops).
-  final completedIds =
-      sales.where((s) => s.status == 'completed').map((s) => s.id).toList();
+  final completedIds = sales
+      .where((s) => s.status == 'completed')
+      .map((s) => s.id)
+      .toList();
   final itemsBySale = await db.getSaleItemsForSales(completedIds);
   final paidBySale = await db.getPaidBySale(completedIds);
+  final refundedBySale = await db.getRefundedAmountBySale(completedIds);
 
   Decimal salesTotal = Decimal.zero;
   Decimal creditTotal = Decimal.zero;
@@ -465,7 +497,9 @@ Future<ReportSummary> _localReportSummary(
     if (s.status != 'completed') continue;
     final items = itemsBySale[s.id] ?? const [];
     final paid = paidBySale[s.id] ?? Decimal.zero;
-    final remainingCredit = s.total > paid ? s.total - paid : Decimal.zero;
+    final refunded = refundedBySale[s.id] ?? Decimal.zero;
+    final due = s.total - paid - refunded;
+    final remainingCredit = due > Decimal.zero ? due : Decimal.zero;
     final isOutstandingCredit = s.isCredit && remainingCredit > Decimal.zero;
 
     if (categoryFilter != null) {
@@ -478,7 +512,7 @@ Future<ReportSummary> _localReportSummary(
         if (item.costPriceSnapshot != null) {
           grossProfit +=
               ((item.unitPrice * item.quantity) - item.discountAmount) -
-                  (item.costPriceSnapshot! * item.quantity);
+              (item.costPriceSnapshot! * item.quantity);
           profitItemCount++;
         }
       }
@@ -486,8 +520,9 @@ Future<ReportSummary> _localReportSummary(
       salesTotal += catRevenue;
       salesCount++;
       if (isOutstandingCredit) {
-        creditTotal +=
-            catRevenue < remainingCredit ? catRevenue : remainingCredit;
+        creditTotal += catRevenue < remainingCredit
+            ? catRevenue
+            : remainingCredit;
         creditCount++;
       }
     } else {
@@ -501,14 +536,17 @@ Future<ReportSummary> _localReportSummary(
         if (item.costPriceSnapshot == null) continue;
         grossProfit +=
             ((item.unitPrice * item.quantity) - item.discountAmount) -
-                (item.costPriceSnapshot! * item.quantity);
+            (item.costPriceSnapshot! * item.quantity);
         profitItemCount++;
       }
     }
   }
 
-  final expenses =
-      await db.getExpensesByBranchRange(branchId, range.start, range.end);
+  final expenses = await db.getExpensesByBranchRange(
+    branchId,
+    range.start,
+    range.end,
+  );
   Decimal expenseTotal = Decimal.zero;
   final expByCategory = <String, Decimal>{};
   for (final e in expenses) {
