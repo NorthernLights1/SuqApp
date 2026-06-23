@@ -122,18 +122,13 @@ begin
     end if;
   end loop;
 
-  -- B2 (from 037): compute total_amount server-side — proportional.
+  -- B2 (from 037): compute total_amount server-side from rounded item amounts.
   select coalesce(
-    sum(si.total * agg.qty / nullif(si.quantity, 0)), 0
+    sum(round(si.total * (it->>'quantity')::numeric / nullif(si.quantity, 0), 2)), 0
   )
   into v_total_amount
-  from (
-    select (it->>'sale_item_id')::uuid as sale_item_id,
-           sum((it->>'quantity')::numeric) as qty
-    from jsonb_array_elements(p_items) it
-    group by 1
-  ) agg
-  join public.sale_items si on si.id = agg.sale_item_id;
+  from jsonb_array_elements(p_items) it
+  join public.sale_items si on si.id = (it->>'sale_item_id')::uuid;
 
   insert into public.refunds (
     id, original_sale_id, branch_id, refunded_by, reason, total_amount,
@@ -153,7 +148,7 @@ begin
       v_refund_id,
       si.id,
       (v_item->>'quantity')::numeric,
-      si.total * (v_item->>'quantity')::numeric / nullif(si.quantity, 0)
+      round(si.total * (v_item->>'quantity')::numeric / nullif(si.quantity, 0), 2)
     from public.sale_items si
     where si.id = (v_item->>'sale_item_id')::uuid;
   end loop;

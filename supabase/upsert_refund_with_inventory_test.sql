@@ -130,6 +130,17 @@ insert into public.sale_items (
     10,
     0,
     20
+  ),
+  (
+    'bbbbbbbb-0000-0000-0000-000000000063',
+    'bbbbbbbb-0000-0000-0000-000000000050',
+    'bbbbbbbb-0000-0000-0000-000000000030',
+    'Refund Product A',
+    '10000000-0000-0000-0000-000000000001',
+    3,
+    33.333333,
+    0,
+    100
   );
 
 insert into public.sale_item_batches (id, sale_item_id, batch_id, quantity)
@@ -157,6 +168,12 @@ values
     'bbbbbbbb-0000-0000-0000-000000000062',
     'bbbbbbbb-0000-0000-0000-000000000042',
     2
+  ),
+  (
+    'bbbbbbbb-0000-0000-0000-000000000074',
+    'bbbbbbbb-0000-0000-0000-000000000063',
+    'bbbbbbbb-0000-0000-0000-000000000042',
+    3
   );
 
 set local role authenticated;
@@ -365,6 +382,34 @@ begin
     having count(*) = 2
   ) then
     raise exception 'FAIL: duplicate batch adjustment rows or client IDs were not preserved';
+  end if;
+
+  perform public.upsert_refund_with_inventory(
+    v_refund_base || jsonb_build_object('id', 'bbbbbbbb-0000-0000-0000-000000000107'),
+    jsonb_build_array(jsonb_build_object(
+      'id', 'bbbbbbbb-0000-0000-0000-000000000127',
+      'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000063',
+      'quantity', '1',
+      'amount', '999'
+    )),
+    jsonb_build_array(jsonb_build_object(
+      'id', 'bbbbbbbb-0000-0000-0000-000000000128',
+      'batch_id', 'bbbbbbbb-0000-0000-0000-000000000042',
+      'sale_item_id', 'bbbbbbbb-0000-0000-0000-000000000063',
+      'quantity', '1'
+    ))
+  );
+
+  if not exists (
+    select 1
+    from public.refunds r
+    join public.refund_items ri on ri.refund_id = r.id
+    where r.id = 'bbbbbbbb-0000-0000-0000-000000000107'
+      and ri.sale_item_id = 'bbbbbbbb-0000-0000-0000-000000000063'
+      and r.total_amount = 33.33
+      and ri.amount = 33.33
+  ) then
+    raise exception 'FAIL: non-even refund split was not rounded to cents';
   end if;
 
   begin
