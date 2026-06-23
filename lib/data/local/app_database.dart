@@ -805,6 +805,20 @@ class AppDatabase extends _$AppDatabase {
     localBatchAdjustments,
   )..where((t) => t.isSynced.equals(false))).get();
 
+  Future<Set<String>> getPendingBatchAdjustmentProductIds(
+    String branchId,
+  ) async {
+    final rows =
+        await (select(localBatchAdjustments)..where(
+              (t) =>
+                  t.branchId.equals(branchId) &
+                  t.isSynced.equals(false) &
+                  t.deletedAt.isNull(),
+            ))
+            .get();
+    return rows.map((r) => r.productId).toSet();
+  }
+
   Future<void> markBatchAdjustmentSynced(String id) =>
       (update(localBatchAdjustments)..where((t) => t.id.equals(id))).write(
         const LocalBatchAdjustmentsCompanion(isSynced: Value(true)),

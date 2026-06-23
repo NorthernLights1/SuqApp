@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:decimal/decimal.dart';
 import 'package:drift/drift.dart';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, visibleForTesting;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app_database.dart';
 
@@ -592,29 +592,47 @@ class SeedService {
       return (await q as List).cast<Map<String, dynamic>>();
     },
     applyLive: (rows) async {
-      final pendingProductIds = await _db.getPendingStockProductIds(branchId);
-      await _db.upsertStock(
-        rows
-            .where(
-              (s) => !pendingProductIds.contains(s['product_id'] as String),
-            )
-            .map(
-              (s) => LocalStockCompanion(
-                productId: Value(s['product_id'] as String),
-                branchId: Value(branchId),
-                quantity: Value(_dec(s['quantity'])),
-                expiryDate: Value(
-                  s['expiry_date'] == null
-                      ? null
-                      : DateTime.parse(s['expiry_date'] as String),
-                ),
-                syncedAt: Value(_now),
-              ),
-            )
-            .toList(),
-      );
+      await _applyStockRows(_db, branchId, rows, _now);
     },
   );
+
+  @visibleForTesting
+  static Future<void> applyStockRowsForTest(
+    AppDatabase db,
+    String branchId,
+    Iterable<Map<String, dynamic>> rows,
+    DateTime now,
+  ) => _applyStockRows(db, branchId, rows, now);
+
+  static Future<void> _applyStockRows(
+    AppDatabase db,
+    String branchId,
+    Iterable<Map<String, dynamic>> rows,
+    DateTime now,
+  ) async {
+    final pendingProductIds = (await db.getPendingStockProductIds(branchId))
+      ..addAll(await db.getPendingBatchProductIds(branchId))
+      ..addAll(await db.getPendingBatchAdjustmentProductIds(branchId))
+      ..addAll(await db.getPendingRefundRestockProductIds(branchId));
+    await db.upsertStock(
+      rows
+          .where((s) => !pendingProductIds.contains(s['product_id'] as String))
+          .map(
+            (s) => LocalStockCompanion(
+              productId: Value(s['product_id'] as String),
+              branchId: Value(branchId),
+              quantity: Value(_dec(s['quantity'])),
+              expiryDate: Value(
+                s['expiry_date'] == null
+                    ? null
+                    : DateTime.parse(s['expiry_date'] as String),
+              ),
+              syncedAt: Value(now),
+            ),
+          )
+          .toList(),
+    );
+  }
 
   // ── Customers ────────────────────────────────────────────────────────────────
 

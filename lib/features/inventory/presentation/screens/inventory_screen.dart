@@ -608,13 +608,20 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
     final isWholesale =
         await ref.read(shopTypeProvider.future) == ShopType.wholesale;
     if (!mounted) return;
+    final batchNumber = _batchCtrl.text.trim();
+    if (isWholesale && batchNumber.isEmpty) {
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enter a batch / lot number')),
+      );
+      return;
+    }
     final notifier = ref.read(stockAdjustmentProvider.notifier);
     final ok = isWholesale
         ? await notifier.addStockBatch(
             productId: p.id,
             quantity: qty,
-            batchNumber:
-                _batchCtrl.text.trim().isEmpty ? null : _batchCtrl.text.trim(),
+            batchNumber: batchNumber,
             expiryDate: _expiryDate,
           )
         : await notifier.addStock(
@@ -675,12 +682,12 @@ class _AddStockDialogState extends ConsumerState<_AddStockDialog> {
             ),
             const SizedBox(height: 12),
             // Wholesale: this received quantity becomes a batch with its own
-            // expiry (set below) and an optional batch/lot number.
+            // expiry (set below) and batch/lot number.
             if (isWholesale) ...[
               TextField(
                 controller: _batchCtrl,
                 decoration: const InputDecoration(
-                  labelText: 'Batch / lot number (optional)',
+                  labelText: 'Batch / lot number',
                   isDense: true,
                 ),
               ),
