@@ -1,6 +1,15 @@
 # Open Tasks — Suq ERP
 
-Last updated: 2026-06-22
+Last updated: 2026-06-24
+
+---
+
+## UI Polish — contract DRAFT, not started
+
+Presentation-only polish pass (warm theme, dark mode, Amharic plumbing, money
+formatting, real loading/empty/error states, 3 layout-defect fixes). Scope agreed
+in discussion; status intentionally DRAFT — may change before go. Full contract:
+**`docs/ai-context/UI_POLISH_CONTRACT.md`**. No branch, no code yet.
 
 ---
 
